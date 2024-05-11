@@ -10,9 +10,9 @@
        Commands requiring multiple key-presses may be cancelled with the
        Escape key.
 
-  q  ^c            Exit jless.
+  q  :q[uit] ^c    Exit jless.
 
-  F1 :help         Show this help screen.
+  F1 :h[elp]       Show this help screen.
 
   ^z               Suspend jless.
 
@@ -119,6 +119,12 @@
             support the ".key" syntax, e.g. Python.
   yq pq   Copy/print a path that can be used by jq to filter the input JSON and
             return the currently focused value.
+
+                                    [1mWRITING[0m
+
+  :w[rite]  <name>   Write the input JSON to a file.
+  :w[rite]! <name>   Write the input JSON to a file, even if the file already
+                       exists.
 
                                      [1mSEARCH[0m
 

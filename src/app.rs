@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fs::File;
 use std::io;
 use std::io::Write;
 
@@ -68,6 +69,10 @@ enum Command {
     Help,
     SetShowLineNumber(Option<bool>),
     SetShowRelativeLineNumber(Option<bool>),
+    WriteFile {
+        filename: String,
+        overwrite_existing: bool,
+    },
     Unknown,
 }
 
@@ -483,6 +488,12 @@ impl App {
                                         self.screen_writer.show_relative_line_numbers =
                                             !self.screen_writer.show_relative_line_numbers
                                     }
+                                    Command::WriteFile {
+                                        filename,
+                                        overwrite_existing,
+                                    } => {
+                                        self.write_contents_to_file(filename, overwrite_existing);
+                                    }
                                     Command::Unknown => {
                                         self.set_warning_message(format!(
                                             "Unknown command: {command}"
@@ -725,15 +736,28 @@ impl App {
     }
 
     fn parse_command(command: &str) -> Command {
-        match command {
-            "h" | "he" | "hel" | "help" => Command::Help,
-            "q" | "qu" | "qui" | "quit" | "quit()" | "exit" | "exit()" => Command::Quit,
-            "set number" => Command::SetShowLineNumber(Some(true)),
-            "set number!" => Command::SetShowLineNumber(None),
-            "set nonumber" => Command::SetShowLineNumber(Some(false)),
-            "set relativenumber" => Command::SetShowRelativeLineNumber(Some(true)),
-            "set relativenumber!" => Command::SetShowRelativeLineNumber(None),
-            "set norelativenumber" => Command::SetShowRelativeLineNumber(Some(false)),
+        let args: Vec<&str> = command.split(" ").filter(|s| !s.is_empty()).collect();
+
+        match args.as_slice() {
+            ["h" | "help"] => Command::Help,
+            ["q" | "quit" | "quit()" | "exit" | "exit()"] => Command::Quit,
+            ["set", arg] => match *arg {
+                "number" => Command::SetShowLineNumber(Some(true)),
+                "number!" => Command::SetShowLineNumber(None),
+                "nonumber" => Command::SetShowLineNumber(Some(false)),
+                "relativenumber" => Command::SetShowRelativeLineNumber(Some(true)),
+                "relativenumber!" => Command::SetShowRelativeLineNumber(None),
+                "norelativenumber" => Command::SetShowRelativeLineNumber(Some(false)),
+                _ => Command::Unknown,
+            },
+            ["w" | "write", filename] => Command::WriteFile {
+                filename: filename.to_string(),
+                overwrite_existing: false,
+            },
+            ["w!" | "write!", filename] => Command::WriteFile {
+                filename: filename.to_string(),
+                overwrite_existing: true,
+            },
             _ => Command::Unknown,
         }
     }
@@ -891,6 +915,29 @@ impl App {
                 self.set_warning_message(err);
                 false
             }
+        }
+    }
+
+    fn write_contents_to_file(&mut self, filename: String, overwrite_existing: bool) {
+        let mut file_open_options = File::options();
+        file_open_options
+            .read(true)
+            .write(true)
+            .create_new(!overwrite_existing);
+
+        match file_open_options.open(&filename) {
+            Err(err) => match err.kind() {
+                io::ErrorKind::AlreadyExists => self
+                    .set_error_message(format!("{filename} already exists (add ! to overwrite)")),
+                _ => self.set_error_message(format!("Error opening file for writing: {err}")),
+            },
+            Ok(mut file) => match self.viewer.flat_json.pretty_printed() {
+                Err(err) => self.set_error_message(format!("Error pretty printing input: {err}")),
+                Ok(pretty_printed) => match file.write_all(pretty_printed.as_bytes()) {
+                    Ok(()) => self.set_info_message(format!("{filename} written")),
+                    Err(err) => self.set_error_message(format!("Error writing file: {err}")),
+                },
+            },
         }
     }
 }
