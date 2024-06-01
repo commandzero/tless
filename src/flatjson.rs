@@ -5,6 +5,9 @@ use crate::jsonparser;
 use crate::lineprinter;
 use crate::yamlparser;
 
+#[cfg(feature = "sexp")]
+use crate::jsonstringunescaper::{unsafe_unescape_json_string, UnescapeError};
+
 pub type Index = usize;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -267,35 +270,160 @@ impl FlatJson {
         res.map_err(|e| e.to_string())
     }
 
-    pub fn pretty_printed(&self) -> Result<String, std::fmt::Error> {
+    pub fn pretty_printed(&self) -> String {
         let mut buf = String::new();
 
         for row in self.0.iter() {
             for _ in 0..row.depth {
-                write!(buf, "  ")?;
+                buf.push_str("  ");
             }
             if let Some(ref key_range) = row.key_range {
-                write!(buf, "{}: ", &self.1[key_range.clone()])?;
+                buf.push_str(&self.1[key_range.clone()]);
+                buf.push_str(": ");
             }
             let mut trailing_comma = row.parent.is_some() && row.next_sibling.is_some();
             if let Some(container_type) = row.value.container_type() {
                 if row.value.is_opening_of_container() {
-                    write!(buf, "{}", container_type.open_str())?;
+                    buf.push_str(container_type.open_str());
                     // Don't print trailing commas after { or [.
                     trailing_comma = false;
                 } else {
-                    write!(buf, "{}", container_type.close_str())?;
+                    buf.push_str(container_type.close_str());
                     // Check container opening to see if we have a next sibling.
                     trailing_comma = row.parent.is_some()
                         && self[row.pair_index().unwrap()].next_sibling.is_some();
                 }
             } else {
-                write!(buf, "{}", &self.1[row.range.clone()])?;
+                buf.push_str(&self.1[row.range.clone()]);
             }
             if trailing_comma {
-                write!(buf, ",")?;
+                buf.push(',');
             }
-            writeln!(buf)?;
+            buf.push('\n');
+        }
+
+        buf
+    }
+
+    #[cfg(feature = "sexp")]
+    fn sexp_atom_needs_escaping(s: &str) -> bool {
+        // See: https://github.com/janestreet/sexplib0/blob/master/src/sexp.ml#L58
+        if s.len() == 0 {
+            return true;
+        }
+
+        let bytes = s.as_bytes();
+        let last_ch_index = bytes.len() - 1;
+        for (i, ch) in bytes.iter().enumerate() {
+            match ch {
+                // sexp syntactical characters must be escaped
+                b' ' | b'"' | b'(' | b')' | b';' | b'\\' => return true,
+                // The start or end of a multiline comment "#| comment |#" must be escaped
+                b'|' => {
+                    if i < last_ch_index && bytes[i + 1] == b'#' {
+                        return true;
+                    }
+                }
+                b'#' => {
+                    if i < last_ch_index && bytes[i + 1] == b'|' {
+                        return true;
+                    }
+                }
+                // sexplib0 source matches [0 .. 32]. 32 is space, and I included
+                // that above more explicitly.
+                0..=31 | 127..=255 => return true,
+                _ => (),
+            }
+        }
+
+        false
+    }
+
+    #[cfg(feature = "sexp")]
+    fn escape_and_write_sexp_atom(buf: &mut String, atom: &str) {
+        // https://github.com/janestreet/sexplib0/blob/master/src/sexp.ml#L81-L132
+        buf.push('"');
+        for ch in atom.bytes() {
+            match ch {
+                // Double quote and backslashes are escaped
+                b'"' => buf.push_str(r#"\""#),
+                b'\\' => buf.push_str(r#"\\"#),
+                // White space get special escape codes
+                b'\n' => buf.push_str(r#"\n"#),
+                b'\t' => buf.push_str(r#"\t"#),
+                b'\r' => buf.push_str(r#"\r"#),
+                8 /* backspace */ => buf.push_str(r#"\b"#),
+                32..=126 => buf.push(ch as char),
+                _ => {
+                    buf.push('\\');
+                    let zero = b'0';
+                    buf.push((zero + (ch / 100)) as char);
+                    buf.push((zero + ((ch / 10) % 10)) as char);
+                    buf.push((zero + (ch % 10)) as char);
+                }
+            }
+        }
+        buf.push('"');
+    }
+
+    #[cfg(feature = "sexp")]
+    fn write_sexp_atom(&self, buf: &mut String, range: Range<usize>) -> Result<(), UnescapeError> {
+        let quoteless_range = (range.start + 1)..(range.end - 1);
+        let string_value = &self.1[quoteless_range];
+
+        match unsafe_unescape_json_string(string_value) {
+            Ok(unescaped) => {
+                if Self::sexp_atom_needs_escaping(&unescaped) {
+                    Self::escape_and_write_sexp_atom(buf, &unescaped);
+                } else {
+                    buf.push_str(&unescaped);
+                }
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    #[cfg(feature = "sexp")]
+    pub fn sexp_string(&self) -> Result<String, UnescapeError> {
+        let mut buf = String::new();
+
+        for row in self.0.iter() {
+            // Write a space between elements
+            if row.parent.is_some() && row.prev_sibling.is_some() {
+                buf.push(' ');
+            }
+
+            // Write start of key-value tuple
+            if let Some(ref key_range) = row.key_range {
+                buf.push('(');
+                self.write_sexp_atom(&mut buf, key_range.clone())?;
+                buf.push(' ');
+            }
+
+            match &row.value {
+                Value::Null | Value::EmptyObject | Value::EmptyArray => buf.push_str("()"),
+                Value::Boolean | Value::Number => buf.push_str(&self.1[row.range.clone()]),
+                Value::String => self.write_sexp_atom(&mut buf, row.range.clone())?,
+                Value::OpenContainer { .. } => buf.push('('),
+                Value::CloseContainer { .. } => buf.push(')'),
+            }
+
+            // Close key-value tuple if we wrote a primitive. If we wrote the closing of a
+            // container, check if the opening had a key, and close it.
+            if row.is_primitive() && row.key_range.is_some() {
+                buf.push(')');
+            } else if row.is_closing_of_container() {
+                let opening_of_container_row = &self.0[row.pair_index().unwrap()];
+                if opening_of_container_row.key_range.is_some() {
+                    buf.push(')');
+                }
+            }
+
+            // Write newline after every top-level sexp.
+            if row.value.is_closing_of_container() && row.parent.is_nil() {
+                buf.push('\n');
+            }
         }
 
         Ok(buf)
@@ -1052,7 +1180,31 @@ mod tests {
 ]
 "#;
         let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(PRETTY, fj.pretty_printed().unwrap());
+        assert_eq!(PRETTY, fj.pretty_printed());
+    }
+
+    #[test]
+    #[cfg(feature = "sexp")]
+    fn test_sexp_string() {
+        const JSON: &str = r#"{"a":1,"b":[2,{},[],false],"c":null}
+            [ "d"   , [1,{      "e" :   7 }]   ]"#;
+        const PRETTY: &str = r#"((a 1) (b (2 () () false)) (c ()))
+(d (1 ((e 7))))
+"#;
+        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
+        assert_eq!(PRETTY, fj.sexp_string().unwrap());
+    }
+
+    #[test]
+    #[cfg(feature = "sexp")]
+    fn test_sexp_string_escaping() {
+        const JSON: &str = r#"["", "a b", "a\"b", "a\\b", "a#|b", "a|#b", "a;b", {"a(b": "a)b"}]
+            ["\n\t\r\b", "\u0000\u001f\u007f"]"#;
+        const PRETTY: &str = r#"("" "a b" "a\"b" "a\\b" "a#|b" "a|#b" "a;b" (("a(b" "a)b")))
+("\n\t\r\b" "\000\031\127")
+"#;
+        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
+        assert_eq!(PRETTY, fj.sexp_string().unwrap());
     }
 
     #[test]

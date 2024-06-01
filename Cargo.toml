@@ -12,6 +12,10 @@ documentation = "https://jless.io/user-guide.html"
 edition = "2018"
 rust-version = "1.67"
 
+[features]
+default = []
+sexp = []
+
 [dependencies]
 logos = "0.12.0"
 unicode-width = "0.1.5"

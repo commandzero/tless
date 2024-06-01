@@ -93,7 +93,7 @@ fn print_pretty_printed_input(input: String, data_format: DataFormat) {
         }
     };
 
-    print!("{}", flatjson.pretty_printed().unwrap());
+    print!("{}", flatjson.pretty_printed());
 }
 
 fn get_input_and_filename(opt: &Opt) -> io::Result<(String, String)> {

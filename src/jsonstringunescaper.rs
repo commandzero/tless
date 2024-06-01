@@ -1,12 +1,14 @@
 use std::fmt;
 use std::fmt::Write;
 
+#[derive(Debug)]
 pub struct UnescapeError {
     index: usize,
     codepoint_chars: [u8; 4],
     error: UnicodeError,
 }
 
+#[derive(Debug)]
 enum UnicodeError {
     UnexpectedLowSurrogate,
     UnmatchedHighSurrogate,
@@ -34,8 +36,9 @@ enum DecodedCodepoint {
     HighSurrogate(u16),
 }
 
-// Unescapes a syntactically valid JSON string into a valid UTF-8 string,
-// except for Unicode control characters.
+// Unescapes a syntactically valid JSON string into a valid UTF-8 string.
+// If [escape_control_characters] is true, Unicode control characters will be
+// be escaped.
 //
 // This makes the assumption that the only characters following a '\' are:
 // - single character escapes: "\/bfnrt
@@ -50,7 +53,7 @@ enum DecodedCodepoint {
 // For more information, and a walkthrough of how to convert the surrogate pairs
 // back into an actual char, see:
 // https://en.wikipedia.org/wiki/UTF-16#Code_points_from_U+010000_to_U+10FFFF
-pub fn unescape_json_string(s: &str) -> Result<String, UnescapeError> {
+fn unescape_json_string(s: &str, escape_control_characters: bool) -> Result<String, UnescapeError> {
     let mut chars = s.chars();
     let mut unescaped = String::with_capacity(s.len());
     let mut index = 1;
@@ -58,7 +61,7 @@ pub fn unescape_json_string(s: &str) -> Result<String, UnescapeError> {
     while let Some(ch) = chars.next() {
         index += 1;
         if ch != '\\' {
-            if is_control(ch) {
+            if escape_control_characters && is_control(ch) {
                 unescaped.push_str("\\u00");
                 write!(unescaped, "{:02X}", ch as u32).unwrap();
             } else {
@@ -75,7 +78,13 @@ pub fn unescape_json_string(s: &str) -> Result<String, UnescapeError> {
             '\\' => unescaped.push('\\'),
             '/' => unescaped.push('/'),
             // '\b' is backspace, a control character.
-            'b' => unescaped.push_str("\\b"),
+            'b' => {
+                if escape_control_characters {
+                    unescaped.push_str("\\b");
+                } else {
+                    unescaped.push(0x08 as char);
+                }
+            }
             'f' => unescaped.push('\x0c'),
             'n' => unescaped.push('\n'),
             'r' => unescaped.push('\r'),
@@ -86,7 +95,7 @@ pub fn unescape_json_string(s: &str) -> Result<String, UnescapeError> {
 
                 match decode_codepoint(codepoint) {
                     DecodedCodepoint::Char(ch) => {
-                        if is_control(ch) {
+                        if escape_control_characters && is_control(ch) {
                             unescaped.push_str("\\u");
                             unescaped.push(codepoint_chars[0] as char);
                             unescaped.push(codepoint_chars[1] as char);
@@ -138,6 +147,20 @@ pub fn unescape_json_string(s: &str) -> Result<String, UnescapeError> {
     }
 
     Ok(unescaped)
+}
+
+// Unescapes a syntactically valid JSON string into a valid UTF-8 string, but
+// leaves control characters escaped.
+pub fn safe_unescape_json_string(s: &str) -> Result<String, UnescapeError> {
+    unescape_json_string(s, true)
+}
+
+// Unescapes a syntactically valid JSON string into a valid UTF-8 string, including
+// control characters.
+#[allow(dead_code)] // Only used with #[cfg(feature = "sexp")], but we want to write
+                    // regular tests for it
+pub fn unsafe_unescape_json_string(s: &str) -> Result<String, UnescapeError> {
+    unescape_json_string(s, false)
 }
 
 fn is_control(ch: char) -> bool {
@@ -194,7 +217,17 @@ mod tests {
 
     #[track_caller]
     fn check(escaped: &str, expected_unescaped: &str) {
-        let unescaped = match unescape_json_string(escaped) {
+        let unescaped = match safe_unescape_json_string(escaped) {
+            Ok(s) => s,
+            Err(err) => format!("ERR: {err}"),
+        };
+
+        assert_eq!(expected_unescaped, &unescaped);
+    }
+
+    #[track_caller]
+    fn check_unsafe(escaped: &str, expected_unescaped: &str) {
+        let unescaped = match unsafe_unescape_json_string(escaped) {
             Ok(s) => s,
             Err(err) => format!("ERR: {err}"),
         };
@@ -208,19 +241,28 @@ mod tests {
         check("abc", "abc");
         check("abc \\\\ \\\"", "abc \\ \"");
         check("abc \\n \\t \\r", "abc \n \t \r");
-        check("abc \\n \\t \\r", "abc \n \t \r");
         check("€ \\u20AC", "€ \u{20AC}");
         check("𐐷 \\uD801\\uDC37", "𐐷 \u{10437}");
 
-        // Control characters don't get unescaped
+        // Control characters are escaped
         check("12x\\b34", "12x\\b34");
         check(
             "\\u0000 | \\u001f | \\u0020 | \\u007e | \\u007f | \\u0080 | \\u009F | \\u00a0",
             "\\u0000 | \\u001f | \u{0020} | \u{007e} | \\u007f | \\u0080 | \\u009F | \u{00a0}",
         );
 
-        // Non-ASCII unescaped control codes get escaped
+        // But not if unsafe is called
+        check_unsafe("12x\\b34", "12x\x0834");
+        check_unsafe(
+            "\\u0000 | \\u001f | \\u0020 | \\u007e | \\u007f | \\u0080 | \\u009F | \\u00a0",
+            "\x00 | \x1f | \u{0020} | \u{007e} | \x7f | \u{0080} | \u{009F} | \u{00a0}",
+        );
+
+        // Non-ASCII unescaped control codes also get escaped
         check("12 \u{0080} 34", "12 \\u0080 34");
+
+        // But not if unsafe is called
+        check_unsafe("12 \u{0080} 34", "12 \u{0080} 34");
 
         // Errors; make sure index is computed properly.
         check(

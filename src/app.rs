@@ -15,7 +15,7 @@ use termion::screen::{ToAlternateScreen, ToMainScreen};
 use crate::flatjson;
 use crate::input::TuiEvent;
 use crate::input::TuiEvent::{KeyEvent, MouseEvent, WinChEvent};
-use crate::jsonstringunescaper::unescape_json_string;
+use crate::jsonstringunescaper::{safe_unescape_json_string, UnescapeError};
 use crate::lineprinter::JS_IDENTIFIER;
 use crate::options::{DataFormat, Opt};
 use crate::screenwriter::{MessageSeverity, ScreenWriter};
@@ -64,6 +64,13 @@ enum ContentTarget {
     QueryPath,
 }
 
+#[derive(Copy, Clone)]
+enum WriteFormat {
+    Json,
+    #[cfg(feature = "sexp")]
+    Sexp,
+}
+
 enum Command {
     Quit,
     Help,
@@ -72,6 +79,7 @@ enum Command {
     WriteFile {
         filename: String,
         overwrite_existing: bool,
+        write_format: WriteFormat,
     },
     Unknown,
 }
@@ -491,8 +499,13 @@ impl App {
                                     Command::WriteFile {
                                         filename,
                                         overwrite_existing,
+                                        write_format,
                                     } => {
-                                        self.write_contents_to_file(filename, overwrite_existing);
+                                        self.write_contents_to_file(
+                                            filename,
+                                            overwrite_existing,
+                                            write_format,
+                                        );
                                     }
                                     Command::Unknown => {
                                         self.set_warning_message(format!(
@@ -753,10 +766,24 @@ impl App {
             ["w" | "write", filename] => Command::WriteFile {
                 filename: filename.to_string(),
                 overwrite_existing: false,
+                write_format: WriteFormat::Json,
             },
             ["w!" | "write!", filename] => Command::WriteFile {
                 filename: filename.to_string(),
                 overwrite_existing: true,
+                write_format: WriteFormat::Json,
+            },
+            #[cfg(feature = "sexp")]
+            ["ws" | "writesexp", filename] => Command::WriteFile {
+                filename: filename.to_string(),
+                overwrite_existing: false,
+                write_format: WriteFormat::Sexp,
+            },
+            #[cfg(feature = "sexp")]
+            ["ws!" | "writesexp!", filename] => Command::WriteFile {
+                filename: filename.to_string(),
+                overwrite_existing: true,
+                write_format: WriteFormat::Sexp,
             },
             _ => Command::Unknown,
         }
@@ -810,7 +837,7 @@ impl App {
                 let quoteless_range = (range.start + 1)..(range.end - 1);
                 let string_value = &json[quoteless_range];
 
-                match unescape_json_string(string_value) {
+                match safe_unescape_json_string(string_value) {
                     Ok(unescaped) => unescaped,
                     Err(err) => {
                         return Err(format!("{err}"));
@@ -918,7 +945,12 @@ impl App {
         }
     }
 
-    fn write_contents_to_file(&mut self, filename: String, overwrite_existing: bool) {
+    fn write_contents_to_file(
+        &mut self,
+        filename: String,
+        overwrite_existing: bool,
+        write_format: WriteFormat,
+    ) {
         let mut file_open_options = File::options();
         file_open_options
             .read(true)
@@ -931,13 +963,23 @@ impl App {
                     .set_error_message(format!("{filename} already exists (add ! to overwrite)")),
                 _ => self.set_error_message(format!("Error opening file for writing: {err}")),
             },
-            Ok(mut file) => match self.viewer.flat_json.pretty_printed() {
-                Err(err) => self.set_error_message(format!("Error pretty printing input: {err}")),
-                Ok(pretty_printed) => match file.write_all(pretty_printed.as_bytes()) {
-                    Ok(()) => self.set_info_message(format!("{filename} written")),
-                    Err(err) => self.set_error_message(format!("Error writing file: {err}")),
-                },
-            },
+            Ok(mut file) => {
+                let file_contents: Result<String, UnescapeError> = match write_format {
+                    WriteFormat::Json => Ok(self.viewer.flatjson.pretty_printed()),
+                    #[cfg(feature = "sexp")]
+                    WriteFormat::Sexp => self.viewer.flatjson.sexp_string(),
+                };
+
+                match file_contents {
+                    Err(err) => {
+                        self.set_error_message(format!("Error formatting file contents: {err}"))
+                    }
+                    Ok(file_contents) => match file.write_all(file_contents.as_bytes()) {
+                        Ok(()) => self.set_info_message(format!("{filename} written")),
+                        Err(err) => self.set_error_message(format!("Error writing file: {err}")),
+                    },
+                }
+            }
         }
     }
 }

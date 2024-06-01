@@ -5,6 +5,12 @@ Improvements:
 - [Issue #143]: `ctrl-z` will now send jless to the background
 - `:w[rite] <file>` and `:w[rite]! <file>` can be used to write the
   current input to a file
+- Add a `sexp` feature to gate functionality only used for support of
+  [OCaml style S-expressions](https://github.com/janestreet/sexplib), or
+  sexps.
+- [feature = "sexp"]: Add `:writesexp <file>` (also `:ws`) functions for
+  writing current input as a sexp to a file. This is a temporary
+  addition and will be removed once proper sexp support is added.
 
 v0.9.0 (2023-07-16)
 ==================
