@@ -473,12 +473,12 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             LabelType::Key => {
                 if self.focused {
                     (
-                        &highlighting::INVERTED_BOLD_BLUE_STYLE,
-                        &highlighting::BOLD_INVERTED_STYLE,
+                        &highlighting::FOCUS_CYAN_STYLE,
+                        &highlighting::SEARCH_MATCH_FOCUS_STYLE,
                     )
                 } else {
                     (
-                        &highlighting::BLUE_STYLE,
+                        &highlighting::CYAN_STYLE,
                         &highlighting::SEARCH_MATCH_HIGHLIGHTED,
                     )
                 }
@@ -568,7 +568,7 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
                 ",",
                 Some(self.row.range.end),
                 (
-                    &highlighting::DEFAULT_STYLE,
+                    &highlighting::DIMMED_STYLE,
                     &highlighting::SEARCH_MATCH_HIGHLIGHTED,
                 ),
             )?;
@@ -656,12 +656,12 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         debug_assert!(value.is_primitive());
 
         match value {
-            Value::Null => terminal::LIGHT_BLACK,
-            Value::Boolean => terminal::YELLOW,
+            Value::Null => terminal::LIGHT_BLUE,
+            Value::Boolean => terminal::MAGENTA,
             Value::Number => terminal::MAGENTA,
             Value::String => terminal::GREEN,
-            Value::EmptyObject => terminal::WHITE,
-            Value::EmptyArray => terminal::WHITE,
+            Value::EmptyObject => terminal::LIGHT_BLACK,
+            Value::EmptyArray => terminal::LIGHT_BLACK,
             _ => unreachable!(),
         }
     }
@@ -733,9 +733,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
     ) -> Result<isize, fmt::Error> {
         if available_space > 0 {
             let style = if self.focused || self.focused_because_matching_container_pair {
-                &highlighting::BOLD_STYLE
+                &highlighting::SEARCH_MATCH_HIGHLIGHTED
             } else {
-                &highlighting::DEFAULT_STYLE
+                &highlighting::DIMMED_STYLE
             };
 
             self.highlight_str(
@@ -759,9 +759,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
 
         if available_space >= needed_space {
             let style = if self.focused || self.focused_because_matching_container_pair {
-                &highlighting::BOLD_STYLE
+                &highlighting::SEARCH_MATCH_HIGHLIGHTED
             } else {
-                &highlighting::DEFAULT_STYLE
+                &highlighting::DIMMED_STYLE
             };
 
             self.highlight_str(

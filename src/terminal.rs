@@ -14,15 +14,15 @@ pub const GREEN: Color = Color::C16(2);
 pub const YELLOW: Color = Color::C16(3);
 pub const BLUE: Color = Color::C16(4);
 pub const MAGENTA: Color = Color::C16(5);
-// pub const CYAN: Color = Color::C16(6);
+pub const CYAN: Color = Color::C16(6);
 pub const WHITE: Color = Color::C16(7);
 pub const LIGHT_BLACK: Color = Color::C16(8);
 // pub const LIGHT_RED: Color = Color::C16(9);
 // pub const LIGHT_GREEN: Color = Color::C16(10);
-// pub const LIGHT_YELLOW: Color = Color::C16(11);
+pub const LIGHT_YELLOW: Color = Color::C16(11);
 pub const LIGHT_BLUE: Color = Color::C16(12);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
-// pub const LIGHT_CYAN: Color = Color::C16(14);
+pub const LIGHT_CYAN: Color = Color::C16(14);
 // pub const LIGHT_WHITE: Color = Color::C16(15);
 pub const DEFAULT: Color = Color::Default;
 
@@ -33,6 +33,7 @@ pub struct Style {
     pub inverted: bool,
     pub bold: bool,
     pub dimmed: bool,
+    pub underline: bool,
 }
 
 impl Style {
@@ -43,6 +44,7 @@ impl Style {
             inverted: false,
             bold: false,
             dimmed: false,
+            underline: false,
         }
     }
 }
@@ -69,6 +71,7 @@ pub trait Terminal: Write {
     fn set_inverted(&mut self, inverted: bool) -> Result;
     fn set_bold(&mut self, bold: bool) -> Result;
     fn set_dimmed(&mut self, dimmed: bool) -> Result;
+    fn set_underline(&mut self, underline: bool) -> Result;
 
     #[allow(dead_code)]
     fn output(&self) -> &str;
@@ -130,6 +133,7 @@ impl Terminal for AnsiTerminal {
         self.set_inverted(style.inverted)?;
         self.set_bold(style.bold)?;
         self.set_dimmed(style.dimmed)?;
+        self.set_underline(style.underline)?;
         Ok(())
     }
 
@@ -200,6 +204,26 @@ impl Terminal for AnsiTerminal {
                 }
             }
             self.style.dimmed = dimmed;
+        }
+        Ok(())
+    }
+
+    fn set_underline(&mut self, underline: bool) -> Result {
+        if self.style.underline != underline {
+            if underline {
+                write!(self, "\x1b[4m")?;
+            } else {
+                write!(self, "\x1b[22m")?;
+                // Also resets bold, so set that if we need to
+                if self.style.bold {
+                    write!(self, "\x1b[1m")?;
+                }
+                // Also resets dimmed, so set that if we need to
+                if self.style.dimmed {
+                    write!(self, "\x1b[2m")?;
+                }
+            }
+            self.style.underline = underline;
         }
         Ok(())
     }
