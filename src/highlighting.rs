@@ -83,7 +83,6 @@ pub const GRAY_INVERTED_STYLE: Style = Style {
 
 pub const SEARCH_MATCH_HIGHLIGHTED: Style = Style {
     fg: terminal::YELLOW,
-    inverted: true,
     ..Style::default()
 };
 
@@ -108,6 +107,22 @@ pub const INVERTED_BOLD_BLUE_STYLE: Style = Style {
     bg: terminal::BLUE,
     inverted: true,
     bold: true,
+    ..Style::default()
+};
+
+pub const CYAN_STYLE: Style = Style {
+    fg: terminal::CYAN,
+    ..Style::default()
+};
+
+pub const FOCUS_CYAN_STYLE: Style = Style {
+    fg: terminal::LIGHT_CYAN,
+    ..Style::default()
+};
+
+pub const SEARCH_MATCH_FOCUS_STYLE: Style = Style {
+    fg: terminal::LIGHT_YELLOW,
+    underline: true,
     ..Style::default()
 };
 
@@ -216,7 +231,7 @@ pub fn highlight_matches(
         // Highlight the matching substring.
         if match_start < string_end {
             if match_is_focused_match {
-                out.set_style(&BOLD_INVERTED_STYLE)?;
+                out.set_style(&SEARCH_MATCH_FOCUS_STYLE)?;
             } else {
                 out.set_style(highlight_style)?;
             }
