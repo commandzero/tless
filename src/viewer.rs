@@ -1014,10 +1014,10 @@ mod tests {
     use crate::flatjson::{parse_top_level_json, NIL};
 
     impl OptionIndex {
-        pub fn to_usize(&self) -> usize {
+        pub fn to_usize(self) -> usize {
             match self {
                 OptionIndex::Nil => NIL,
-                OptionIndex::Index(i) => *i,
+                OptionIndex::Index(i) => i,
             }
         }
     }

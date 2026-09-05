@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
 
+use crate::theme::ThemeName;
 use crate::viewer::Mode;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, ValueEnum)]
@@ -28,6 +29,10 @@ pub struct Opt {
     /// The active mode can be toggled by pressing 'm'.
     #[arg(short, long, value_enum, hide_possible_values = true, default_value_t = Mode::Data)]
     pub mode: Mode,
+
+    /// Color theme used for terminal rendering.
+    #[arg(long, value_enum, default_value_t = ThemeName::Classic)]
+    pub theme: ThemeName,
 
     // This godforsaken configuration to get both --line-numbers and --no-line-numbers to
     // work (with --line-numbers as the default) and --relative-line-numbers and
@@ -89,5 +94,35 @@ impl Opt {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn theme_defaults_to_classic() {
+        let options = Opt::try_parse_from(["jless"]).unwrap();
+
+        assert_eq!(options.theme, ThemeName::Classic);
+    }
+
+    #[test]
+    fn accepts_built_in_theme_names() {
+        for (name, expected) in [("classic", ThemeName::Classic), ("cyan", ThemeName::Cyan)] {
+            let options = Opt::try_parse_from(["jless", "--theme", name]).unwrap();
+            assert_eq!(options.theme, expected);
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_theme_name() {
+        let error = Opt::try_parse_from(["jless", "--theme", "unknown"]).unwrap_err();
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+        assert!(error.to_string().contains("unknown"), "{}", error);
     }
 }

@@ -308,7 +308,7 @@ impl FlatJson {
     #[cfg(feature = "sexp")]
     fn sexp_atom_needs_escaping(s: &str) -> bool {
         // See: https://github.com/janestreet/sexplib0/blob/master/src/sexp.ml#L58
-        if s.len() == 0 {
+        if s.is_empty() {
             return true;
         }
 
@@ -922,7 +922,7 @@ mod tests {
         movement_name: &'static str,
         fj: &FlatJson,
         start_index: Index,
-        expected_visited_rows: &Vec<usize>,
+        expected_visited_rows: &[usize],
         movement_fn: fn(&FlatJson, Index) -> OptionIndex,
     ) {
         let mut curr_index = start_index;
@@ -958,7 +958,7 @@ mod tests {
         assert_prev_visited_rows(fj, start, &expected);
     }
 
-    fn assert_next_visited_rows(fj: &FlatJson, start_index: Index, expected: &Vec<usize>) {
+    fn assert_next_visited_rows(fj: &FlatJson, start_index: Index, expected: &[usize]) {
         assert_row_iter(
             "next_visible_row",
             fj,
@@ -968,7 +968,7 @@ mod tests {
         );
     }
 
-    fn assert_prev_visited_rows(fj: &FlatJson, start_index: Index, expected: &Vec<usize>) {
+    fn assert_prev_visited_rows(fj: &FlatJson, start_index: Index, expected: &[usize]) {
         assert_row_iter(
             "prev_visible_row",
             fj,
@@ -994,11 +994,11 @@ mod tests {
         assert_prev_visited_items(fj, start, &expected);
     }
 
-    fn assert_next_visited_items(fj: &FlatJson, start_index: Index, expected: &Vec<usize>) {
+    fn assert_next_visited_items(fj: &FlatJson, start_index: Index, expected: &[usize]) {
         assert_row_iter("next_item", fj, start_index, expected, FlatJson::next_item);
     }
 
-    fn assert_prev_visited_items(fj: &FlatJson, start_index: Index, expected: &Vec<usize>) {
+    fn assert_prev_visited_items(fj: &FlatJson, start_index: Index, expected: &[usize]) {
         assert_row_iter("prev_item", fj, start_index, expected, FlatJson::prev_item);
     }
 

@@ -5,7 +5,6 @@ use std::io::Write;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use rustyline::error::ReadlineError;
-use rustyline::Editor;
 use termion::event::Key;
 use termion::event::MouseButton::{Left, WheelDown, WheelUp};
 use termion::event::MouseEvent::Press;
@@ -20,6 +19,7 @@ use crate::lineprinter::JS_IDENTIFIER;
 use crate::options::{DataFormat, Opt};
 use crate::screenwriter::{MessageSeverity, ScreenWriter};
 use crate::search::{JumpDirection, SearchDirection, SearchState};
+use crate::theme::Theme;
 use crate::types::TTYDimensions;
 use crate::viewer::{Action, JsonViewer, Mode};
 
@@ -113,6 +113,7 @@ const ENABLE_MOUSE_BUTTON_TRACKING: &str = "\x1b[?1002h";
 impl App {
     pub fn new(
         opt: &Opt,
+        theme: Theme,
         data: String,
         data_format: DataFormat,
         input_filename: String,
@@ -126,8 +127,7 @@ impl App {
         let mut viewer = JsonViewer::new(flatjson, opt.mode);
         viewer.scrolloff_setting = opt.scrolloff;
 
-        let screen_writer =
-            ScreenWriter::init(opt, stdout, Editor::<()>::new(), TTYDimensions::default());
+        let screen_writer = ScreenWriter::init(opt, theme, stdout, TTYDimensions::default());
 
         Ok(App {
             viewer,
@@ -870,14 +870,9 @@ impl App {
                     _ => unreachable!(),
                 };
 
-                match self
-                    .viewer
+                self.viewer
                     .flatjson
-                    .build_path_to_node(path_type, focused_row_index)
-                {
-                    Ok(path) => path,
-                    Err(err) => return Err(err),
-                }
+                    .build_path_to_node(path_type, focused_row_index)?
             }
         };
 

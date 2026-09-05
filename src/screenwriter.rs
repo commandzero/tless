@@ -9,44 +9,31 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::MAX_BUFFER_SIZE;
+use crate::commandline::CommandLineHighlighter;
 use crate::flatjson::{Index, OptionIndex, PathType, Row, Value};
 use crate::lineprinter as lp;
 use crate::lineprinter::LineNumber;
 use crate::options::Opt;
 use crate::search::{MatchRangeIter, SearchState};
-use crate::terminal;
 use crate::terminal::{AnsiTerminal, Terminal};
+pub use crate::theme::MessageSeverity;
+use crate::theme::{StyleRole, StyleState, Theme};
 use crate::truncatedstrview::{TruncatedStrSlice, TruncatedStrView};
 use crate::types::TTYDimensions;
 use crate::viewer::{JsonViewer, Mode};
 
 pub struct ScreenWriter {
     pub stdout: RawTerminal<Box<dyn std::io::Write>>,
-    pub command_editor: Editor<()>,
+    pub command_editor: Editor<CommandLineHighlighter>,
     pub dimensions: TTYDimensions,
     pub terminal: AnsiTerminal,
+    theme: Theme,
 
     pub show_line_numbers: bool,
     pub show_relative_line_numbers: bool,
 
     indentation_reduction: u16,
     truncated_row_value_views: HashMap<Index, TruncatedStrView>,
-}
-
-pub enum MessageSeverity {
-    Info,
-    Warn,
-    Error,
-}
-
-impl MessageSeverity {
-    pub fn color(&self) -> terminal::Color {
-        match self {
-            MessageSeverity::Info => terminal::WHITE,
-            MessageSeverity::Warn => terminal::YELLOW,
-            MessageSeverity::Error => terminal::RED,
-        }
-    }
 }
 
 const TAB_SIZE: isize = 2;
@@ -56,15 +43,20 @@ const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
 impl ScreenWriter {
     pub fn init(
         options: &Opt,
+        theme: Theme,
         stdout: RawTerminal<Box<dyn std::io::Write>>,
-        command_editor: Editor<()>,
         dimensions: TTYDimensions,
     ) -> Self {
+        let mut command_editor = Editor::new();
+        command_editor.set_helper(Some(CommandLineHighlighter::new(
+            theme.style(StyleRole::StatusText, StyleState::main()),
+        )));
         ScreenWriter {
             stdout,
             command_editor,
             dimensions,
             terminal: AnsiTerminal::new(String::new()),
+            theme,
             show_line_numbers: options.show_line_numbers,
             show_relative_line_numbers: options.show_relative_line_numbers,
             indentation_reduction: 0,
@@ -143,7 +135,11 @@ impl ScreenWriter {
                 OptionIndex::Nil => {
                     self.terminal.position_cursor(1, row_index + 1)?;
                     self.terminal.clear_line()?;
-                    self.terminal.set_fg(terminal::LIGHT_BLACK)?;
+                    self.terminal.set_style(
+                        &self
+                            .theme
+                            .style(StyleRole::EmptyRowMarker, StyleState::main()),
+                    )?;
                     self.terminal.write_char('~')?;
                 }
                 OptionIndex::Index(index) => {
@@ -171,6 +167,10 @@ impl ScreenWriter {
     pub fn get_command(&mut self, prompt: &str) -> rustyline::Result<String> {
         write!(self.stdout, "{}", termion::cursor::Show)?;
         let _ = self.terminal.position_cursor(1, self.dimensions.height);
+        let _ = self
+            .terminal
+            .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()));
+        let _ = self.terminal.clear_line();
         self.terminal.flush_contents(&mut self.stdout)?;
 
         let result = self.command_editor.readline(prompt);
@@ -256,6 +256,7 @@ impl ScreenWriter {
         let mut line = lp::LinePrinter {
             mode: viewer.mode,
             terminal: &mut self.terminal,
+            theme: &self.theme,
 
             flatjson: &viewer.flatjson,
             row,
@@ -318,10 +319,8 @@ impl ScreenWriter {
         self.terminal
             .position_cursor(1, self.dimensions.height - 1)?;
         self.terminal.clear_line()?;
-        self.terminal.set_style(&terminal::Style {
-            inverted: true,
-            ..terminal::Style::default()
-        })?;
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::StatusBar, StyleState::main()))?;
         // Need to print a line to ensure the entire bar with the path to
         // the node and the filename is highlighted.
         for _ in 0..self.dimensions.width {
@@ -341,12 +340,20 @@ impl ScreenWriter {
 
         self.terminal.position_cursor(1, self.dimensions.height)?;
         self.terminal.clear_line()?;
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()))?;
+        // Paint the whole row, including blank space after messages and input.
+        for _ in 0..self.dimensions.width {
+            self.terminal.write_char(' ')?;
+        }
+        self.terminal.write_char('\r')?;
 
         if let Some((contents, severity)) = message {
-            self.terminal.set_style(&terminal::Style {
-                fg: severity.color(),
-                ..terminal::Style::default()
-            })?;
+            self.terminal.set_style(
+                &self
+                    .theme
+                    .style(StyleRole::Message(*severity), StyleState::main()),
+            )?;
             self.terminal.write_str(contents)?;
         } else if search_state.showing_matches() {
             self.terminal
@@ -364,6 +371,8 @@ impl ScreenWriter {
                 )?;
 
                 let wrapped_char = if just_wrapped { 'W' } else { ' ' };
+                self.terminal
+                    .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()))?;
                 write!(self.terminal, " {wrapped_char} {match_tracker}")?;
             }
         } else {
@@ -375,6 +384,8 @@ impl ScreenWriter {
             self.dimensions.width - (1 + MAX_BUFFER_SIZE as u16),
             self.dimensions.height,
         )?;
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()))?;
         self.terminal
             .write_str(std::str::from_utf8(input_buffer).unwrap())?;
 
@@ -402,11 +413,6 @@ impl ScreenWriter {
             width - base_len - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
         let mut space_available_for_base = width - path_display_width;
 
-        let inverted_style = terminal::Style {
-            inverted: true,
-            ..terminal::Style::default()
-        };
-
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
 
@@ -418,8 +424,11 @@ impl ScreenWriter {
         let truncated_base = TruncatedStrView::init_back(PATH_BASE, space_available_for_base);
 
         self.terminal.position_cursor(1, row)?;
-        self.terminal.set_style(&inverted_style)?;
-        self.terminal.set_bg(terminal::LIGHT_BLACK)?;
+        self.terminal.set_style(
+            &self
+                .theme
+                .style(StyleRole::StatusPathBase, StyleState::main()),
+        )?;
 
         let base_slice = TruncatedStrSlice {
             s: PATH_BASE,
@@ -428,7 +437,8 @@ impl ScreenWriter {
 
         write!(self.terminal, "{base_slice}")?;
 
-        self.terminal.set_bg(terminal::DEFAULT)?;
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::StatusBar, StyleState::main()))?;
 
         // If the path is the exact same width as the screen, we won't print out anything
         // for the PATH_BASE, and the path won't be truncated. But there is truncated
@@ -453,7 +463,8 @@ impl ScreenWriter {
 
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
-            self.terminal.set_style(&inverted_style)?;
+            self.terminal
+                .set_style(&self.theme.style(StyleRole::StatusBar, StyleState::main()))?;
 
             let truncated_slice = TruncatedStrSlice {
                 s: filename,

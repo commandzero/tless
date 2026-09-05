@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 /// This module provides functionality for truncating strings,
 /// displaying them, and manipulating which portion of the string
 /// is visible.
-
+///
 /// A TruncatedStrView represents an attempt to fit a string within
 /// a given amount of available space. When `range` is None, it
 /// signifies that the string cannot be represented at all in the
@@ -831,7 +831,7 @@ mod tests {
             assert_eq!(
                 expected_state, &formatted,
                 "expected scroll_right({}) to be {}",
-                &prev_formatted, &expected_state,
+                prev_formatted, expected_state,
             );
             curr_state = next_state;
             prev_formatted = formatted;
@@ -848,7 +848,7 @@ mod tests {
             assert_eq!(
                 expected_state, &formatted,
                 "expected scroll_left({}) to be {}",
-                &prev_formatted, &expected_state,
+                prev_formatted, expected_state,
             );
             curr_state = next_state;
             prev_formatted = formatted;
@@ -939,7 +939,7 @@ mod tests {
             assert_eq!(
                 expansion, &formatted,
                 "expected expand({}) to be {}",
-                &prev_formatted, &expansion,
+                prev_formatted, expansion,
             );
 
             curr_state = next_state;
@@ -1056,7 +1056,7 @@ mod tests {
             assert_eq!(
                 shrunk, &formatted,
                 "expected shrink({}) to be {}",
-                &prev_formatted, &shrunk,
+                prev_formatted, shrunk,
             );
 
             curr_state = next_state;
@@ -1118,7 +1118,7 @@ mod tests {
             assert_eq!(
                 expected_focused, &formatted,
                 "Case {}: expected focus({}, {}..{}) to be {}",
-                i, &initial_formatted, range.start, range.end, &expected_focused,
+                i, initial_formatted, range.start, range.end, expected_focused,
             );
         }
     }
