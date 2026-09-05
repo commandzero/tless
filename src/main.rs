@@ -10,6 +10,7 @@ extern crate libc_stdhandle;
 use std::fs::File;
 use std::io;
 use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -30,6 +31,8 @@ mod options;
 mod screenwriter;
 mod search;
 mod terminal;
+#[cfg(feature = "toon")]
+mod toon;
 mod truncatedstrview;
 mod types;
 mod viewer;
@@ -49,10 +52,19 @@ fn main() {
         }
     };
 
-    let data_format = determine_data_format(opt.data_format(), &input_filename);
+    let data_format = match determine_data_format(opt.data_format(), &input_filename) {
+        Ok(format) => format,
+        Err(error) => {
+            eprintln!("{}", error);
+            std::process::exit(1);
+        }
+    };
 
     if !isatty::stdout_isatty() {
-        print_pretty_printed_input(input_string, data_format);
+        if let Err(error) = print_pretty_printed_input(input_string, data_format) {
+            eprintln!("{}", error);
+            std::process::exit(1);
+        }
         std::process::exit(0);
     }
 
@@ -78,22 +90,27 @@ fn main() {
     app.run(Box::new(input::get_input()));
 }
 
-fn print_pretty_printed_input(input: String, data_format: DataFormat) {
+fn print_pretty_printed_input(input: String, data_format: DataFormat) -> Result<(), String> {
     // Don't try to pretty print YAML input; just pass it through.
-    if data_format == DataFormat::Yaml {
-        print!("{input}");
-        return;
-    }
-
-    let flatjson = match flatjson::parse_top_level_json(input) {
-        Ok(flatjson) => flatjson,
-        Err(err) => {
-            eprintln!("Unable to parse input: {err:?}");
-            std::process::exit(1);
-        }
+    let pass_through = match data_format {
+        DataFormat::Yaml => true,
+        #[cfg(feature = "toon")]
+        DataFormat::Toon => true,
+        DataFormat::Json => false,
     };
-
-    print!("{}", flatjson.pretty_printed());
+    let output = if pass_through {
+        input
+    } else {
+        flatjson::parse_top_level_json(input)
+            .map_err(|error| format!("Unable to parse input: {error:?}"))?
+            .pretty_printed()
+    };
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    stdout
+        .write_all(output.as_bytes())
+        .and_then(|()| stdout.flush())
+        .map_err(|error| format!("Unable to write output: {error}"))
 }
 
 fn get_input_and_filename(opt: &Opt) -> io::Result<(String, String)> {
@@ -123,14 +140,22 @@ fn get_input_and_filename(opt: &Opt) -> io::Result<(String, String)> {
     Ok((input_string, filename))
 }
 
-fn determine_data_format(format: Option<DataFormat>, filename: &str) -> DataFormat {
-    format.unwrap_or_else(|| {
-        match std::path::Path::new(filename)
+fn determine_data_format(
+    format: Option<DataFormat>,
+    filename: &str,
+) -> Result<DataFormat, &'static str> {
+    if let Some(format) = format {
+        return Ok(format);
+    }
+    match std::path::Path::new(filename)
             .extension()
             .and_then(std::ffi::OsStr::to_str)
         {
-            Some("yml") | Some("yaml") => DataFormat::Yaml,
-            _ => DataFormat::Json,
+            Some("yml") | Some("yaml") => Ok(DataFormat::Yaml),
+            #[cfg(feature = "toon")]
+            Some("toon") => Ok(DataFormat::Toon),
+            #[cfg(not(feature = "toon"))]
+            Some("toon") => Err("This binary was built without TOON support; rebuild with --features toon, or force --json/--yaml."),
+            _ => Ok(DataFormat::Json),
         }
-    })
 }
