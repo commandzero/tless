@@ -9,8 +9,8 @@ use regex::Regex;
 use crate::flatjson::{FlatJson, OptionIndex, Row, Value};
 use crate::highlighting;
 use crate::search::MatchRangeIter;
-use crate::terminal;
-use crate::terminal::{Color, Style, Terminal};
+use crate::terminal::Terminal;
+use crate::theme::{JsonValueKind, StyleRole, StyleState, Theme};
 use crate::truncatedstrview::TruncatedStrView;
 use crate::viewer::Mode;
 
@@ -139,6 +139,7 @@ pub struct LineNumber {
 pub struct LinePrinter<'a, 'b> {
     pub mode: Mode,
     pub terminal: &'a mut dyn Terminal,
+    pub theme: &'a Theme,
 
     // The entire FlatJson data structure and the specific line
     // we're printing out.
@@ -225,18 +226,22 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             return Ok(0);
         }
 
-        let (n, style, right_aligned) = match (absolute, relative, self.focused) {
+        let (n, right_aligned) = match (absolute, relative, self.focused) {
             (None, None, _) => return Ok(0),
             (Some(n), None, false) | (None, Some(n), false) | (Some(_), Some(n), false) => {
-                (n, &highlighting::DIMMED_STYLE, true)
+                (n, true)
             }
-            (Some(n), None, true) | (None, Some(n), true) => {
-                (n, &highlighting::CURRENT_LINE_NUMBER, true)
-            }
-            (Some(n), Some(_), true) => (n, &highlighting::CURRENT_LINE_NUMBER, false),
+            (Some(n), None, true) | (None, Some(n), true) => (n, true),
+            (Some(n), Some(_), true) => (n, false),
         };
 
-        self.terminal.set_style(style)?;
+        let state = if self.focused {
+            StyleState::main().focused()
+        } else {
+            StyleState::main()
+        };
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::LineNumber, state))?;
 
         if right_aligned {
             write!(self.terminal, "{: >1$}", n, max_width as usize)?;
@@ -330,7 +335,7 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         let mut used_space = 0;
         let mut dummy_search_matches = None;
 
-        let (style, highlighted_style) = self.get_label_styles();
+        let (role, state) = self.get_label_style();
         let matches_iter = if self.row.key_range.is_some() {
             &mut self.search_matches
         } else {
@@ -375,8 +380,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.terminal,
             delimiter.left(),
             label_open_delimiter_range_start,
-            style,
-            highlighted_style,
+            self.theme,
+            role,
+            state,
             &mut matches,
             self.focused_search_match,
         )?;
@@ -387,8 +393,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             label_ref,
             &truncated_view,
             label_range_start,
-            style,
-            highlighted_style,
+            self.theme,
+            role,
+            state,
             &mut matches,
             self.focused_search_match,
         )?;
@@ -398,8 +405,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.terminal,
             delimiter.right(),
             label_close_delimiter_range_start,
-            style,
-            highlighted_style,
+            self.theme,
+            role,
+            state,
             &mut matches,
             self.focused_search_match,
         )?;
@@ -409,8 +417,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.terminal,
             ": ",
             object_separator_range_start,
-            &highlighting::DEFAULT_STYLE,
-            &highlighting::SEARCH_MATCH_HIGHLIGHTED,
+            self.theme,
+            StyleRole::Punctuation,
+            StyleState::main(),
             &mut matches,
             self.focused_search_match,
         )?;
@@ -468,32 +477,18 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         }
     }
 
-    fn get_label_styles(&self) -> (&'static Style, &'static Style) {
-        match self.label_type() {
-            LabelType::Key => {
-                if self.focused {
-                    (
-                        &highlighting::FOCUS_CYAN_STYLE,
-                        &highlighting::SEARCH_MATCH_FOCUS_STYLE,
-                    )
-                } else {
-                    (
-                        &highlighting::CYAN_STYLE,
-                        &highlighting::SEARCH_MATCH_HIGHLIGHTED,
-                    )
-                }
-            }
-            LabelType::Index => {
-                let style = if self.focused {
-                    &highlighting::BOLD_INVERTED_STYLE
-                } else {
-                    &highlighting::DIMMED_STYLE
-                };
+    fn get_label_style(&self) -> (StyleRole, StyleState) {
+        let role = match self.label_type() {
+            LabelType::Key => StyleRole::ObjectKey,
+            LabelType::Index => StyleRole::ArrayIndex,
+        };
+        let state = if self.focused {
+            StyleState::main().focused()
+        } else {
+            StyleState::main()
+        };
 
-                // No match highlighting for index labels.
-                (style, &highlighting::DEFAULT_STYLE)
-            }
-        }
+        (role, state)
     }
 
     fn fill_in_value(&mut self, mut available_space: isize) -> Result<isize, fmt::Error> {
@@ -505,7 +500,7 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
 
         let mut value_ref = &self.flatjson.1[self.row.range.clone()];
         let mut quoted = false;
-        let color = Self::color_for_value_type(&self.row.value);
+        let role = Self::style_role_for_value_type(&self.row.value);
 
         // Strip quotes from strings.
         if self.row.is_string() {
@@ -538,12 +533,6 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             return Ok(0);
         }
 
-        // Print out the value.
-        let style = Style {
-            fg: color,
-            ..Style::default()
-        };
-
         let delimiter = if quoted {
             DelimiterPair::Quote
         } else {
@@ -559,7 +548,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             value_ref,
             &truncated_view,
             Some(self.row.range.clone()),
-            (&style, &highlighting::SEARCH_MATCH_HIGHLIGHTED),
+            role,
+            StyleState::main(),
         )?;
 
         if self.trailing_comma {
@@ -567,10 +557,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.highlight_str(
                 ",",
                 Some(self.row.range.end),
-                (
-                    &highlighting::DIMMED_STYLE,
-                    &highlighting::SEARCH_MATCH_HIGHLIGHTED,
-                ),
+                StyleRole::PrimitiveTrailingComma,
+                StyleState::main(),
             )?;
         }
 
@@ -652,18 +640,18 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             .unwrap_or_else(|| TruncatedStrView::init_start(value_ref, available_space))
     }
 
-    fn color_for_value_type(value: &Value) -> Color {
+    fn style_role_for_value_type(value: &Value) -> StyleRole {
         debug_assert!(value.is_primitive());
 
-        match value {
-            Value::Null => terminal::LIGHT_BLUE,
-            Value::Boolean => terminal::MAGENTA,
-            Value::Number => terminal::MAGENTA,
-            Value::String => terminal::GREEN,
-            Value::EmptyObject => terminal::LIGHT_BLACK,
-            Value::EmptyArray => terminal::LIGHT_BLACK,
+        StyleRole::JsonValue(match value {
+            Value::Null => JsonValueKind::Null,
+            Value::Boolean => JsonValueKind::Boolean,
+            Value::Number => JsonValueKind::Number,
+            Value::String => JsonValueKind::String,
+            Value::EmptyObject => JsonValueKind::EmptyObject,
+            Value::EmptyArray => JsonValueKind::EmptyArray,
             _ => unreachable!(),
-        }
+        })
     }
 
     // Print out an object value on a line. There are three main variables at
@@ -732,16 +720,19 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         row: &Row,
     ) -> Result<isize, fmt::Error> {
         if available_space > 0 {
-            let style = if self.focused || self.focused_because_matching_container_pair {
-                &highlighting::SEARCH_MATCH_HIGHLIGHTED
+            let state = if self.focused {
+                StyleState::main().focused()
+            } else if self.focused_because_matching_container_pair {
+                StyleState::main().paired_container()
             } else {
-                &highlighting::DIMMED_STYLE
+                StyleState::main()
             };
 
             self.highlight_str(
                 row.value.container_type().unwrap().open_str(),
                 Some(self.row.range.start),
-                (style, &highlighting::SEARCH_MATCH_HIGHLIGHTED),
+                StyleRole::ContainerDelimiter,
+                state,
             )?;
 
             Ok(1)
@@ -758,26 +749,27 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         let needed_space = if self.trailing_comma { 2 } else { 1 };
 
         if available_space >= needed_space {
-            let style = if self.focused || self.focused_because_matching_container_pair {
-                &highlighting::SEARCH_MATCH_HIGHLIGHTED
+            let state = if self.focused {
+                StyleState::main().focused()
+            } else if self.focused_because_matching_container_pair {
+                StyleState::main().paired_container()
             } else {
-                &highlighting::DIMMED_STYLE
+                StyleState::main()
             };
 
             self.highlight_str(
                 row.value.container_type().unwrap().close_str(),
                 Some(self.row.range.start),
-                (style, &highlighting::SEARCH_MATCH_HIGHLIGHTED),
+                StyleRole::ContainerDelimiter,
+                state,
             )?;
 
             if self.trailing_comma {
                 self.highlight_str(
                     ",",
                     Some(self.row.range.end),
-                    (
-                        &highlighting::DEFAULT_STYLE,
-                        &highlighting::SEARCH_MATCH_HIGHLIGHTED,
-                    ),
+                    StyleRole::Punctuation,
+                    StyleState::main(),
                 )?;
             }
 
@@ -811,10 +803,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
                 self.highlight_str(
                     ",",
                     Some(self.row.range.end),
-                    (
-                        &highlighting::DEFAULT_STYLE,
-                        &highlighting::SEARCH_MATCH_HIGHLIGHTED,
-                    ),
+                    StyleRole::Punctuation,
+                    StyleState::main(),
                 )?;
             }
         }
@@ -862,7 +852,11 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         let mut num_printed = 0;
 
         if !is_nested {
-            self.terminal.set_fg(terminal::LIGHT_BLACK)?;
+            self.terminal.set_style(
+                &self
+                    .theme
+                    .style(StyleRole::PreviewCount, StyleState::preview()),
+            )?;
             write!(self.terminal, "({container_size}) ")?;
             available_space -= 3 + space_needed_for_container_size;
             num_printed += 3 + space_needed_for_container_size;
@@ -877,7 +871,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         self.highlight_str(
             container_type.open_str(),
             Some(self.row.range.start),
-            highlighting::PREVIEW_STYLES,
+            StyleRole::PreviewText,
+            StyleState::preview(),
         )?;
 
         num_printed += 1;
@@ -903,7 +898,7 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
                 // No room for anything else, let's close out the object.
                 // If we're not the first child, the previous elem will have
                 // printed the ", " separator.
-                self.highlight_str("…", None, highlighting::PREVIEW_STYLES)?;
+                self.highlight_str("…", None, StyleRole::PreviewText, StyleState::preview())?;
 
                 // This variable isn't used again, but if it were, we'd need this
                 // line for correctness. Unfortunately Cargo check complains about it,
@@ -919,7 +914,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
                     self.highlight_str(
                         ", ",
                         Some(self.flatjson[child].range.end),
-                        highlighting::PREVIEW_STYLES,
+                        StyleRole::PreviewText,
+                        StyleState::preview(),
                     )?;
                     available_space -= 2;
                     num_printed += 2;
@@ -935,7 +931,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         self.highlight_str(
             container_type.close_str(),
             Some(self.row.range.end - 1),
-            highlighting::PREVIEW_STYLES,
+            StyleRole::PreviewText,
+            StyleState::preview(),
         )?;
         num_printed += 1;
 
@@ -992,12 +989,18 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
                 key_ref,
                 &truncated_view,
                 Some(key_range.clone()),
-                highlighting::PREVIEW_STYLES,
+                StyleRole::PreviewText,
+                StyleState::preview(),
             )?;
 
             used_space += 2;
             available_space -= 2;
-            self.highlight_str(": ", Some(key_range.end), highlighting::PREVIEW_STYLES)?;
+            self.highlight_str(
+                ": ",
+                Some(key_range.end),
+                StyleRole::PreviewText,
+                StyleState::preview(),
+            )?;
         }
 
         let space_used_for_value = if is_only_child && row.value.is_container() {
@@ -1017,6 +1020,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         // object key, but couldn't print out the value. Space was already
         // allocated for this at the start of the function.
         if row.key_range.is_some() && space_used_for_value == 0 {
+            self.terminal
+                .set_style(&self.theme.style(StyleRole::Ellipsis, StyleState::preview()))?;
             self.terminal.write_char('…')?;
             used_space += 1;
         }
@@ -1074,7 +1079,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.highlight_str(
                 "\"",
                 Some(value_open_quote_range_start),
-                highlighting::PREVIEW_STYLES,
+                StyleRole::PreviewText,
+                StyleState::preview(),
             )?;
         }
 
@@ -1095,8 +1101,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             } else {
                 Some(value_range_start)
             },
-            &highlighting::DIMMED_STYLE,
-            &highlighting::GRAY_INVERTED_STYLE,
+            self.theme,
+            StyleRole::PreviewText,
+            StyleState::preview(),
             &mut self.search_matches.as_mut(),
             focused_search_match,
         )?;
@@ -1105,7 +1112,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.highlight_str(
                 "\"",
                 Some(value_close_quote_range_start),
-                highlighting::PREVIEW_STYLES,
+                StyleRole::PreviewText,
+                StyleState::preview(),
             )?;
         }
 
@@ -1114,12 +1122,13 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
 
     fn print_truncated_indicator(&mut self) -> fmt::Result {
         self.terminal.position_cursor_col(self.width as u16)?;
-        if self.focused {
-            self.terminal.reset_style()?;
-            self.terminal.set_bold(true)?;
+        let state = if self.focused {
+            StyleState::main().focused()
         } else {
-            self.terminal.set_fg(terminal::LIGHT_BLACK)?;
-        }
+            StyleState::main()
+        };
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::TruncationIndicator, state))?;
         write!(self.terminal, ">")
     }
 
@@ -1134,7 +1143,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         s: &str,
         truncated_view: &TruncatedStrView,
         str_range: Option<Range<usize>>,
-        styles: (&Style, &Style),
+        role: StyleRole,
+        state: StyleState,
     ) -> fmt::Result {
         let mut str_open_delimiter_range_start = None;
         let mut str_range_start = None;
@@ -1146,7 +1156,12 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             str_close_delimiter_range_start = Some(range.end - delimiter.right().len());
         }
 
-        self.highlight_str(delimiter.left(), str_open_delimiter_range_start, styles)?;
+        self.highlight_str(
+            delimiter.left(),
+            str_open_delimiter_range_start,
+            role,
+            state,
+        )?;
 
         let focused_search_match = if self.emphasize_focused_search_match {
             self.focused_search_match
@@ -1159,13 +1174,19 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             s,
             truncated_view,
             str_range_start,
-            styles.0,
-            styles.1,
+            self.theme,
+            role,
+            state,
             &mut self.search_matches.as_mut(),
             focused_search_match,
         )?;
 
-        self.highlight_str(delimiter.right(), str_close_delimiter_range_start, styles)?;
+        self.highlight_str(
+            delimiter.right(),
+            str_close_delimiter_range_start,
+            role,
+            state,
+        )?;
 
         Ok(())
     }
@@ -1175,7 +1196,8 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
         &mut self,
         s: &str,
         str_range_start: Option<usize>,
-        styles: (&Style, &Style),
+        role: StyleRole,
+        state: StyleState,
     ) -> fmt::Result {
         let focused_search_match = if self.emphasize_focused_search_match {
             self.focused_search_match
@@ -1187,8 +1209,9 @@ impl<'a, 'b> LinePrinter<'a, 'b> {
             self.terminal,
             s,
             str_range_start,
-            styles.0,
-            styles.1,
+            self.theme,
+            role,
+            state,
             &mut self.search_matches.as_mut(),
             focused_search_match,
         )
@@ -1202,10 +1225,13 @@ mod tests {
     use crate::flatjson::{parse_top_level_json, parse_top_level_yaml};
     use crate::terminal::test::{TextOnlyTerminal, VisibleEscapesTerminal};
     use crate::terminal::{BLUE, LIGHT_BLUE};
+    use crate::theme::ThemeName;
 
     use super::*;
 
     const DUMMY_RANGE: Range<usize> = 0..0;
+    const CLASSIC_THEME: Theme = Theme::built_in(ThemeName::Classic);
+    const CYAN_THEME: Theme = Theme::built_in(ThemeName::Cyan);
 
     fn default_line_printer<'a>(
         terminal: &'a mut dyn Terminal,
@@ -1215,6 +1241,7 @@ mod tests {
         LinePrinter {
             mode: Mode::Data,
             terminal,
+            theme: &CLASSIC_THEME,
             flatjson,
             row: &flatjson[index],
             line_number: LineNumber {
@@ -1385,7 +1412,7 @@ mod tests {
         line.terminal.clear_output();
 
         line.print_focus_and_container_indicators(3)?;
-        assert_eq!(FOCUSED_LINE.to_string(), line.terminal.output());
+        assert_eq!(FOCUSED_LINE, line.terminal.output());
         line.terminal.clear_output();
 
         line.print_focus_and_container_indicators(2)?;
@@ -1414,16 +1441,13 @@ mod tests {
         };
 
         line.print_focus_and_container_indicators(100)?;
-        assert_eq!(EXPANDED_CONTAINER.to_string(), line.terminal.output());
+        assert_eq!(EXPANDED_CONTAINER, line.terminal.output());
         line.terminal.clear_output();
 
         line.focused = true;
 
         line.print_focus_and_container_indicators(100)?;
-        assert_eq!(
-            FOCUSED_EXPANDED_CONTAINER.to_string(),
-            line.terminal.output()
-        );
+        assert_eq!(FOCUSED_EXPANDED_CONTAINER, line.terminal.output());
         line.terminal.clear_output();
 
         line.row = &line.flatjson[3];
@@ -1525,6 +1549,37 @@ mod tests {
             line.terminal.output(),
         );
         assert_eq!(4, used_space);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cyan_theme_key_focus_and_value_styles() -> std::fmt::Result {
+        const JSON: &str = r#"{"hello": null}"#;
+        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
+        let mut term = VisibleEscapesTerminal::new(false, true);
+        let mut line = default_line_printer(&mut term, &fj, 1);
+        line.theme = &CYAN_THEME;
+
+        line.fill_in_label(100)?;
+        assert_eq!("_FG(Cyan)_hello_FG(Default)_: ", line.terminal.output());
+
+        line.focused = true;
+        line.terminal.clear_output();
+        line.fill_in_label(100)?;
+        assert_eq!(
+            "_FG(LightCyan)_hello_FG(Default)_: ",
+            line.terminal.output()
+        );
+
+        line.focused = false;
+        line.trailing_comma = true;
+        line.terminal.clear_output();
+        line.fill_in_value(100)?;
+        assert_eq!(
+            "_FG(LightBlue)_null_FG(Default)__D_,",
+            line.terminal.output()
+        );
 
         Ok(())
     }

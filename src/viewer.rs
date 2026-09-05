@@ -1017,7 +1017,7 @@ mod tests {
         pub fn as_usize(&self) -> usize {
             match self {
                 OptionIndex::Nil => NIL,
-                OptionIndex::Index(i) => *i,
+                OptionIndex::Index(i) => i,
             }
         }
     }

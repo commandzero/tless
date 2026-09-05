@@ -20,6 +20,62 @@ tless data.toon
 producer | tless --toon
 ```
 
+## Color themes
+
+Use `--theme classic` or `--theme cyan` to select a built-in color theme.
+`classic` is the default.
+
+You can override individual colors in
+`$XDG_CONFIG_HOME/jless/config.yaml`. If `XDG_CONFIG_HOME` is unset, jless
+uses `$HOME/.config/tless/config.yaml`.
+
+```yaml
+theme:
+  null: light-blue
+  string: green
+  object-key: light-cyan
+  search-match-current: light-yellow
+  status-bar-foreground: white
+  status-bar-background: blue
+  command-line-foreground: light-cyan
+  command-line-background: black
+  message-info: light-blue
+  message-warning: light-yellow
+  message-error: light-red
+```
+
+The file is optional. Each configured color replaces the matching color in
+the selected built-in theme. Unlisted colors and style attributes keep their
+built-in values.
+
+Theme keys are `null`, `boolean`, `number`, `string`, `empty-container`,
+`object-key`, `focused-object-key`, `array-index`, `punctuation`,
+`primitive-trailing-comma`, `container-delimiter`,
+`focused-container-delimiter`, `ellipsis`, `preview-text`, `preview-count`,
+`line-number`, `focused-line-number`, `empty-row-marker`,
+`truncation-indicator`, `status-bar`, `status-text`, `message-info`,
+`message-warning`, `message-error`, `search-match`, `search-match-preview`, and
+`search-match-current`.
+
+`search-match` colors ordinary matches, `search-match-current` colors the selected
+match, and `search-match-preview` colors matches inside collapsed previews.
+
+Use `status-bar-foreground` and `status-bar-background` for the path and filename
+row, and `command-line-foreground` and `command-line-background` for the bottom
+row, including command and search editing. These keys name the visible text and
+background colors, even when the built-in bar uses reverse video. Set
+`message-info`, `message-warning`, and `message-error` to customize severity text
+colors. These override `command-line-foreground` for messages and use the
+`command-line-background`. Omitted severity colors use the built-in defaults.
+The older `status-bar` and
+`status-text` keys remain supported; explicit foreground/background keys take
+precedence over them.
+
+Colors are `default`, `black`, `red`, `green`, `yellow`, `blue`, `magenta`,
+`cyan`, `white`, and the `light-` version of each named color.
+
+## Installation
+
 The first CommandZero release is planned as 0.10.0.
 Binary downloads will appear on the [releases page](https://github.com/CommandZero/tless/releases) after validation and maintainer publication.
 No crates.io or Homebrew installation for this fork is advertised yet.
