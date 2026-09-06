@@ -1,22 +1,25 @@
 # Color themes
 
-Status: proposed
+Status: implemented. The design and implementation checklist below record
+the theme work, including user color overrides.
 
 ## Problem
 
-Rendering code currently chooses terminal colors and attributes directly in
-`highlighting`, `lineprinter`, and `screenwriter`. The color-themes branch
-changes one hard-coded palette, but it does not introduce a selectable theme
-or a single owner for styling policy. A palette change therefore requires
-editing several rendering paths and their tests.
+Previously, rendering code chose terminal colors and attributes directly in
+`highlighting`, `lineprinter`, and `screenwriter`. A palette change required
+editing several rendering paths and their tests. The theme module now owns
+styling policy and supports selectable built-in palettes and user color overrides.
 
-The branch also adds underline support incorrectly. The test terminal
-adapters do not implement the new trait method, and `AnsiTerminal` emits SGR
-22 instead of SGR 24 when disabling underline.
+Underline support is implemented in all terminal adapters. `AnsiTerminal`
+emits SGR 4 to enable underline and SGR 24 to disable it, preserving bold and
+dimmed state. Tests cover these transitions.
 
 ## Goals
 
 - Let users select a built-in color theme with `--theme <name>`.
+- Let users override individual theme colors in
+  `$XDG_CONFIG_HOME/jless/config.yaml`, falling back to
+  `$HOME/.config/jless/config.yaml`. See the [configuration reference](../README.md#color-themes).
 - Keep all mappings from semantic display roles to terminal styles in one
   module.
 - Keep rendering logic independent of named colors.
@@ -28,7 +31,8 @@ adapters do not implement the new trait method, and `AnsiTerminal` emits SGR
 
 ## Non-goals
 
-- User-defined theme files.
+- Separate named theme files and user-defined style attributes. Color
+  overrides in `config.yaml` are supported.
 - Automatic terminal background detection.
 - Runtime theme switching.
 - 256-color or true-color palette definitions.
