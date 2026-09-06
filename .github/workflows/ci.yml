@@ -28,7 +28,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --no-default-features --features="${{ matrix.features }}" --target=${{ matrix.platform.target }}
+          args: --locked --no-default-features --features=${{ matrix.features }} --target=${{ matrix.platform.target }}
 
   lint:
     name: lint
