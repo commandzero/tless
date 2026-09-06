@@ -824,7 +824,7 @@ impl App {
         match child {
             Ok(mut child) => {
                 if let Some(ref mut stdin) = child.stdin {
-                    let _ = stdin.write(HELP.as_bytes());
+                    let _ = stdin.write_all(HELP.as_bytes());
                     #[cfg(feature = "toon")]
                     let _ = stdin.write_all(TOON_HELP.as_bytes());
                     let _ = stdin.flush();
