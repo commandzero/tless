@@ -53,7 +53,8 @@ Theme keys are `null`, `boolean`, `number`, `string`, `empty-container`,
 `primitive-trailing-comma`, `container-delimiter`,
 `focused-container-delimiter`, `ellipsis`, `preview-text`, `preview-count`,
 `line-number`, `focused-line-number`, `empty-row-marker`,
-`truncation-indicator`, `status-bar`, `status-text`, `message-info`,
+`truncation-indicator`, `status-bar`, `status-text`, `status-bar-foreground`,
+`status-bar-background`, `command-line-foreground`, `command-line-background`, `message-info`,
 `message-warning`, `message-error`, `search-match`, `search-match-preview`, and
 `search-match-current`.
 
