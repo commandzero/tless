@@ -54,6 +54,7 @@ impl Default for Style {
 }
 
 pub trait Terminal: Write {
+    #[allow(dead_code)]
     fn clear_screen(&mut self) -> Result;
     fn clear_line(&mut self) -> Result;
 
@@ -69,9 +70,11 @@ pub trait Terminal: Write {
     fn set_bold(&mut self, bold: bool) -> Result;
     fn set_dimmed(&mut self, dimmed: bool) -> Result;
 
+    #[allow(dead_code)]
     fn output(&self) -> &str;
 
     // Only used for testing.
+    #[allow(dead_code)]
     fn clear_output(&mut self);
 }
 
