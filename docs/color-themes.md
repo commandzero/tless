@@ -134,15 +134,17 @@ one implementation, not terminal adapters. Tests use the real theme directly.
 
 - `style` is total, deterministic, allocation-free, and performs no I/O.
 - Every built-in theme defines every semantic role.
-- Style precedence is base role, display context, paired-container focus, row
-  focus, search match, then current search match. A later layer overrides only
-  the attributes it defines.
-- `CurrentMatch` includes ordinary match emphasis. Callers do not apply both.
+- Styling starts with the base role and applies focus. A search match then
+  replaces the entire style with the context-specific match style; a current
+  match replaces it with the current-match style. Search styles do not retain
+  attributes from the base role or focus. Configured color overrides apply
+  after this selection.
+- `CurrentMatch` selects a complete style. Callers do not also apply `Match`.
 - Preview rendering reduces `CurrentMatch` to `Match`, preserving the current
   behavior that a collapsed preview does not identify which match navigation
   will visit.
-- States irrelevant to a role have no effect. For example, search state does
-  not alter a synthetic array index.
+- Callers supply search state only for searchable text. `Theme::style` applies
+  a supplied search state regardless of role, including synthetic array indices.
 - Rendering code never handles missing theme entries or theme-selection
   errors.
 
