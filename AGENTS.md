@@ -1,12 +1,12 @@
 # Contributor instructions
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing this repository.
+Read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) before changing this repository.
 The shared standards bundle is [repo-man](../repo-man/index.md).
 If it is missing, obtain CommandZero/repo-man as a sibling checkout.
 
 This repository adopts the applicable Rust, Bash, CLI, preflight, updates,
 versioning, and release guidance in that bundle, including current draft
-recommendations as scoped by CONTRIBUTING.md. This is a repository selection,
+recommendations as scoped by docs/CONTRIBUTING.md. This is a repository selection,
 not a change to the shared documents' draft status.
 
 Use the repo-man skill when contributing or auditing.

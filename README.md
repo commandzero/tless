@@ -128,11 +128,11 @@ sudo apt-get install libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfi
 ## Contribute and release
 
 Run `scripts/preflight.sh` before submitting executable changes.
-See [contributor guidance](CONTRIBUTING.md) and the [release checklist](docs/release-checklist.md).
+See [contributor guidance](docs/CONTRIBUTING.md) and the [release checklist](docs/release-checklist.md).
 
 ## Attribution
 
 The upstream viewer, its mascot Jules, and its historical release notes remain attributed to their authors.
 Jules artwork is by [annatgraphics](https://www.fiverr.com/annatgraphics).
-The code retains the [MIT license](LICENSE).
+The code retains the [MIT license](LICENSE.md).
 See [third-party notices](NOTICES.md) for the codec and specification fixtures.

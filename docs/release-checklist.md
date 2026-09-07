@@ -3,7 +3,7 @@ type: Guide
 title: Release checklist
 description: Release preparation, packaging, publication, and recovery.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T05:44:59Z }
+generated: { by: codex/gpt-6, at: 2026-09-07T06:03:08Z }
 ---
 
 # Release checklist
@@ -38,7 +38,7 @@ The supported targets and OS floors are in README.md.
 
 Archives use `tless-vX.Y.Z-<rust-target-triple>.tar.gz`.
 Each has a SHA-256 sidecar containing the hash and archive basename.
-The archive root contains tless, LICENSE,
+The archive root contains tless, LICENSE.md,
 NOTICES.md, and BUILD-INFO.txt.
 Build metadata records tag, commit, compiler, features, target, host, and support floor.
 The release feature set is the manifest default, TOON enabled and S-expression disabled.

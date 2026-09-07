@@ -10,6 +10,8 @@ Validate the complete bundle with `scripts/validate-docs.sh` locally and in CI.
 
 ## Guides
 
+- [Contributing](CONTRIBUTING.md) covers standards, local checks, and pull requests.
+
 - [Release checklist](release-checklist.md) covers release preparation and recovery.
 - [Published TOON codec](toon-codec.md) describes conversion behavior and known limitations.
 - [TOON acceptance](toon-acceptance.md) maps automated and manual validation.

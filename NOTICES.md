@@ -1,7 +1,7 @@
 # Third-party notices
 
 The viewer derives from jless by Paul Julius Martinez.
-Its MIT license and copyright notice are in LICENSE.
+Its MIT license and copyright notice are in LICENSE.md.
 
 The published toon-format 0.5.0 crate is by Shreyas S Bhat and Johann Schopplich.
 It is a crates.io dependency; tless contains no vendored codec source.

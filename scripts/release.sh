@@ -59,7 +59,7 @@ package() {
     stage=$(mktemp -d "${TMPDIR:-/tmp}/tless-package.XXXXXX")
     trap 'rm -rf "$stage"' EXIT
     cp "target/$target/release/tless" "$stage/tless"
-    cp LICENSE "$stage/LICENSE"
+    cp LICENSE.md "$stage/LICENSE.md"
     cp NOTICES.md "$stage/NOTICES.md"
     {
         printf 'tag=%s\ncommit=%s\ncompiler=%s\nfeatures=toon\ntarget=%s\n' "$tag" "$(git rev-parse HEAD)" "$(rustc --version)" "$target"
@@ -77,7 +77,7 @@ package() {
     } > "$stage/BUILD-INFO.txt"
     archive="tless-$tag-$target.tar.gz"
     [[ ! -e "dist/$archive" && ! -e "dist/$archive.sha256" ]] || fail 'refusing to replace existing release artifacts'
-    tar -czf "dist/$archive" -C "$stage" tless LICENSE NOTICES.md BUILD-INFO.txt
+    tar -czf "dist/$archive" -C "$stage" tless LICENSE.md NOTICES.md BUILD-INFO.txt
     mkdir "$stage/extracted"
     tar -xzf "dist/$archive" -C "$stage/extracted"
     smoke "$stage/extracted/tless"
@@ -94,7 +94,7 @@ verify_assets() {
         archive="tless-$tag-$target.tar.gz"
         [[ -f "$directory/$archive" && -f "$directory/$archive.sha256" ]] || fail "missing $archive or checksum"
         [[ "$(cat "$directory/$archive.sha256")" == "$(cd "$directory"; shasum -a 256 "$archive")" ]] || fail "checksum mismatch: $archive"
-        [[ "$(tar -tzf "$directory/$archive" | sort)" == "$(printf '%s\n' tless LICENSE NOTICES.md BUILD-INFO.txt | sort)" ]] || fail "unexpected archive layout: $archive"
+        [[ "$(tar -tzf "$directory/$archive" | sort)" == "$(printf '%s\n' tless LICENSE.md NOTICES.md BUILD-INFO.txt | sort)" ]] || fail "unexpected archive layout: $archive"
         tar -xOzf "$directory/$archive" BUILD-INFO.txt | awk -v tag="$tag" -v target="$target" -v commit="$(git rev-parse HEAD)" '
             $0 == "tag=" tag { t = 1 }
             $0 == "target=" target { a = 1 }
