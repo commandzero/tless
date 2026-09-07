@@ -3,7 +3,7 @@ type: Guide
 title: Release checklist
 description: Release preparation, packaging, publication, and recovery.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T05:29:09Z }
+generated: { by: codex/gpt-6, at: 2026-09-07T05:44:59Z }
 ---
 
 # Release checklist
@@ -11,7 +11,7 @@ generated: { by: codex/gpt-6, at: 2026-09-07T05:29:09Z }
 ## Prepare a reviewed release proposal
 
 1. Open a Conventional Commit PR against main. Update Cargo.toml and Cargo.lock
-   together. Keep `publish = false`; crates.io drops the required codec patch.
+   together. Keep `publish = false` until a separate registry release plan is reviewed.
 2. Move notable Unreleased entries into `## [X.Y.Z] - YYYY-MM-DD` with the real
    release date. Leave an Unreleased section and update comparison links.
    Release notes come from that curated section, not generated commit summaries.
@@ -38,7 +38,7 @@ The supported targets and OS floors are in README.md.
 
 Archives use `tless-vX.Y.Z-<rust-target-triple>.tar.gz`.
 Each has a SHA-256 sidecar containing the hash and archive basename.
-The archive root contains tless, LICENSE, LICENSE-toon-format,
+The archive root contains tless, LICENSE,
 NOTICES.md, and BUILD-INFO.txt.
 Build metadata records tag, commit, compiler, features, target, host, and support floor.
 The release feature set is the manifest default, TOON enabled and S-expression disabled.
@@ -70,5 +70,4 @@ The packaging script refuses to overwrite existing artifacts.
 6. After publication, prepare any Homebrew update as a separate reviewed PR with
    verified checksums and supported-host install tests. If it fails, keep the
    previous formula working while fixing the update. Do not publish to crates.io
-   until the patched codec has a separately published compatible version and a
-   reviewed registry-distribution plan.
+   until a registry-distribution plan and package ownership have been reviewed.

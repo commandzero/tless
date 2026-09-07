@@ -1,3 +1,14 @@
+---
+type: Guide
+title: Historical TOON implementation review
+description: Review record for the former vendored codec implementation.
+status: draft
+generated: { by: codex/gpt-6, at: 2026-09-07T05:45:35Z }
+---
+
+This historical review describes the removed codec patch. See
+[published codec behavior](../toon-codec.md) for the current contract.
+
 # Review of add-toon-support
 
 Baseline: `e6cdef719c7319020391d6bbf838ab272ce44cf0`, compared with the working

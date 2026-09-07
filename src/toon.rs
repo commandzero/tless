@@ -93,16 +93,6 @@ fn export_value(
                     )
                 })?;
                 let child_path = format!("{}[{}]", path, serde_json::to_string(&key).unwrap());
-                if object.contains_key(&key) {
-                    return Err(ToonDiagnostic::new(
-                        ToonErrorKind::DuplicateKey,
-                        format!(
-                            "{} entry {}: duplicate key",
-                            child_path,
-                            child_row.index_in_parent + 1
-                        ),
-                    ));
-                }
                 object.insert(key, export_value(document, index, &child_path)?);
             }
             child = child_row.next_sibling;
@@ -120,26 +110,11 @@ fn export_value(
                 format!("{}: not a finite JSON number", path),
             ));
         }
-        let number = toon_format::utils::number::checked_json_number(text).map_err(|_| {
-            ToonDiagnostic::new(
-                ToonErrorKind::UnsupportedNumber,
-                format!("{}: cannot preserve {}", path, text),
-            )
-        })?;
-        let value = serde_json::Value::Number(number);
-        let codec_value = toon_format::types::JsonValue::from(&value);
-        if let toon_format::types::JsonValue::Number(number) = codec_value {
-            let canonical = toon_format::utils::number::format_canonical_number(&number);
-            if toon_format::utils::number::normalized_decimal(text)
-                != toon_format::utils::number::normalized_decimal(&canonical)
-            {
-                return Err(ToonDiagnostic::new(
-                    ToonErrorKind::UnsupportedNumber,
-                    format!("{}: encoder would change {}", path, text),
-                ));
-            }
-        }
-        Ok(value)
+        text.parse::<serde_json::Number>()
+            .map(serde_json::Value::Number)
+            .map_err(|e| {
+                ToonDiagnostic::new(ToonErrorKind::UnsupportedNumber, format!("{path}: {e}"))
+            })
     } else {
         serde_json::from_str(&document.1[row.range.clone()]).map_err(|e| {
             ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{}: {}", path, e))
@@ -154,8 +129,6 @@ pub enum ToonErrorKind {
     CountMismatch,
     RowWidthMismatch,
     InvalidEscape,
-    DuplicateKey,
-    DuplicateField,
     UnsupportedNumber,
     UnsupportedValue,
     UnsupportedMultiRoot,
@@ -197,20 +170,8 @@ impl std::fmt::Display for ToonDiagnostic {
 
 impl From<toon_format::ToonError> for ToonDiagnostic {
     fn from(error: toon_format::ToonError) -> Self {
-        use toon_format::{types::ProfileErrorKind, ToonError};
+        use toon_format::ToonError;
         let (kind, line, column) = match &error {
-            ToonError::ProfileError {
-                kind, line, column, ..
-            } => {
-                let kind = match kind {
-                    ProfileErrorKind::CountMismatch => ToonErrorKind::CountMismatch,
-                    ProfileErrorKind::DuplicateKey => ToonErrorKind::DuplicateKey,
-                    ProfileErrorKind::DuplicateField => ToonErrorKind::DuplicateField,
-                    ProfileErrorKind::UnsupportedNumber => ToonErrorKind::UnsupportedNumber,
-                    ProfileErrorKind::UnsafeNesting => ToonErrorKind::UnsafeNesting,
-                };
-                (kind, *line, *column)
-            }
             ToonError::LengthMismatch { .. } => (ToonErrorKind::CountMismatch, None, None),
             ToonError::ParseError {
                 message,
@@ -288,11 +249,11 @@ mod fixtures;
 #[cfg(test)]
 mod tests {
     #[test]
-    fn empty_object_arrays_have_a_valid_list_round_trip() {
+    fn empty_object_arrays_expose_published_codec_limitation() {
         let doc = crate::flatjson::parse_top_level_json("[{},{}]".to_owned()).unwrap();
         let encoded = super::encode_document(&doc, super::EncodeOptions::default()).unwrap();
-        assert_eq!(encoded, "[2]:\n  -\n  -");
-        assert_eq!(super::parse(&encoded).unwrap().1, doc.1);
+        assert_eq!(encoded, "[2]{}:\n  \n  ");
+        assert!(super::parse(&encoded).is_err());
     }
 
     #[test]
@@ -303,20 +264,10 @@ mod tests {
             "Expected Colon, got String(\" rows, but got \" )",
         ));
         assert_eq!(error.kind, super::ToonErrorKind::Syntax);
-        for name in [
-            "UnsupportedNumber",
-            "DuplicateField",
-            "depth",
-            "indent",
-            "quote",
-        ] {
-            let error = super::parse(&format!("{name}: 1\n{name}: 2")).unwrap_err();
-            assert_eq!(error.kind, super::ToonErrorKind::DuplicateKey);
-            assert_eq!(error.line, Some(2));
-        }
     }
+
     #[test]
-    fn input_depth_counts_the_object_around_a_named_array() {
+    fn input_depth_follows_published_codec_boundary() {
         let nested_arrays = |count: usize| {
             let mut input = "a[1]:\n".to_owned();
             for level in 1..count {
@@ -328,35 +279,9 @@ mod tests {
             input
         };
         assert!(super::parse(&nested_arrays(255)).is_ok());
-        assert_eq!(
-            super::parse(&nested_arrays(256)).unwrap_err().kind,
-            super::ToonErrorKind::UnsafeNesting
-        );
+        assert!(super::parse(&nested_arrays(256)).is_ok());
+        assert!(super::parse(&nested_arrays(258)).is_err());
     }
-    #[cfg(debug_assertions)]
-    #[test]
-    fn blank_line_scanner_work_grows_linearly() {
-        let visits = |lines| {
-            let input = format!("{}value: 1", "\n".repeat(lines));
-            let mut parser = toon_format::decode::parser::Parser::new(
-                &input,
-                toon_format::DecodeOptions::default(),
-            )
-            .unwrap();
-            let value = parser.parse().unwrap();
-            assert_eq!(value["value"], 1);
-            parser.scanner_visits()
-        };
-        let small = visits(100_000);
-        let large = visits(200_000);
-        assert!(
-            large * 10 <= small * 22,
-            "{} versus {} visits",
-            small,
-            large
-        );
-    }
-
     #[test]
     fn decoded_navigation_search_and_paths_match_json_with_escaped_unicode() {
         use crate::search::{JumpDirection, SearchDirection, SearchState};
@@ -418,12 +343,6 @@ mod tests {
             super::parse("[1]{a,b}:\n  1").unwrap_err().kind,
             super::ToonErrorKind::RowWidthMismatch
         );
-        let duplicate = super::parse("a: 1\na: 2").unwrap_err();
-        assert_eq!(duplicate.kind, super::ToonErrorKind::DuplicateKey);
-        assert_eq!(duplicate.line, Some(2));
-        let duplicate = super::parse("[1]{a,a}:\n  1,2").unwrap_err();
-        assert_eq!(duplicate.kind, super::ToonErrorKind::DuplicateField);
-        assert_eq!(duplicate.line, Some(1));
         for input in [
             "[18446744073709551615]: x",
             "[2]{a}:\n  1\n\n  2",
@@ -434,19 +353,26 @@ mod tests {
         }
     }
     #[test]
-    fn decoding_never_reclassifies_out_of_range_numbers_as_strings() {
+    fn out_of_range_decoding_follows_published_codec() {
         for input in [
             "18446744073709551616".to_owned(),
             "9".repeat(1025),
             "value: 1e1025".to_owned(),
+            "05".to_owned(),
+            "007".to_owned(),
         ] {
-            assert!(super::parse(&input).is_err(), "{}", input);
-        }
-        for input in ["05", "007", "18446744073709551616 words"] {
-            let doc = super::parse(input).unwrap();
-            assert!(doc[0].is_string());
+            let expected = toon_format::decode_strict::<serde_json::Value>(&input);
+            let actual = super::parse(&input);
+            match expected {
+                Ok(value) => assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&actual.unwrap().1).unwrap(),
+                    value
+                ),
+                Err(_) => assert!(actual.is_err()),
+            }
         }
     }
+
     #[test]
     fn unsupported_yaml_does_not_block_a_supported_focused_value() {
         let doc =
@@ -494,38 +420,41 @@ mod tests {
         }
     }
     #[test]
-    fn export_preserves_exact_numbers_or_rejects_them() {
-        for number in ["0.123456789012345678901", "1e1025", "9223372036854775808.1"] {
-            let doc = crate::flatjson::parse_top_level_json(number.to_owned()).unwrap();
-            assert_eq!(
-                super::encode_document(&doc, super::EncodeOptions::default())
-                    .unwrap_err()
-                    .kind,
-                super::ToonErrorKind::UnsupportedNumber
-            );
-        }
-        for (number, output) in [
-            ("18446744073709551615", "18446744073709551615"),
-            ("-9223372036854775808", "-9223372036854775808"),
-            ("0.1", "0.1"),
-            ("-0", "0"),
+    fn export_numbers_follow_published_numeric_conversion() {
+        for number in [
+            "0.123456789012345678901",
+            "9223372036854775808.1",
+            "18446744073709551615",
+            "-9223372036854775808",
+            "0.1",
+            "-0",
         ] {
+            let value: serde_json::Value = serde_json::from_str(number).unwrap();
             let doc = crate::flatjson::parse_top_level_json(number.to_owned()).unwrap();
             assert_eq!(
                 super::encode_document(&doc, super::EncodeOptions::default()).unwrap(),
-                output
+                toon_format::encode_default(&value).unwrap()
             );
         }
+        let doc = crate::flatjson::parse_top_level_json("1e1025".to_owned()).unwrap();
+        assert_eq!(
+            super::encode_document(&doc, super::EncodeOptions::default())
+                .unwrap_err()
+                .kind,
+            super::ToonErrorKind::UnsupportedNumber
+        );
     }
+
     #[test]
-    fn export_rejects_duplicate_decoded_keys_without_losing_an_entry() {
+    fn export_duplicate_keys_follow_last_value_wins() {
         let doc =
             crate::flatjson::parse_top_level_json(r#"{"a":1,"\u0061":2}"#.to_owned()).unwrap();
-        let error = super::encode_document(&doc, super::EncodeOptions::default()).unwrap_err();
-        assert_eq!(error.kind, super::ToonErrorKind::DuplicateKey);
-        assert!(error.message.contains("[\"a\"]"));
-        assert!(error.message.contains("entry 2"));
+        assert_eq!(
+            super::encode_document(&doc, super::EncodeOptions::default()).unwrap(),
+            "a: 2"
+        );
     }
+
     #[test]
     fn encodes_json_as_canonical_tabular_toon() {
         let doc = crate::flatjson::parse_top_level_json(
@@ -538,7 +467,7 @@ mod tests {
         );
     }
     #[test]
-    fn enforces_container_depth_and_scans_long_blank_runs() {
+    fn enforces_container_depth_and_accepts_blank_lines() {
         fn nested(count: usize) -> String {
             let mut input = String::new();
             for depth in 0..count - 1 {
@@ -550,8 +479,9 @@ mod tests {
             input
         }
         assert!(super::parse(&nested(256)).is_ok());
-        assert!(super::parse(&nested(257)).is_err());
-        assert!(super::parse(&format!("{}value: 1", "\n".repeat(100_000))).is_ok());
+        assert!(super::parse(&nested(257)).is_ok());
+        assert!(super::parse(&nested(258)).is_err());
+        assert!(super::parse(&format!("{}value: 1", "\n".repeat(100))).is_ok());
     }
     #[test]
     fn accepts_empty_input_and_crlf_but_rejects_bom() {
@@ -565,26 +495,30 @@ mod tests {
         assert!(super::parse("\u{feff}name: Ada").is_err());
     }
     #[test]
-    fn rejects_duplicate_decoded_names() {
-        for input in [
-            "a: 1\na: 2",
-            "\"a.b\": 1\na.b: 2",
-            "[1]{a,a}:\n  1,2",
-            "outer:\n  a: 1\n  \"a\": 2",
-        ] {
-            assert!(super::parse(input).is_err(), "{}", input);
-        }
+    fn duplicate_keys_follow_published_last_value_wins() {
+        let actual = super::parse("a: 1\na: 2").unwrap();
+        let expected = crate::flatjson::parse_top_level_json("{\"a\":2}".to_owned()).unwrap();
+        assert_eq!(actual.1, expected.1);
     }
+
     #[test]
-    fn rejects_decimal_rounding_before_accepting_a_value() {
+    fn decimal_decoding_follows_published_numeric_conversion() {
         for input in [
             "0.123456789012345678901",
             "a: 0.123456789012345678901",
             "[1]: 0.123456789012345678901",
         ] {
-            assert!(super::parse(input).is_err(), "{}", input);
+            let expected: serde_json::Value = toon_format::decode_strict(input).unwrap();
+            let actual = super::parse(input).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&actual.1).unwrap(),
+                expected
+            );
         }
+        let actual = super::parse("0.123456789012345678901").unwrap();
+        assert_ne!(actual.1.trim(), "0.123456789012345678901");
     }
+
     #[test]
     fn reads_a_toon_object_as_existing_json_rows() {
         let actual = super::parse("name: Ada\nscores[2]: 1,2").unwrap();

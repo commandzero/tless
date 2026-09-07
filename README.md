@@ -23,7 +23,7 @@ producer | tless --toon
 The first CommandZero release is planned as 0.10.0.
 Binary downloads will appear on the [releases page](https://github.com/CommandZero/tless/releases) after validation and maintainer publication.
 No crates.io or Homebrew installation for this fork is advertised yet.
-The vendored codec patch requires source-checkout or binary distribution.
+The codec comes from crates.io. Registry publication of tless remains a separate release decision.
 
 The executable is `tless`. Update scripts and aliases that should use this fork.
 The upstream `jless` executable can remain installed alongside it.
@@ -101,25 +101,21 @@ failure during writing does not promise rollback. Existing `yy`, `pp`, and
 Canonical output uses two spaces, comma delimiters, no key folding, and no final
 newline. An empty root object produces an empty payload. Whole-document output
 requires one root; focused export also works with multi-root JSON input.
-Object key order is preserved. Rows with differing key orders use list form,
-an intentional exception to TOON 3.0 canonical table selection. Rows with the
-same non-empty key sequence can still use tables.
-
-TOON input and export reject duplicate keys. Export rejects non-string YAML
-keys and non-finite numbers. Numeric conversion preserves exact decimal value
-or fails; numeric spelling may change and negative zero becomes zero. Numbers
-are limited to 1,024 coefficient digits and exponent magnitude 1,024. Nesting is
-limited to 256 containers relative to the selected root.
+TOON behavior follows the published `toon-format` 0.5.0 crate.
+Duplicate object keys use the last value. Decimal conversion can round, and very
+large numeric literals can become strings or change value. Table encoding can
+reorder object keys. This viewer is not an exact TOON data-conversion tool.
+See [codec behavior and known limitations](docs/toon-codec.md) for concrete examples.
+Export rejects non-string YAML keys, non-finite numbers, and more than 256 nested
+containers relative to the selected root. Input depth follows the codec's own bound.
 
 Interactive input accepts CRLF and trailing blank lines, but rejects an initial
 BOM and blank rows inside arrays. With non-terminal stdout, selected TOON text
 passes through unchanged without parsing, even if its syntax is malformed.
 Invalid UTF-8 is always an input error.
 
-The source build currently uses a patched `toon-format` 0.5.0 codec for fidelity
-checks. Replacing that patch with the published crate requires an explicit
-decision about the differing data-handling behavior. Keep `--locked` when building. The
-vendored codec and pinned specification fixtures retain their upstream licenses.
+Builds resolve the published codec through Cargo.lock, with its CLI features disabled.
+Keep `--locked` when building. The codec license is included in NOTICES.md.
 
 On Linux systems, X11 libraries are needed to build clipboard access if
 building from source. On Ubuntu you can install these using:
@@ -139,4 +135,4 @@ See [contributor guidance](CONTRIBUTING.md) and the [release checklist](docs/rel
 The upstream viewer, its mascot Jules, and its historical release notes remain attributed to their authors.
 Jules artwork is by [annatgraphics](https://www.fiverr.com/annatgraphics).
 The code retains the [MIT license](LICENSE).
-See [third-party notices](NOTICES.md) for the vendored codec and specification fixtures.
+See [third-party notices](NOTICES.md) for the codec and specification fixtures.
