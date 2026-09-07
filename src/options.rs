@@ -8,6 +8,8 @@ use crate::viewer::Mode;
 pub enum DataFormat {
     Json,
     Yaml,
+    #[cfg(feature = "toon")]
+    Toon,
 }
 
 /// A pager for JSON (or YAML) data
@@ -78,10 +80,19 @@ pub struct Opt {
     /// Parse input as YAML, regardless of file extension.
     #[arg(long = "yaml", group = "data-format", display_order = 1000)]
     pub yaml: bool,
+
+    /// Read TOON 3.0, regardless of file extension. Requires a toon-enabled build.
+    #[cfg(feature = "toon")]
+    #[arg(long = "toon", group = "data-format", display_order = 1000)]
+    pub toon: bool,
 }
 
 impl Opt {
     pub fn data_format(&self) -> Option<DataFormat> {
+        #[cfg(feature = "toon")]
+        if self.toon {
+            return Some(DataFormat::Toon);
+        }
         if self.json {
             Some(DataFormat::Json)
         } else if self.yaml {
