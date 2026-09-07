@@ -30,8 +30,8 @@ jobs:
       - run: scripts/preflight.sh
       - name: Check minimum compiler
         run: |
-          rustup toolchain install 1.67.0 --profile minimal
-          TLESS_TOOLCHAIN=1.67.0 scripts/preflight.sh test
+          rustup toolchain install 1.87.0 --profile minimal
+          TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test
   package:
     needs: validate
     strategy:

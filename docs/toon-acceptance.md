@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T05:17:13Z }
+generated: { by: codex/gpt-6, at: 2026-09-07T05:29:09Z }
 ---
 
 # TOON support acceptance
@@ -42,7 +42,7 @@ form as a documented canonical-profile exception. The work is on the approved
 | File-open failure produces no false success and leaves viewer usable | `write_open_failure_reports_an_error_and_keeps_the_viewer_usable` |
 | Persistent focused TOON print and prompt separated from payload | `prints_focused_canonical_toon_on_the_persistent_screen` |
 | Terminal byte-stream handling | `terminal_peer_answers_cursor_requests_across_read_boundaries`; output is drained to EOF/EIO |
-| Default/TOON/S-expression/all-feature combinations and Rust 1.67 | `.github/workflows/ci.yml` feature matrix; local results recorded below |
+| Default/TOON/S-expression/all-feature combinations and Rust 1.87 | `.github/workflows/ci.yml` feature matrix; local results recorded below |
 
 Tests use isolated pseudoterminals and uniquely named temporary files. They do
 not write to the user's clipboard or controlling terminal. Terminal tests can
@@ -75,7 +75,8 @@ desktop clipboard or interactive help pager.
 
 The compliance update renames the executable to tless and enables TOON by default.
 Use `--no-default-features` to exercise the disabled build.
-The shared preflight validates all 4 profiles on Rust 1.97.1 and Rust 1.67.
+The shared preflight targets all 4 profiles on Rust 1.97.1 and Rust 1.87.
+All 4 profiles also pass locally on Rust 1.87 after the MSRV update.
 After 2 new CLI contract tests, the profiles pass 71 tests without features,
 99 with TOON, 73 with S-expression only, and 101 with both features.
 The 294 applicable fixture cases remain inside 2 tests.

@@ -10,7 +10,7 @@ Press F1 or enter `:help` for in-app help.
 
 ## Install
 
-Build from this checkout with Rust 1.67 or newer:
+Build from this checkout with Rust 1.87 or newer:
 
 ```sh
 cargo install --path . --locked
@@ -116,8 +116,9 @@ BOM and blank rows inside arrays. With non-terminal stdout, selected TOON text
 passes through unchanged without parsing, even if its syntax is malformed.
 Invalid UTF-8 is always an input error.
 
-The source build uses an isolated vendored `toon-format` 0.5.0 backport for Rust
-1.67 compatibility and fidelity checks. Keep `--locked` when building. The
+The source build currently uses a patched `toon-format` 0.5.0 codec for fidelity
+checks. Replacing that patch with the published crate requires an explicit
+decision about the differing data-handling behavior. Keep `--locked` when building. The
 vendored codec and pinned specification fixtures retain their upstream licenses.
 
 On Linux systems, X11 libraries are needed to build clipboard access if

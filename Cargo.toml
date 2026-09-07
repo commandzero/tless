@@ -11,7 +11,7 @@ homepage = "https://github.com/CommandZero/tless"
 documentation = "https://github.com/CommandZero/tless#readme"
 publish = false
 edition = "2018"
-rust-version = "1.67"
+rust-version = "1.87"
 
 [package.metadata.toon]
 spec = "3.0"

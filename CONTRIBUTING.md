@@ -26,8 +26,8 @@ Scripts target Bash 3.2 and use language-native tools without requiring RTK.
 ```sh
 rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
 scripts/preflight.sh
-rustup toolchain install 1.67.0 --profile minimal
-TLESS_TOOLCHAIN=1.67.0 scripts/preflight.sh test
+rustup toolchain install 1.87.0 --profile minimal
+TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test
 ```
 
 The entry point runs formatting, all-target Clippy for minimal and combined features,

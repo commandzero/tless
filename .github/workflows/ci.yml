@@ -47,7 +47,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            toolchain: 1.67.0
+            toolchain: 1.87.0
           - os: macos-15
             toolchain: 1.97.1
     runs-on: ${{ matrix.os }}

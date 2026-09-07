@@ -10,7 +10,7 @@ recommendations as scoped by CONTRIBUTING.md. This is a repository selection,
 not a change to the shared documents' draft status.
 
 Use the repo-man skill when contributing or auditing.
-Run `scripts/preflight.sh`; keep Rust 1.67 compatibility and the committed lockfile.
+Run `scripts/preflight.sh`; keep Rust 1.87 compatibility and the committed lockfile.
 Preserve upstream source licenses and historical release notes.
 Do not publish registry packages while the local codec patch is required.
 

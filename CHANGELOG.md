@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- **Breaking:** Raise the minimum supported Rust version from 1.67 to 1.87. Upgrade the Rust toolchain before building this release.
+
 - Move release, search, rendering, and TOON acceptance guidance into docs; rename third-party notices to NOTICES.md and remove the unused tmux helper.
 
 - **Breaking:** Rename the package and executable from jless to tless. Update scripts and aliases that should use the CommandZero fork; upstream jless can stay installed.
