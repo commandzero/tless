@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 /// This module provides functionality for truncating strings,
 /// displaying them, and manipulating which portion of the string
 /// is visible.
-
+///
 /// A TruncatedStrView represents an attempt to fit a string within
 /// a given amount of available space. When `range` is None, it
 /// signifies that the string cannot be represented at all in the

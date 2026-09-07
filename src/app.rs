@@ -15,7 +15,7 @@ use termion::screen::{ToAlternateScreen, ToMainScreen};
 use crate::flatjson;
 use crate::input::TuiEvent;
 use crate::input::TuiEvent::{KeyEvent, MouseEvent, WinChEvent};
-use crate::jsonstringunescaper::{safe_unescape_json_string, UnescapeError};
+use crate::jsonstringunescaper::safe_unescape_json_string;
 use crate::lineprinter::JS_IDENTIFIER;
 use crate::options::{DataFormat, Opt};
 use crate::screenwriter::{MessageSeverity, ScreenWriter};
@@ -56,6 +56,8 @@ enum InputState {
 #[derive(Copy, Clone)]
 enum ContentTarget {
     PrettyPrintedValue,
+    #[cfg(feature = "toon")]
+    ToonValue,
     OneLineValue,
     String,
     Key,
@@ -67,6 +69,8 @@ enum ContentTarget {
 #[derive(Copy, Clone)]
 enum WriteFormat {
     Json,
+    #[cfg(feature = "toon")]
+    Toon,
     #[cfg(feature = "sexp")]
     Sexp,
 }
@@ -86,6 +90,8 @@ enum Command {
 
 // Help contents that we pipe to less.
 const HELP: &str = std::include_str!("./jless.help");
+#[cfg(feature = "toon")]
+const TOON_HELP: &str = std::include_str!("./toon.help");
 
 pub const MAX_BUFFER_SIZE: usize = 9;
 const BELL: &str = "\x07";
@@ -145,6 +151,8 @@ impl App {
         match data_format {
             DataFormat::Json => flatjson::parse_top_level_json(data),
             DataFormat::Yaml => flatjson::parse_top_level_yaml(data),
+            #[cfg(feature = "toon")]
+            DataFormat::Toon => crate::toon::parse(&data).map_err(|e| e.to_string()),
         }
     }
 
@@ -232,6 +240,8 @@ impl App {
                 event if self.input_state == InputState::PendingPCommand => {
                     let content_target = match event {
                         KeyEvent(Key::Char('p')) => Some(ContentTarget::PrettyPrintedValue),
+                        #[cfg(feature = "toon")]
+                        KeyEvent(Key::Char('t')) => Some(ContentTarget::ToonValue),
                         KeyEvent(Key::Char('v')) => Some(ContentTarget::OneLineValue),
                         KeyEvent(Key::Char('s')) => Some(ContentTarget::String),
                         KeyEvent(Key::Char('k')) => Some(ContentTarget::Key),
@@ -258,6 +268,8 @@ impl App {
                 event if self.input_state == InputState::PendingYCommand => {
                     let content_target = match event {
                         KeyEvent(Key::Char('y')) => Some(ContentTarget::PrettyPrintedValue),
+                        #[cfg(feature = "toon")]
+                        KeyEvent(Key::Char('t')) => Some(ContentTarget::ToonValue),
                         KeyEvent(Key::Char('v')) => Some(ContentTarget::OneLineValue),
                         KeyEvent(Key::Char('s')) => Some(ContentTarget::String),
                         KeyEvent(Key::Char('k')) => Some(ContentTarget::Key),
@@ -773,6 +785,18 @@ impl App {
                 overwrite_existing: true,
                 write_format: WriteFormat::Json,
             },
+            #[cfg(feature = "toon")]
+            ["wt" | "writetoon", filename] => Command::WriteFile {
+                filename: filename.to_string(),
+                overwrite_existing: false,
+                write_format: WriteFormat::Toon,
+            },
+            #[cfg(feature = "toon")]
+            ["wt!" | "writetoon!", filename] => Command::WriteFile {
+                filename: filename.to_string(),
+                overwrite_existing: true,
+                write_format: WriteFormat::Toon,
+            },
             #[cfg(feature = "sexp")]
             ["ws" | "writesexp", filename] => Command::WriteFile {
                 filename: filename.to_string(),
@@ -800,7 +824,9 @@ impl App {
         match child {
             Ok(mut child) => {
                 if let Some(ref mut stdin) = child.stdin {
-                    let _ = stdin.write(HELP.as_bytes());
+                    let _ = stdin.write_all(HELP.as_bytes());
+                    #[cfg(feature = "toon")]
+                    let _ = stdin.write_all(TOON_HELP.as_bytes());
                     let _ = stdin.flush();
                 }
                 let _ = child.wait();
@@ -819,6 +845,13 @@ impl App {
         let focused_row = &self.viewer.flatjson[focused_row_index];
 
         let data = match content_target {
+            #[cfg(feature = "toon")]
+            ContentTarget::ToonValue => crate::toon::encode_value(
+                &self.viewer.flatjson,
+                focused_row_index,
+                crate::toon::EncodeOptions::default(),
+            )
+            .map_err(|e| e.to_string())?,
             ContentTarget::PrettyPrintedValue if focused_row.is_container() => self
                 .viewer
                 .flatjson
@@ -870,14 +903,9 @@ impl App {
                     _ => unreachable!(),
                 };
 
-                match self
-                    .viewer
+                self.viewer
                     .flatjson
-                    .build_path_to_node(path_type, focused_row_index)
-                {
-                    Ok(path) => path,
-                    Err(err) => return Err(err),
-                }
+                    .build_path_to_node(path_type, focused_row_index)?
             }
         };
 
@@ -893,6 +921,8 @@ impl App {
                 let focused_row = &self.viewer.flatjson[self.viewer.focused_row];
 
                 let content_type = match content_target {
+                    #[cfg(feature = "toon")]
+                    ContentTarget::ToonValue => "TOON value",
                     ContentTarget::PrettyPrintedValue if focused_row.is_container() => {
                         "pretty-printed value"
                     }
@@ -951,10 +981,33 @@ impl App {
         overwrite_existing: bool,
         write_format: WriteFormat,
     ) {
+        let file_contents: Result<String, String> = match write_format {
+            WriteFormat::Json => Ok(self.viewer.flatjson.pretty_printed()),
+            #[cfg(feature = "sexp")]
+            WriteFormat::Sexp => self
+                .viewer
+                .flatjson
+                .sexp_string()
+                .map_err(|e| e.to_string()),
+            #[cfg(feature = "toon")]
+            WriteFormat::Toon => crate::toon::encode_document(
+                &self.viewer.flatjson,
+                crate::toon::EncodeOptions::default(),
+            )
+            .map_err(|e| e.to_string()),
+        };
+        let file_contents = match file_contents {
+            Ok(contents) => contents,
+            Err(error) => {
+                self.set_error_message(format!("Error formatting file contents: {error}"));
+                return;
+            }
+        };
         let mut file_open_options = File::options();
         file_open_options
-            .read(true)
             .write(true)
+            .create(overwrite_existing)
+            .truncate(overwrite_existing)
             .create_new(!overwrite_existing);
 
         match file_open_options.open(&filename) {
@@ -964,20 +1017,12 @@ impl App {
                 _ => self.set_error_message(format!("Error opening file for writing: {err}")),
             },
             Ok(mut file) => {
-                let file_contents: Result<String, UnescapeError> = match write_format {
-                    WriteFormat::Json => Ok(self.viewer.flatjson.pretty_printed()),
-                    #[cfg(feature = "sexp")]
-                    WriteFormat::Sexp => self.viewer.flatjson.sexp_string(),
-                };
-
-                match file_contents {
-                    Err(err) => {
-                        self.set_error_message(format!("Error formatting file contents: {err}"))
-                    }
-                    Ok(file_contents) => match file.write_all(file_contents.as_bytes()) {
-                        Ok(()) => self.set_info_message(format!("{filename} written")),
-                        Err(err) => self.set_error_message(format!("Error writing file: {err}")),
-                    },
+                match file
+                    .write_all(file_contents.as_bytes())
+                    .and_then(|()| file.flush())
+                {
+                    Ok(()) => self.set_info_message(format!("{filename} written")),
+                    Err(err) => self.set_error_message(format!("Error writing file: {err}")),
                 }
             }
         }

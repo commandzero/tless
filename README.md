@@ -40,6 +40,53 @@ page also contains links to binaries for various architectures.
 
 ## Dependencies
 
+### Optional TOON support
+
+Build from this checkout to enable TOON input and canonical output:
+
+```sh
+cargo install --path . --locked --features toon
+jless data.toon
+producer | jless --toon
+```
+
+The `toon` Cargo feature is disabled by default. It can be combined with `sexp`.
+Disabled builds omit TOON commands and help; opening a `.toon` filename explains
+how to enable support. `--json` and `--yaml` override filename detection.
+
+This implementation targets `toon-spec: 3.0`, not TOON 4.x. It uses strict
+two-space decoding with literal dotted keys and supports declared comma, tab,
+and pipe delimiters. The viewer still uses its existing JSON Line/Data views.
+Searches operate on normalized JSON text, not the original TOON spelling.
+
+Use `yt` to copy or `pt` to print the complete focused value as canonical TOON.
+Use `:wt file` or `:writetoon file` to write the whole document. Add `!` to create
+or replace a target. Encoding finishes before the file is opened, but an I/O
+failure during writing does not promise rollback. Existing `yy`, `pp`, and
+`:write` commands still produce JSON.
+
+Canonical output uses two spaces, comma delimiters, no key folding, and no final
+newline. An empty root object produces an empty payload. Whole-document output
+requires one root; focused export also works with multi-root JSON input.
+Object key order is preserved. Rows with differing key orders use list form,
+an intentional exception to TOON 3.0 canonical table selection. Rows with the
+same non-empty key sequence can still use tables.
+
+TOON input and export reject duplicate keys. Export rejects non-string YAML
+keys and non-finite numbers. Numeric conversion preserves exact decimal value
+or fails; numeric spelling may change and negative zero becomes zero. Numbers
+are limited to 1,024 coefficient digits and exponent magnitude 1,024. Nesting is
+limited to 256 containers relative to the selected root.
+
+Interactive input accepts CRLF and trailing blank lines, but rejects an initial
+BOM and blank rows inside arrays. With non-terminal stdout, selected TOON text
+passes through unchanged without parsing, even if its syntax is malformed.
+Invalid UTF-8 is always an input error.
+
+The source build uses an isolated vendored `toon-format` 0.5.0 backport for Rust
+1.67 compatibility and fidelity checks. Keep `--locked` when building. The
+vendored codec and pinned specification fixtures retain their upstream licenses.
+
 On Linux systems, X11 libraries are needed to build clipboard access if
 building from source. On Ubuntu you can install these using:
 
