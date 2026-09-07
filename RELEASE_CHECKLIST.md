@@ -8,7 +8,7 @@
    release date. Leave an Unreleased section and update comparison links.
    Release notes come from that curated section, not generated commit summaries.
 3. Review compatibility and upgrade instructions. Version 0.10.0 migrates jless
-   to tless and enables TOON by default. Its input cap is 256 MiB and can be removed
+   to tless and enables TOON by default. Its input cap is 512 MiB and can be removed
    with `--max-input-bytes 0`. Its binary support floors are macOS 15 and Ubuntu 24.04.
 4. Recheck CommandZero/homebrew-tools and any installer consumers. Coordinate their
    URL construction before advertising a new distribution channel. No existing

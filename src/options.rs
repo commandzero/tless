@@ -24,7 +24,7 @@ pub struct Opt {
     pub input: Option<PathBuf>,
 
     /// Maximum input bytes. Use 0 for unlimited input. The complete input stays in memory.
-    #[arg(long, default_value_t = 268_435_456)]
+    #[arg(long, default_value_t = 536_870_912)]
     pub max_input_bytes: u64,
 
     /// Initial viewing mode. In line mode (--mode line), opening

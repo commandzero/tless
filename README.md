@@ -49,7 +49,7 @@ Linux clipboard support requires X11 and libxcb; clipboard access also needs a u
 tless --help
 tless --version
 printf '{"answer":42}' | tless --json -
-tless --max-input-bytes 536870912 large.json
+tless --max-input-bytes 1073741824 large.json
 ```
 
 A missing filename or `-` reads stdin. Format flags override filename detection.
@@ -65,7 +65,7 @@ In the viewer, `q` or Ctrl-C quits; Ctrl-C or Ctrl-D in a command prompt cancels
 Before interactive mode and in pipelines, signals use the operating system's normal termination behavior.
 
 The viewer retains the complete input and its parsed representation.
-The default input limit is 256 MiB, measured in bytes; `--max-input-bytes 0` removes it.
+The default input limit is 512 MiB, measured in bytes; `--max-input-bytes 0` removes it.
 The reader consumes at most the limit plus 1 byte before rejecting an oversized input.
 Parsed data and rendered output need additional memory; this is not a total-process memory limit.
 JSON and YAML have no configurable depth bound. TOON has the limits below.
