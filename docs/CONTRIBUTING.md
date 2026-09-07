@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: codex/gpt-6, at: 2026-09-07T06:03:08Z }
+generated: { by: codex/gpt-6, at: 2026-09-07T18:15:35Z }
 ---
 
 # Contributing
@@ -46,7 +46,7 @@ There is no root library target, so root library doctests do not apply.
 
 Tests use disposable files and isolated pseudoterminals.
 A terminal-permission failure must be rerun with terminal access; do not skip it.
-Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing a release.
+Run the manual checks in [TOON acceptance](toon_acceptance.md) before publishing a release.
 Documentation-only edits can use `scripts/validate-docs.sh` locally. It validates
 the complete docs bundle with pinned okf 0.2.7. CI calls this same check through
 preflight, including on documentation-only and workflow changes.
@@ -76,4 +76,4 @@ Version 0.10.0 is the first planned tless release. It changes the executable nam
 default TOON feature, input limit, and tested binary platform floors together.
 No tless releases or tless Homebrew formula were found during migration preparation.
 The upstream jless package, tags, and download URLs remain unchanged.
-Recheck consumers before publication, then follow [the release checklist](release-checklist.md).
+Recheck consumers before publication, then follow [the release checklist](release_checklist.md).

@@ -20,7 +20,7 @@ Semantic comparison ignores object order. The large-number encode fixture has
 an explicit known limitation: decoding its output returns a string, not a number.
 All 180 selected decode cases retain their upstream expectations.
 
-See [published codec behavior](../../../docs/toon-codec.md) for numeric conversion,
+See [published codec behavior](../../../docs/toon_codec.md) for numeric conversion,
 duplicate-key handling, empty-object array output, and nesting boundaries.
 Tests no longer require private codec instrumentation or the removed patch's guarantees.
 

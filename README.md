@@ -105,7 +105,7 @@ TOON behavior follows the published `toon-format` 0.5.0 crate.
 Duplicate object keys use the last value. Decimal conversion can round, and very
 large numeric literals can become strings or change value. Table encoding can
 reorder object keys. This viewer is not an exact TOON data-conversion tool.
-See [codec behavior and known limitations](docs/toon-codec.md) for concrete examples.
+See [codec behavior and known limitations](docs/toon_codec.md) for concrete examples.
 Export rejects non-string YAML keys, non-finite numbers, and more than 256 nested
 containers relative to the selected root. Input depth follows the codec's own bound.
 
@@ -128,7 +128,7 @@ sudo apt-get install libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfi
 ## Contribute and release
 
 Run `scripts/preflight.sh` before submitting executable changes.
-See [contributor guidance](docs/CONTRIBUTING.md) and the [release checklist](docs/release-checklist.md).
+See [contributor guidance](docs/contributing.md) and the [release checklist](docs/release_checklist.md).
 
 ## Attribution
 

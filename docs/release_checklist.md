@@ -3,7 +3,7 @@ type: Guide
 title: Release checklist
 description: Release preparation, packaging, publication, and recovery.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T06:03:08Z }
+generated: { by: codex/gpt-6, at: 2026-09-07T18:15:35Z }
 ---
 
 # Release checklist
@@ -23,7 +23,7 @@ generated: { by: codex/gpt-6, at: 2026-09-07T06:03:08Z }
    upstream jless formula, tag, release, or registry package is replaced.
 5. Run local preflight and the Rust 1.87 feature profiles. Complete the manual
    clipboard, help, malformed-input restoration, and Linux full-device checks in
-   docs/toon-acceptance.md. Record actual host/results in the release PR.
+   docs/toon_acceptance.md. Record actual host/results in the release PR.
 6. Merge after CI and review. Tag that main-branch commit as `vX.Y.Z` or
    `vX.Y.Z-rc.N`. Push the new tag only when the release proposal is accepted.
 

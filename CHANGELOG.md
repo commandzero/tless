@@ -7,7 +7,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- **Breaking:** Replace the vendored codec with the published toon-format 0.5.0 crate. TOON now follows its duplicate-key, numeric conversion, nesting, and table-order behavior. See [codec behavior](docs/toon-codec.md) before using TOON output for data conversion.
+- **Breaking:** Replace the vendored codec with the published toon-format 0.5.0 crate. TOON now follows its duplicate-key, numeric conversion, nesting, and table-order behavior. See [codec behavior](docs/toon_codec.md) before using TOON output for data conversion.
 
 - **Breaking:** Raise the minimum supported Rust version from 1.67 to 1.87. Upgrade the Rust toolchain before building this release.
 
