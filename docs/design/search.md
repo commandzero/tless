@@ -1,3 +1,11 @@
+---
+type: Reference
+title: Search design notes
+description: Preserved upstream search design notes; not a current behavior contract.
+status: draft
+generated: { by: codex/gpt-6, at: 2026-09-07T05:17:13Z }
+---
+
 # Search
 
 ## vim search

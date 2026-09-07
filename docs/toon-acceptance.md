@@ -1,3 +1,11 @@
+---
+type: Guide
+title: TOON acceptance checks
+description: Automated coverage and manual release acceptance checks.
+status: draft
+generated: { by: codex/gpt-6, at: 2026-09-07T05:17:13Z }
+---
+
 # TOON support acceptance
 
 Scope: `openspec/changes/add-toon-support`. The separate TOON rendering change

@@ -14,6 +14,7 @@ Run `scripts/preflight.sh`; keep Rust 1.67 compatibility and the committed lockf
 Preserve upstream source licenses and historical release notes.
 Do not publish registry packages while the local codec patch is required.
 
-Root Markdown is contributor/product documentation, not an OKF bundle.
-There is no `docs/` bundle or active OpenSpec change tree.
-If either is introduced, add the applicable complete-bundle or OpenSpec gate.
+Keep only repository entry points, identity, and legal documents at the root.
+The complete `docs/` directory is an OKF bundle. Run `scripts/validate-docs.sh`
+for documentation changes; CI calls the same check. There is no active OpenSpec
+change tree. If one is introduced, add the applicable OpenSpec completion gate.

@@ -1,3 +1,11 @@
+---
+type: Guide
+title: Release checklist
+description: Release preparation, packaging, publication, and recovery.
+status: draft
+generated: { by: codex/gpt-6, at: 2026-09-07T05:17:13Z }
+---
+
 # Release checklist
 
 ## Prepare a reviewed release proposal
@@ -15,7 +23,7 @@
    upstream jless formula, tag, release, or registry package is replaced.
 5. Run local preflight and the Rust 1.67 feature profiles. Complete the manual
    clipboard, help, malformed-input restoration, and Linux full-device checks in
-   tests/TOON-ACCEPTANCE.md. Record actual host/results in the release PR.
+   docs/toon-acceptance.md. Record actual host/results in the release PR.
 6. Merge after CI and review. Tag that main-branch commit as `vX.Y.Z` or
    `vX.Y.Z-rc.N`. Push the new tag only when the release proposal is accepted.
 
@@ -31,7 +39,7 @@ The supported targets and OS floors are in README.md.
 Archives use `tless-vX.Y.Z-<rust-target-triple>.tar.gz`.
 Each has a SHA-256 sidecar containing the hash and archive basename.
 The archive root contains tless, LICENSE, LICENSE-toon-format,
-THIRD_PARTY_NOTICES.md, and BUILD-INFO.txt.
+NOTICES.md, and BUILD-INFO.txt.
 Build metadata records tag, commit, compiler, features, target, host, and support floor.
 The release feature set is the manifest default, TOON enabled and S-expression disabled.
 

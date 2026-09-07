@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-tmux new-session -d -s tless
-tmux split-window -t tless -h
-tmux split-window -t tless -v
-tmux attach-session -t tless

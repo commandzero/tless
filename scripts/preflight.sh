@@ -13,10 +13,11 @@ lint() {
     cargo fmt --all -- --check
     cargo clippy --locked --all-targets --no-default-features -- -D warnings
     cargo clippy --locked --all-targets --all-features -- -D warnings
-    for script in dev-tmux scripts/*.sh; do bash -n "$script"; done
-    shellcheck dev-tmux scripts/*.sh
+    for script in scripts/*.sh; do bash -n "$script"; done
+    shellcheck scripts/*.sh
     actionlint
     scripts/test-release.sh
+    scripts/validate-docs.sh
 }
 
 tests() {

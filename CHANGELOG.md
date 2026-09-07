@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Move release, search, rendering, and TOON acceptance guidance into docs; rename third-party notices to NOTICES.md and remove the unused tmux helper.
+
 - **Breaking:** Rename the package and executable from jless to tless. Update scripts and aliases that should use the CommandZero fork; upstream jless can stay installed.
 - **Breaking:** Enable TOON by default and limit input to 512 MiB. Use `--no-default-features` for a JSON/YAML-only build and `--max-input-bytes 0` to remove the input limit.
 - Prepare 0.10.0 with source-checkout and native binary distribution. Disable registry publication until the patched codec can be published separately.
@@ -17,6 +19,8 @@ Earlier upstream history is preserved below.
 - Send the missing-filename diagnostic to stderr.
 
 ### Added
+
+- Add an OKF documentation bundle and a shared documentation validation check.
 
 - Support TOON 3.0 input, focused copy/print, and whole-document output with duplicate-key, numeric-fidelity, and depth checks.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.

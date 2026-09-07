@@ -20,6 +20,7 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
           sudo apt-get update
           sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev shellcheck
+          cargo install okf --version 0.2.7 --locked
           GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Check reviewed source and release metadata

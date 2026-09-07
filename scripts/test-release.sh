@@ -21,10 +21,10 @@ for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu 
     chmod +x "$fixture/stage/tless"
     cp LICENSE "$fixture/stage/LICENSE"
     cp vendor/toon-format/LICENSE "$fixture/stage/LICENSE-toon-format"
-    cp THIRD_PARTY_NOTICES.md "$fixture/stage/THIRD_PARTY_NOTICES.md"
+    cp NOTICES.md "$fixture/stage/NOTICES.md"
     printf 'tag=v%s\ntarget=%s\ncommit=%s\nfeatures=toon\nsource_dirty=false\n' "$version" "$target" "$commit" > "$fixture/stage/BUILD-INFO.txt"
     archive="tless-v$version-$target.tar.gz"
-    tar -czf "$fixture/assets/$archive" -C "$fixture/stage" tless LICENSE LICENSE-toon-format THIRD_PARTY_NOTICES.md BUILD-INFO.txt
+    tar -czf "$fixture/assets/$archive" -C "$fixture/stage" tless LICENSE LICENSE-toon-format NOTICES.md BUILD-INFO.txt
     (cd "$fixture/assets"; shasum -a 256 "$archive" > "$archive.sha256")
 done
 scripts/release.sh verify-assets "$fixture/assets"
