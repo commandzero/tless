@@ -74,8 +74,8 @@ The 294 applicable fixture cases remain inside 2 tests.
 All-target Clippy with warnings denied, formatting, ShellCheck, workflow validation,
 and release-gate regression tests pass. The macOS arm64 archive passes extraction,
 version, JSON, TOON, and input-limit checks.
-The inherited block 0.1.6 dependency emits Cargo's future-compatibility notice
-on the pinned development compiler. It does not fail the current compiler or Clippy.
+The inherited block 0.1.6 on macOS and xcb 0.8.2 on Linux emit Cargo's
+future-compatibility notice on the pinned development compiler. It does not fail the current compiler or Clippy.
 Manual release checks above remain pending; these local results do not replace them.
 
 ## Historical build notes

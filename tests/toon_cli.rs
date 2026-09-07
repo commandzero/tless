@@ -67,6 +67,8 @@ mod terminal_commands {
             ws_xpixel: 0,
             ws_ypixel: 0,
         };
+        // libc exposes a mutable window-size pointer on macOS and a const pointer on Linux.
+        let size_ptr = std::ptr::addr_of_mut!(size);
         // Each child gets its own controlling terminal, never the user's terminal.
         assert_eq!(
             unsafe {
@@ -75,7 +77,7 @@ mod terminal_commands {
                     &mut slave,
                     std::ptr::null_mut(),
                     std::ptr::null_mut(),
-                    &mut size,
+                    size_ptr,
                 )
             },
             0
