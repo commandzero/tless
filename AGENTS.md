@@ -16,7 +16,7 @@ Use the published toon-format crate with default features disabled. Do not vendo
 codec source or add a Cargo patch. Registry publication is a separate release decision.
 
 Keep only repository entry points, identity, and legal documents at the root.
-Use lowercase snake_case filenames throughout `docs/`.
+Use lowercase snake_case filenames throughout `docs/` and for Markdown files in `tests/`.
 The complete `docs/` directory is an OKF bundle. Run `scripts/validate-docs.sh`
 for documentation changes; CI calls the same check. There is no active OpenSpec
 change tree. If one is introduced, add the applicable OpenSpec completion gate.

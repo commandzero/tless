@@ -3,7 +3,7 @@
 Source: https://github.com/toon-format/spec/tree/c09f73b267323190f61de5b91563fa579b3b7c5e
 
 Revision: `c09f73b267323190f61de5b91563fa579b3b7c5e`, tag `v3.0.0`.
-`SPEC.md`, `LICENSE`, and `tests/fixtures` are copied from that revision.
+`spec.md`, `LICENSE`, and `tests/fixtures` are copied from that revision.
 Some fixture files retain older internal version labels; the pinned commit
 defines the compatibility target.
 
