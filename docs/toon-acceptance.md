@@ -3,12 +3,12 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T18:15:35Z }
+generated: { by: codex/gpt-6, at: 2026-09-07T18:22:11Z }
 ---
 
 # TOON acceptance checks
 
-Use [published codec behavior](toon_codec.md) for the conversion contract.
+Use [published codec behavior](toon-codec.md) for the conversion contract.
 The former vendored codec's exact-number, duplicate-key rejection, key-order,
 and linear scanner-work guarantees no longer apply.
 
@@ -61,7 +61,7 @@ Record the actual host and results in the release PR.
 
 ## Release checks
 
-Follow [the release checklist](release_checklist.md) for native packaging and
+Follow [the release checklist](release-checklist.md) for native packaging and
 supported-host checks. The inherited block 0.1.6 on macOS and xcb 0.8.2 on Linux
 emit Cargo future-compatibility notices on the development compiler. These are
 separate from current compiler and Clippy failures.
