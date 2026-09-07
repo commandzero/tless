@@ -1,48 +1,86 @@
 name: ci
-on: push
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
-  test:
-    name: test
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install toolchains and check tools
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev shellcheck
+          GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-1.97.1-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'vendor/**') }}
+      - name: Validate PR title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_./-]+\))?!?: .+'
+          [[ "$PR_TITLE" =~ $pattern ]] || { echo 'Use a Conventional Commit PR title.' >&2; exit 1; }
+      - name: Local preflight
+        run: scripts/preflight.sh
+  compatibility:
     strategy:
+      fail-fast: false
       matrix:
-        version: [ 1.67.0, stable ]
-        features: [ "", "toon", "sexp", "toon,sexp" ]
-        platform:
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu  }
-          - { os: macos-latest , target: x86_64-apple-darwin       }
-    runs-on: ${{ matrix.platform.os }}
+        include:
+          - os: ubuntu-24.04
+            toolchain: 1.67.0
+          - os: macos-15
+            toolchain: 1.97.1
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          toolchain: ${{ matrix.version }}
-          override: true
-          target: ${{ matrix.platform.target }}
-          components: clippy, rustfmt
-      - name: Install clipboard dependencies
-        if: ${{ matrix.platform.os == 'ubuntu-latest' }}
-        run: sudo apt install -y libxcb-shape0-dev libxcb-xfixes0-dev
-      - name: Test
-        uses: actions-rs/cargo@v1
+          persist-credentials: false
+      - name: Install compiler
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain }}
+        run: rustup toolchain install "$TOOLCHAIN" --profile minimal
+      - name: Install Linux clipboard dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          command: test
-          args: --locked --no-default-features --features=${{ matrix.features }} --target=${{ matrix.platform.target }}
-
-  lint:
-    name: lint
-    runs-on: ubuntu-latest
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.toolchain }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'vendor/**') }}
+      - name: Feature compatibility
+        env:
+          TLESS_TOOLCHAIN: ${{ matrix.toolchain }}
+        run: scripts/preflight.sh test
+  required:
+    if: always()
+    needs: [preflight, compatibility]
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
-      - name: Format
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: Require all checks
+        env:
+          PREFLIGHT: ${{ needs.preflight.result }}
+          COMPATIBILITY: ${{ needs.compatibility.result }}
+        run: test "$PREFLIGHT" = success && test "$COMPATIBILITY" = success

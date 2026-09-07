@@ -2,7 +2,7 @@ use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
 fn run(args: &[&str], input: &[u8]) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_jless"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -49,7 +49,7 @@ mod terminal_commands {
 
     fn session_with_format(input: &str, commands: &str, format: Option<&str>) -> String {
         let path = std::env::temp_dir().join(format!(
-            "jless-pty-{}-{}.json",
+            "tless-pty-{}-{}.json",
             std::process::id(),
             NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
@@ -83,7 +83,7 @@ mod terminal_commands {
         let mut master = unsafe { File::from_raw_fd(master) };
         let slave = unsafe { File::from_raw_fd(slave) };
         let slave_fd = slave.as_raw_fd();
-        let mut command = Command::new(env!("CARGO_BIN_EXE_jless"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tless"));
         if let Some(format) = format {
             command.arg(format);
         }
@@ -125,7 +125,7 @@ mod terminal_commands {
                     for _ in 0..cursor_requests(&output, &mut scanned_cursor_requests) {
                         master.write_all(b"\x1b[1;1R").unwrap();
                     }
-                    if !sent && String::from_utf8_lossy(&output).contains("jless-pty-") {
+                    if !sent && String::from_utf8_lossy(&output).contains("tless-pty-") {
                         sent = true;
                     }
                 }
@@ -143,7 +143,7 @@ mod terminal_commands {
             }
             if let Some(start) = waiting_for_redraw {
                 let recent = String::from_utf8_lossy(&output[start..]);
-                if recent.contains("\x1b[?2004l") && recent.contains("jless-pty-") {
+                if recent.contains("\x1b[?2004l") && recent.contains("tless-pty-") {
                     waiting_for_redraw = None;
                 }
             }
@@ -181,7 +181,7 @@ mod terminal_commands {
     #[test]
     fn write_open_failure_reports_an_error_and_keeps_the_viewer_usable() {
         let target = std::env::temp_dir()
-            .join(format!("jless-no-directory-{}", std::process::id()))
+            .join(format!("tless-no-directory-{}", std::process::id()))
             .join("output.toon");
         let output = session("42", &format!(":wt {}\npt q", target.display()));
         assert!(output.contains("Error opening file for writing"));
@@ -192,7 +192,7 @@ mod terminal_commands {
 
     #[test]
     fn writes_canonical_toon_through_the_viewer_command() {
-        let target = std::env::temp_dir().join(format!("jless-write-{}.toon", std::process::id()));
+        let target = std::env::temp_dir().join(format!("tless-write-{}.toon", std::process::id()));
         let output = session(r#"{"a":1}"#, &format!(":wt {}\nq", target.display()));
         assert!(output.contains("written"), "{}", output);
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "a: 1");
@@ -201,7 +201,7 @@ mod terminal_commands {
 
     #[test]
     fn writes_toon_from_yaml_and_toon_inputs_without_changing_json_commands() {
-        let target = std::env::temp_dir().join(format!("jless-formats-{}.out", std::process::id()));
+        let target = std::env::temp_dir().join(format!("tless-formats-{}.out", std::process::id()));
         for format in ["--yaml", "--toon"] {
             let output = session_with_format(
                 "a: 1",
@@ -237,7 +237,7 @@ mod terminal_commands {
     #[test]
     fn bang_writes_replace_the_entire_file_after_successful_encoding() {
         let target =
-            std::env::temp_dir().join(format!("jless-replace-{}.toon", std::process::id()));
+            std::env::temp_dir().join(format!("tless-replace-{}.toon", std::process::id()));
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -274,7 +274,7 @@ mod terminal_commands {
 
 #[test]
 fn toon_extension_is_detected_and_explicit_json_overrides_it() {
-    let path = std::env::temp_dir().join(format!("jless-format-{}.toon", std::process::id()));
+    let path = std::env::temp_dir().join(format!("tless-format-{}.toon", std::process::id()));
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -321,7 +321,7 @@ fn output_io_failure_exits_nonzero() {
     let reader = unsafe { std::fs::File::from_raw_fd(pipe[0]) };
     let writer = unsafe { std::fs::File::from_raw_fd(pipe[1]) };
     drop(reader);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_jless"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
         .arg("--toon")
         .stdin(Stdio::piped())
         .stdout(writer)
@@ -352,4 +352,33 @@ fn format_conflicts_and_invalid_utf8_fail_without_output() {
 fn disabled_build_omits_toon_option_and_help() {
     assert!(!run(&["--toon"], b"").status.success());
     assert!(!String::from_utf8_lossy(&run(&["--help"], b"").stdout).contains("--toon"));
+}
+
+#[test]
+fn input_limit_applies_to_stdin_and_files_without_partial_output() {
+    let output = run(&["--max-input-bytes", "2"], b"123");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("input exceeds"));
+    assert!(run(&["--max-input-bytes", "3"], b"123").status.success());
+    assert!(run(&["--max-input-bytes", "0"], b"123").status.success());
+    let path = std::env::temp_dir().join(format!("tless-limit-{}.json", std::process::id()));
+    std::fs::write(&path, b"123").unwrap();
+    let output = run(&["--max-input-bytes", "2", path.to_str().unwrap()], b"");
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
+fn version_help_and_usage_error_follow_cli_contract() {
+    assert_eq!(
+        run(&["--version"], b"").stdout,
+        concat!("tless ", env!("CARGO_PKG_VERSION"), "\n").as_bytes()
+    );
+    assert!(run(&["--help"], b"").status.success());
+    let invalid = run(&["--max-input-bytes", "invalid"], b"");
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(invalid.stdout.is_empty());
+    assert!(!invalid.stderr.is_empty());
 }

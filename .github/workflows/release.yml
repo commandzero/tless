@@ -1,46 +1,97 @@
 name: release
 on:
   push:
-    # Enable testing on branches
-    # branches:
-    #   - test-release
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  create-binaries:
-    name: create-binaries
-    strategy:
-      matrix:
-        platform:
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu  }
-          - { os: macos-latest , target: x86_64-apple-darwin       }
-    runs-on: ${{ matrix.platform.os }}
+  validate:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          toolchain: stable
-          override: true
-          target: ${{ matrix.platform.target }}
-          components: clippy, rustfmt
-      - name: Install clipboard dependencies
-        if: ${{ matrix.platform.os == 'ubuntu-latest' }}
-        run: sudo apt install -y libxcb-shape0-dev libxcb-xfixes0-dev
-      - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --verbose --release --target=${{ matrix.platform.target }}
-      - name: Strip binary
-        run: strip target/${{ matrix.platform.target }}/release/jless
-      - name: Compress binary
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install check tools
         run: |
-          mv target/${{ matrix.platform.target }}/release/jless .
-          zip -X jless-${{ matrix.platform.target }}.zip jless
-      - name: Upload binary
-        uses: actions/upload-artifact@v2
+          rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev shellcheck
+          GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Check reviewed source and release metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: scripts/release.sh check "$RELEASE_TAG"
+      - run: scripts/preflight.sh
+      - name: Check minimum compiler
+        run: |
+          rustup toolchain install 1.67.0 --profile minimal
+          TLESS_TOOLCHAIN=1.67.0 scripts/preflight.sh test
+  package:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          name: jless-${{ matrix.platform.target }}.zip
-          path: jless-${{ matrix.platform.target }}.zip
+          persist-credentials: false
+      - run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Install Linux clipboard dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev
+      - name: Native behavior tests and extracted binary checks
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          scripts/preflight.sh test
+          scripts/release.sh package "$RELEASE_TARGET"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+  draft:
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Verify complete release and create draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          scripts/release.sh verify-assets dist
+          scripts/release.sh notes > "$RUNNER_TEMP/release-notes.md"
+          args=(--draft --verify-tag --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md")
+          if [[ "$RELEASE_TAG" == *-rc.* ]]; then args+=(--prerelease); fi
+          # Creation fails if a release already exists. Never replace published bytes.
+          gh release create "$RELEASE_TAG" "${args[@]}" dist/*

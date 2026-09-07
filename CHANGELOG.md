@@ -1,3 +1,30 @@
+# Changelog
+
+New CommandZero releases follow Keep a Changelog with Conventional Commit squash messages.
+Earlier upstream history is preserved below.
+
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** Rename the package and executable from jless to tless. Update scripts and aliases that should use the CommandZero fork; upstream jless can stay installed.
+- **Breaking:** Enable TOON by default and limit input to 256 MiB. Use `--no-default-features` for a JSON/YAML-only build and `--max-input-bytes 0` to remove the input limit.
+- Prepare 0.10.0 with source-checkout and native binary distribution. Disable registry publication until the patched codec can be published separately.
+- Define macOS 15 and Ubuntu 24.04 as the tested binary release floors. Older systems require independent source-build validation.
+
+### Fixed
+
+- Send the missing-filename diagnostic to stderr.
+
+### Added
+
+- Support TOON 3.0 input, focused copy/print, and whole-document output with duplicate-key, numeric-fidelity, and depth checks.
+- Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
+
+[Unreleased]: https://github.com/CommandZero/tless/compare/35f1c7686bd096ecce2ce73016dc70191869bb6c...HEAD
+
+## Upstream history
+
 main
 ====
 

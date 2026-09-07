@@ -1,56 +1,89 @@
-![jless logo and mascot](https://raw.githubusercontent.com/PaulJuliusMartinez/jless/master/logo/text-logo-with-mascot.svg)
+# tless
 
-[`jless`](https://jless.io) is a command-line JSON viewer. Use it as a
-replacement for whatever combination of `less`, `jq`, `cat` and your
-editor you currently use for viewing JSON files. It is written in Rust
-and can be installed as a single standalone binary.
+A terminal viewer for JSON, YAML, and TOON, maintained by CommandZero.
+This is an independent fork of [jless](https://github.com/PaulJuliusMartinez/jless).
 
-[![ci](https://github.com/PaulJuliusMartinez/jless/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/PaulJuliusMartinez/jless/actions/workflows/ci.yml)
+[![ci](https://github.com/CommandZero/tless/actions/workflows/ci.yml/badge.svg)](https://github.com/CommandZero/tless/actions/workflows/ci.yml)
 
-### Features
+Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
+Press `?` for in-app help.
 
-- Clean syntax highlighted display of JSON data, omitting quotes around
-  object keys, closing object and array delimiters, and trailing commas.
-- Expand and collapse objects and arrays so you can see both the high-
-  and low-level structure of the data.
-- A wealth of vim-inspired movement commands for efficiently moving
-  around and viewing data.
-- Full regex-based search for finding exactly the data you're looking
-  for.
+## Install
 
-`jless` currently supports macOS and Linux. Windows support is planned.
+Build from this checkout with Rust 1.67 or newer:
 
-## Installation
+```sh
+cargo install --path . --locked
+tless data.json
+tless data.yaml
+tless data.toon
+producer | tless --toon
+```
 
-You can install `jless` using various package managers:
+The first CommandZero release is planned as 0.10.0.
+Binary downloads will appear on the [releases page](https://github.com/CommandZero/tless/releases) after validation and maintainer publication.
+No crates.io or Homebrew installation for this fork is advertised yet.
+The vendored codec patch requires source-checkout or binary distribution.
 
-| Operating System / Package Manager | Command |
-| ---------------------------------- | ------- |
-| macOS - [HomeBrew](https://formulae.brew.sh/formula/jless) | `brew install jless`      |
-| macOS - [MacPorts](https://ports.macports.org/port/jless/) | `sudo port install jless` |
-| Linux - [HomeBrew](https://formulae.brew.sh/formula/jless) | `brew install jless`      |
-| [Arch Linux](https://archlinux.org/packages/extra/x86_64/jless/)     | `pacman -S jless`         |
-| [Void Linux](https://github.com/void-linux/void-packages/tree/master/srcpkgs/jless) | `sudo xbps-install jless` |
-| [NetBSD](https://pkgsrc.se/textproc/jless/)                | `pkgin install jless`     |
-| [FreeBSD](https://freshports.org/textproc/jless/)          | `pkg install jless`       |
-| From source (Requires [Rust toolchain](https://www.rust-lang.org/tools/install))       | `cargo install jless`       |
+The executable is `tless`. Update scripts and aliases that should use this fork.
+The upstream `jless` executable can remain installed alongside it.
 
-The [releases](https://github.com/PaulJuliusMartinez/jless/releases)
-page also contains links to binaries for various architectures.
+## Platform contract
 
-## Dependencies
+| Target | Release test host and support floor |
+| --- | --- |
+| aarch64-apple-darwin | Native macOS 15 arm64 |
+| x86_64-apple-darwin | Native macOS 15 Intel |
+| x86_64-unknown-linux-gnu | Native Ubuntu 24.04, glibc 2.39 |
+| aarch64-unknown-linux-gnu | Native Ubuntu 24.04 arm64, glibc 2.39 |
 
-### Optional TOON support
+Each release must pass native tests and an extracted-binary smoke test on all 4 hosts.
+These are release gates, not a claim that an unpublished release has passed them.
+Other Linux distributions and older operating systems are unverified.
+Windows and musl are not supported.
+Linux clipboard support requires X11 and libxcb; clipboard access also needs a usable display session.
+
+## Command-line contract
+
+```sh
+tless --help
+tless --version
+printf '{"answer":42}' | tless --json -
+tless --max-input-bytes 536870912 large.json
+```
+
+A missing filename or `-` reads stdin. Format flags override filename detection.
+With redirected stdout, JSON is pretty-printed; YAML and TOON pass through as UTF-8 bytes without syntax validation.
+JSON output can contain multiple top-level values separated by newlines.
+TOON pass-through preserves the input's framing, including a missing final newline.
+Machine mode emits no prompts or ANSI styling. Diagnostics go to stderr.
+
+Exit status 0 means success or a normal viewer quit.
+Status 1 means an input, parsing, or output error, including a broken pipe.
+Status 2 means invalid command-line arguments.
+In the viewer, `q` or Ctrl-C quits; Ctrl-C or Ctrl-D in a command prompt cancels that prompt.
+Before interactive mode and in pipelines, signals use the operating system's normal termination behavior.
+
+The viewer retains the complete input and its parsed representation.
+The default input limit is 256 MiB, measured in bytes; `--max-input-bytes 0` removes it.
+The reader consumes at most the limit plus 1 byte before rejecting an oversized input.
+Parsed data and rendered output need additional memory; this is not a total-process memory limit.
+JSON and YAML have no configurable depth bound. TOON has the limits below.
+No output starts until input loading and any machine-mode JSON parsing finish.
+An output error can leave a partial payload in the downstream consumer.
+
+## TOON support
 
 Build from this checkout to enable TOON input and canonical output:
 
 ```sh
 cargo install --path . --locked --features toon
-jless data.toon
-producer | jless --toon
+tless data.toon
+producer | tless --toon
 ```
 
-The `toon` Cargo feature is disabled by default. It can be combined with `sexp`.
+The `toon` Cargo feature is enabled by default. Use `--no-default-features`
+for a JSON/YAML-only source build. It can be combined with `sexp`.
 Disabled builds omit TOON commands and help; opening a `.toon` filename explains
 how to enable support. `--json` and `--yaml` override filename detection.
 
@@ -94,21 +127,15 @@ building from source. On Ubuntu you can install these using:
 sudo apt-get install libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
 ```
 
-## Website
 
-[jless.io](https://jless.io) is the official website for `jless`. Code
-for the website is contained separately on the
-[`website`](https://github.com/PaulJuliusMartinez/jless/tree/website) branch.
+## Contribute and release
 
-## Logo
+Run `scripts/preflight.sh` before submitting executable changes.
+See [contributor guidance](CONTRIBUTING.md) and the [release checklist](RELEASE_CHECKLIST.md).
 
-The mascot of the `jless` project is Jules the jellyfish.
+## Attribution
 
-<img style="width: 250px;" alt="jless mascot" src="https://raw.githubusercontent.com/PaulJuliusMartinez/jless/master/logo/mascot.svg">
-
-Art for Jules was created by
-[`annatgraphics`](https://www.fiverr.com/annatgraphics).
-
-## License
-
-`jless` is released under the [MIT License](https://github.com/PaulJuliusMartinez/jless/blob/master/LICENSE).
+The upstream viewer, its mascot Jules, and its historical release notes remain attributed to their authors.
+Jules artwork is by [annatgraphics](https://www.fiverr.com/annatgraphics).
+The code retains the [MIT license](LICENSE).
+See [third-party notices](THIRD_PARTY_NOTICES.md) for the vendored codec and specification fixtures.

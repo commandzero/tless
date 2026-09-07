@@ -63,7 +63,22 @@ desktop clipboard or interactive help pager.
    normal terminal restoration. Valid non-terminal malformed TOON pass-through
    is covered automatically and must not enter this parser path.
 
-## Build notes
+## Current compliance checks
+
+The compliance update renames the executable to tless and enables TOON by default.
+Use `--no-default-features` to exercise the disabled build.
+The shared preflight validates all 4 profiles on Rust 1.97.1 and Rust 1.67.
+After 2 new CLI contract tests, the profiles pass 71 tests without features,
+99 with TOON, 73 with S-expression only, and 101 with both features.
+The 294 applicable fixture cases remain inside 2 tests.
+All-target Clippy with warnings denied, formatting, ShellCheck, workflow validation,
+and release-gate regression tests pass. The macOS arm64 archive passes extraction,
+version, JSON, TOON, and input-limit checks.
+The inherited block 0.1.6 dependency emits Cargo's future-compatibility notice
+on the pinned development compiler. It does not fail the current compiler or Clippy.
+Manual release checks above remain pending; these local results do not replace them.
+
+## Historical build notes
 
 After review fixes, both the current compiler and Rust 1.67 passed 69 tests
 without optional features, 97 with `toon`, 71 with `sexp`, and 99 with all

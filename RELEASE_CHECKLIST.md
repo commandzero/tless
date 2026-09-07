@@ -1,32 +1,66 @@
-## Release Checklist
+# Release checklist
 
-- `VERSION=<new version>` (including a `v` at the start)
-- Update version in [`Cargo.toml`](./Cargo.toml).
-- Run `cargo build` to update [`Cargo.lock`](./Cargo.lock).
-- Add changes since last release to [`CHANGELOG.md`](./CHANGELOG.md). (You
-  should do this with every commit!)
-  - Update the top of the CHANGELOG to say the new version number with
-    the release date, then start a new section for `main`
-- Commit all changes with commit message: `vX.Y.Z Release`
-- Tag commit and push it to GitHub: `git tag $VERSION && git push origin $VERSION`
-- Publish new version to crates.io: `cargo publish`
-- Generate new binaries:
-  - macOS:
-    - `cargo build --release`
-    - `cd target/release`
-    - `zip -r -X jless-$VERSION-x86_64-apple-darwin.zip jless`
-  - Linux:
-    - Make sure you can cross-compile for Linux:
-      - `brew tap SergioBenitez/osxct`
-      - `brew install x86_64-unknown-linux-gnu`
-    - `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-unknown-linux-gnu-gcc cargo build --release --target=x86_64-unknown-linux-gnu`
-    - `cd target/x86_64-unknown-linux-gnu/release`
-    - `zip -r -X jless-$VERSION-x86_64-unknown-linux-gnu.zip target/x86_64-unknown-linux-gnu/release/jless`
-- Create GitHub release
-  - Click "Create new release"
-  - Select tag
-  - Copy stuff from `CHANGELOG.md` to description
-  - Attach binaries generated above
-- Update the [`website` branch](https://github.com/PaulJuliusMartinez/jless/tree/website)
-  - Update [`releases_page.rb`](https://github.com/PaulJuliusMartinez/jless/blob/website/releases_page.rb) with the new release
-  - Update [`user_guide_page.rb`](https://github.com/PaulJuliusMartinez/jless/blob/website/user_guide_page.rb) with any new commands
+## Prepare a reviewed release proposal
+
+1. Open a Conventional Commit PR against main. Update Cargo.toml and Cargo.lock
+   together. Keep `publish = false`; crates.io drops the required codec patch.
+2. Move notable Unreleased entries into `## [X.Y.Z] - YYYY-MM-DD` with the real
+   release date. Leave an Unreleased section and update comparison links.
+   Release notes come from that curated section, not generated commit summaries.
+3. Review compatibility and upgrade instructions. Version 0.10.0 migrates jless
+   to tless and enables TOON by default. Its input cap is 256 MiB and can be removed
+   with `--max-input-bytes 0`. Its binary support floors are macOS 15 and Ubuntu 24.04.
+4. Recheck CommandZero/homebrew-tools and any installer consumers. Coordinate their
+   URL construction before advertising a new distribution channel. No existing
+   upstream jless formula, tag, release, or registry package is replaced.
+5. Run local preflight and the Rust 1.67 feature profiles. Complete the manual
+   clipboard, help, malformed-input restoration, and Linux full-device checks in
+   tests/TOON-ACCEPTANCE.md. Record actual host/results in the release PR.
+6. Merge after CI and review. Tag that main-branch commit as `vX.Y.Z` or
+   `vX.Y.Z-rc.N`. Push the new tag only when the release proposal is accepted.
+
+## Build and verify
+
+The tag workflow validates tag, manifest, lockfile, curated notes, clean source,
+and membership in origin/main. It runs preflight and minimum-compiler tests before packaging.
+
+Each target runs native feature tests, builds with locked dependencies and Rust 1.97.1,
+extracts its archive, and checks version, JSON, TOON, and input-limit behavior.
+The supported targets and OS floors are in README.md.
+
+Archives use `tless-vX.Y.Z-<rust-target-triple>.tar.gz`.
+Each has a SHA-256 sidecar containing the hash and archive basename.
+The archive root contains tless, LICENSE, LICENSE-toon-format,
+THIRD_PARTY_NOTICES.md, and BUILD-INFO.txt.
+Build metadata records tag, commit, compiler, features, target, host, and support floor.
+The release feature set is the manifest default, TOON enabled and S-expression disabled.
+
+For a local native packaging check, run:
+
+```sh
+scripts/release.sh package aarch64-apple-darwin
+```
+
+This writes local artifacts only. It does not tag or publish.
+The packaging script refuses to overwrite existing artifacts.
+
+## Publish and recover
+
+1. The final job requires all 4 archives and checksum sidecars, verifies hashes,
+   archive layout, and source metadata, then creates a GitHub draft release.
+   Release-candidate tags produce prerelease drafts.
+2. A maintainer checks the complete draft and recorded manual results, then publishes it.
+   Successful local checks alone do not authorize publication.
+3. If packaging fails, fix the cause before retrying. Existing local artifacts need
+   deliberate removal or preservation in another directory before rebuilding.
+4. If draft creation or upload fails partway, inspect the existing draft. Download
+   its assets and compare hashes before adding missing files. Never use upload
+   clobber to replace differing bytes. The workflow refuses an existing release.
+   Delete an incomplete unpublished draft only after preserving its diagnostics.
+5. Never move a published tag or overwrite published assets. A correction needs a
+   new version. Keep old release notes, tags, and URLs usable.
+6. After publication, prepare any Homebrew update as a separate reviewed PR with
+   verified checksums and supported-host install tests. If it fails, keep the
+   previous formula working while fixing the update. Do not publish to crates.io
+   until the patched codec has a separately published compatible version and a
+   reviewed registry-distribution plan.
