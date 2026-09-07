@@ -6,7 +6,7 @@ This is an independent fork of [jless](https://github.com/PaulJuliusMartinez/jle
 [![ci](https://github.com/CommandZero/tless/actions/workflows/ci.yml/badge.svg)](https://github.com/CommandZero/tless/actions/workflows/ci.yml)
 
 Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
-Press `?` for in-app help.
+Press F1 or enter `:help` for in-app help.
 
 ## Install
 
