@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: codex/gpt-6, at: 2026-09-09T06:22:38Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
 ---
 
 # Contributing
@@ -135,7 +135,7 @@ Compiler minimum increases also use a minor version and need dependency/feature 
 The manifest is the version source; release checks compare it with the lockfile, tag,
 changelog, and extracted binary. Tags use `vX.Y.Z` or `vX.Y.Z-rc.N`.
 
-Version 0.10.0 is the first planned tless release. It changes the executable name,
+The independent tless release history starts at 0.1.0. It changes the executable name,
 default TOON feature, input limit, and tested binary platform floors together.
 No tless releases or tless Homebrew formula were found during migration preparation.
 The upstream jless package, tags, and download URLs remain unchanged.

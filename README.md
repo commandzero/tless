@@ -22,7 +22,7 @@ tless data.toon
 producer | tless --toon
 ```
 
-The first CommandZero release is planned as 0.10.0.
+The independent tless release history starts at 0.1.0.
 Binary downloads will appear on the [releases page](https://github.com/CommandZero/tless/releases) after validation and maintainer publication.
 No crates.io or Homebrew installation for this fork is advertised yet.
 The codec comes from crates.io. Registry publication of tless remains a separate release decision.

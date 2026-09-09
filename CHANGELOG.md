@@ -17,7 +17,7 @@ Earlier upstream history is preserved below.
 
 - **Breaking:** Rename the package and executable from jless to tless. Update scripts and aliases that should use the CommandZero fork; upstream jless can stay installed.
 - **Breaking:** Enable TOON by default and limit input to 512 MiB. Use `--no-default-features` for a JSON/YAML-only build and `--max-input-bytes 0` to remove the input limit.
-- Prepare 0.10.0 with source-checkout and native binary distribution. Keep registry publication a separate release decision.
+- Start the independent tless release history at 0.1.0, with source-checkout and native binary distribution. Keep registry publication a separate release decision.
 - Define macOS 15 and Ubuntu 24.04 as the tested binary release floors. Older systems require independent source-build validation.
 
 ### Fixed
