@@ -128,3 +128,19 @@ reset_case
 archive_change existing; commit
 git branch -f baseline HEAD
 expect pass 'explicit archived association without artifact diff' $'OpenSpec-Change: existing\nOpenSpec-Sync-Reviewed: existing'
+
+# Non-validator artifacts in an archive already present at the base remain required.
+printf '%s\n' '# Design' 'Keep the chosen behavior.' > openspec/changes/archive/2026-09-09-existing/design.md
+printf '%s\n' '# Verification' 'Recorded evidence.' > openspec/changes/archive/2026-09-09-existing/verification.md
+commit
+git branch -f baseline HEAD
+for artifact in design.md verification.md; do
+    reset_case
+    rm "openspec/changes/archive/2026-09-09-existing/$artifact"
+    commit
+    expect fail "existing archive lost $artifact" 'OpenSpec-Sync-Reviewed: existing'
+done
+reset_case
+printf '\nReviewed final implementation.\n' >> openspec/changes/archive/2026-09-09-existing/design.md
+commit
+expect pass 'existing archive permits preserved artifact edits' 'OpenSpec-Sync-Reviewed: existing'

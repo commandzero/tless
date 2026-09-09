@@ -75,6 +75,8 @@ Use decoded keys to detect duplicates within each object, but never insert entri
 
 Non-string keys use an explicit `? ` prefix. The compact key notation uses JSON-style quoted strings and recursive arrays/ordered object pairs, preserving types and allowing the non-finite numeric tokens. It is a display of the parsed key, not YAML source reconstruction. Quote actual string keys that resemble the prefix. Multiple roots use an explicit warning separator before each root, not a synthetic parent value.
 
+TOON 3.0 permits escaped LF, CR, TAB, quote, and backslash, but no Unicode escape syntax. Other parsed control characters use terminal-safe JSON-style `\uXXXX` spelling with `Non-standard string escape` warnings, including strings inside typed keys. This is an explicit display extension; input and export handling stay unchanged.
+
 Warning text contains fixed messages and escaped field identifiers, not arbitrary unescaped input. Each shared line has one final comment so a warning cannot visually consume later cells. Use `at [N]` for an inline element and `at field "name"` for a table cell. Field labels follow JSON string escaping. Keep warnings in node order, with the message-kind ordering defined in the spec.
 
 Collapsed containers show their own warnings plus a cached count of hidden descendant warnings. Count semantic warning records, not painted comments or repeated header spans. A non-finite complex key can carry both non-string-key and non-finite-number warnings. Ordinary source strings containing `# WARN` are always quoted and never create warning records.

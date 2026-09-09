@@ -1,7 +1,7 @@
 use yaml_rust::yaml::{Array, Hash, Yaml};
 use yaml_rust::YamlLoader;
 
-use crate::flatjson::{ContainerType, Index, OptionIndex, Row, Value};
+use crate::flatjson::{ContainerType, Index, KeyValue, OptionIndex, Row, Value};
 
 struct YamlParser {
     parents: Vec<Index>,
@@ -93,6 +93,7 @@ impl YamlParser {
 
     fn parse_string(&mut self, s: String) -> usize {
         let row_index = self.create_row(Value::String);
+        self.rows[row_index].string_value = Some(s.clone());
 
         // Escape newlines.
         let s = s.replace('\n', "\\n");
@@ -218,6 +219,7 @@ impl YamlParser {
 
             /////////////////////////////////
 
+            let typed_key = key_value(&key)?;
             let key_range = {
                 let key_range_start = self.pretty_printed.len();
 
@@ -233,6 +235,7 @@ impl YamlParser {
             let child_index = self.parse_yaml_item(value)?;
 
             self.rows[child_index].key_range = Some(key_range);
+            self.rows[child_index].key_value = Some(typed_key);
 
             if i == 0 {
                 match self.rows[object_open_index].value {
@@ -385,10 +388,33 @@ impl YamlParser {
             next_sibling: OptionIndex::Nil,
             index_in_parent: 0,
             key_range: None,
+            key_value: None,
+            string_value: None,
         });
 
         index
     }
+}
+
+fn key_value(value: &Yaml) -> Result<KeyValue, String> {
+    Ok(match value {
+        Yaml::String(text) => KeyValue::String(text.clone()),
+        Yaml::Integer(value) => KeyValue::Number(value.to_string()),
+        Yaml::Real(token) => KeyValue::Number(token.clone()),
+        Yaml::Boolean(value) => KeyValue::Boolean(*value),
+        Yaml::Null => KeyValue::Null,
+        Yaml::Array(values) => {
+            KeyValue::Array(values.iter().map(key_value).collect::<Result<_, _>>()?)
+        }
+        Yaml::Hash(entries) => KeyValue::Object(
+            entries
+                .iter()
+                .map(|(key, value)| Ok((key_value(key)?, key_value(value)?)))
+                .collect::<Result<_, String>>()?,
+        ),
+        Yaml::BadValue => return Err("Unknown YAML parse error".into()),
+        Yaml::Alias(_) => return Err("YAML parser returned Alias value".into()),
+    })
 }
 
 #[cfg(test)]

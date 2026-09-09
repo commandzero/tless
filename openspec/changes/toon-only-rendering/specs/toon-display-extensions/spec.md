@@ -70,9 +70,20 @@ A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>
 - **THEN** each SHALL retain its root shape after its warning separator
 - **AND** the separator SHALL NOT be a selectable data value
 
+### Requirement: Unsupported control-character escapes
+
+String values and string keys containing control characters other than LF, CR, and TAB SHALL use terminal-safe JSON-style `\uXXXX` spellings and receive `# WARN Non-standard string escape`. These spellings SHALL be labeled as display extensions because TOON 3.0 does not support Unicode escape sequences. The warning SHALL also apply to such strings inside compact typed keys. Literal backslash-u text SHALL remain string data without this warning. Input parsing and export behavior SHALL remain unchanged.
+
+#### Scenario: Unsafe control and literal escape text
+
+- **WHEN** parsed JSON contains string values `"\u0001"` and `"\\u0001"`
+- **THEN** the control character SHALL display as `"\u0001"  # WARN Non-standard string escape`
+- **AND** the literal backslash-u value SHALL retain its characters without a generated warning
+- **AND** neither SHALL write a raw control character to the terminal
+
 ### Requirement: Warning placement and collapse
 
-Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages in this order: duplicate key, non-finite number, non-canonical number, non-string key, multiple roots, hidden warnings. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
+Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages in this order: duplicate key, non-finite number, non-canonical number, non-string key, multiple roots, non-standard string escape, hidden warnings. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
 
 #### Scenario: Hidden duplicate
 

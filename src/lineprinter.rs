@@ -13,7 +13,7 @@ lazy_static::lazy_static! {
 pub fn paint(
     terminal: &mut impl Terminal,
     line: &DisplayLine,
-    focused: usize,
+    focused: Range<usize>,
     offset: usize,
     width: usize,
     matches: &[Range<usize>],
@@ -31,7 +31,7 @@ pub fn paint(
     let focused_spans: Vec<_> = line
         .spans
         .iter()
-        .filter(|span| span.node == focused)
+        .filter(|span| span.node == focused.start)
         .collect();
     let left = usize::from(offset > 0);
     let right = usize::from(total > offset.saturating_add(width.saturating_sub(left)));
@@ -76,26 +76,19 @@ pub fn paint(
                 span.role,
                 TokenRole::Preview | TokenRole::Count | TokenRole::Warning
             );
-            style.bold = span.node == focused;
-            if let Some(source) = &span.source {
-                // For unchanged tokens retain character-level matching; normalized tokens
-                // highlight as a unit because byte offsets need not survive normalization.
-                let source = if source.len() == span.range.len() {
-                    source.start + byte - span.range.start
-                        ..source.start + byte - span.range.start + grapheme.len()
-                } else {
-                    source.clone()
-                };
-                let overlaps =
-                    |range: &Range<usize>| range.start < source.end && source.start < range.end;
-                if matches.iter().any(overlaps) {
-                    style.inverted = true;
-                }
-                if overlaps(current) {
-                    style.bg = terminal::YELLOW;
-                    style.fg = terminal::DEFAULT;
-                    style.bold = true;
-                }
+            style.bold = focused.contains(&span.node);
+            let overlaps = |query: &Range<usize>| {
+                span.matching_ranges(query)
+                    .iter()
+                    .any(|range| range.start < byte + grapheme.len() && byte < range.end)
+            };
+            if matches.iter().any(overlaps) {
+                style.inverted = true;
+            }
+            if overlaps(current) {
+                style.bg = terminal::YELLOW;
+                style.fg = terminal::DEFAULT;
+                style.bold = true;
             }
         }
         terminal.set_style(&style)?;
@@ -182,7 +175,16 @@ mod tests {
     use crate::toon_display::Layout;
     fn text(line: &DisplayLine, width: usize, offset: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();
-        paint(&mut terminal, line, usize::MAX, offset, width, &[], &(0..0)).unwrap();
+        paint(
+            &mut terminal,
+            line,
+            usize::MAX..usize::MAX,
+            offset,
+            width,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
         terminal.output().to_string()
     }
     #[test]
@@ -244,7 +246,7 @@ mod tests {
         paint(
             &mut terminal,
             &layout.lines[0],
-            usize::MAX,
+            usize::MAX..usize::MAX,
             0,
             100,
             &[],
@@ -274,5 +276,42 @@ mod tests {
             .all(|span| span.source.is_none()));
         assert!(line.spans.iter().any(|span| span.source.is_some()));
         assert!(text(line, 200, 0).ends_with("# WARN Non-finite number"));
+    }
+    #[test]
+    fn container_focus_bolds_row_values_and_implicit_root_fields() {
+        for (input, focus) in [(r#"[{"a":1}]"#, 1), (r#"{"a":1}"#, 0)] {
+            let flat = parse_top_level_json(input.into()).unwrap();
+            let layout = Layout::new(&flat);
+            let line = &layout.lines[layout.nodes[focus].line];
+            let end = flat[focus].pair_index().unwrap() + 1;
+            let mut terminal = VisibleEscapesTerminal::new(false, true);
+            paint(&mut terminal, line, focus..end, 0, 100, &[], &(0..0)).unwrap();
+            let output = terminal.output();
+            assert!(output.contains("_B_"), "{}", output);
+            assert!(!output.contains("_!B_"), "{}", output);
+        }
+    }
+
+    #[test]
+    fn mapped_search_does_not_highlight_unrelated_string_characters() {
+        let flat = parse_top_level_json(r#""aaaaNEEDLE""#.into()).unwrap();
+        let layout = Layout::new(&flat);
+        let source = flat.1.find("NEEDLE").unwrap();
+        let query = source..source + 6;
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint(
+            &mut terminal,
+            &layout.lines[0],
+            0..1,
+            0,
+            100,
+            std::slice::from_ref(&query),
+            &query,
+        )
+        .unwrap();
+        let output = terminal.output();
+        let before = output.find("aaaa").unwrap();
+        assert!(!output[..before].contains("_BG(Yellow)_"), "{}", output);
+        assert!(output[before..].contains("_BG(Yellow)_"), "{}", output);
     }
 }

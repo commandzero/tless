@@ -465,6 +465,18 @@ impl std::ops::IndexMut<usize> for FlatJson {
     }
 }
 
+/// Typed YAML keys are retained beside the historical flattened copy/search spelling.
+/// Flattened complex keys are not a parseable interchange representation.
+#[derive(Clone, Debug)]
+pub enum KeyValue {
+    String(String),
+    Number(String),
+    Boolean(bool),
+    Null,
+    Array(Vec<KeyValue>),
+    Object(Vec<(KeyValue, KeyValue)>),
+}
+
 #[derive(Debug)]
 pub struct Row {
     pub parent: OptionIndex,
@@ -476,6 +488,8 @@ pub struct Row {
     pub index_in_parent: usize,
     pub range: Range<usize>,
     pub key_range: Option<Range<usize>>,
+    pub key_value: Option<KeyValue>,
+    pub string_value: Option<String>,
     pub value: Value,
 }
 

@@ -85,8 +85,8 @@ impl ScreenWriter {
 
     pub fn print_viewer(&mut self, viewer: &JsonViewer, search_state: &SearchState) {
         let focus = (
-            viewer.focused_row,
-            viewer.anchor_line,
+            viewer.focused_node,
+            viewer.absolute_anchor_line,
             self.dimensions.width,
         );
         if self.last_focus != Some(focus) {
@@ -147,8 +147,8 @@ impl ScreenWriter {
     }
 
     pub fn mouse_action(&self, viewer: &JsonViewer, row: u16, column: u16) -> Action {
-        let index =
-            (viewer.top_row + usize::from(row.saturating_sub(1))).min(viewer.visible.len() - 1);
+        let index = (viewer.top_visible_line + usize::from(row.saturating_sub(1)))
+            .min(viewer.visible.len() - 1);
         let number_width = self.number_width(viewer);
         let column = usize::from(column.saturating_sub(1));
         if column >= number_width && column < number_width + 2 {
@@ -183,7 +183,7 @@ impl ScreenWriter {
             self.terminal.position_cursor(1, screen + 1)?;
             self.terminal.clear_line()?;
             self.terminal.reset_style()?;
-            let index = viewer.top_row + usize::from(screen);
+            let index = viewer.top_visible_line + usize::from(screen);
             let Some(visible) = viewer.visible.get(index) else {
                 self.terminal.set_fg(terminal::LIGHT_BLACK)?;
                 self.terminal.write_char('~')?;
@@ -236,7 +236,10 @@ impl ScreenWriter {
             lp::paint(
                 &mut self.terminal,
                 &fitted,
-                viewer.focused_row,
+                viewer.focused_node..match viewer.flatjson[viewer.focused_node].pair_index() {
+                    crate::flatjson::OptionIndex::Index(end) => end + 1,
+                    _ => viewer.focused_node + 1,
+                },
                 offset,
                 available - 2,
                 &matches,
@@ -285,9 +288,9 @@ impl ScreenWriter {
 
         let mut path_to_node = viewer
             .flatjson
-            .build_path_to_node(PathType::DotWithTopLevelIndex, viewer.focused_row)
+            .build_path_to_node(PathType::DotWithTopLevelIndex, viewer.focused_node)
             .unwrap();
-        let node = &viewer.layout.nodes[viewer.focused_row];
+        let node = &viewer.layout.nodes[viewer.focused_node];
         if let (Some(occurrence), Some(total)) = (node.occurrence, node.occurrence_total) {
             write!(path_to_node, " (occurrence {occurrence} of {total})")?;
         }
@@ -448,18 +451,34 @@ impl ScreenWriter {
         if let Some(span) = line
             .spans
             .iter()
-            .find(|span| span.node == viewer.focused_row && span.source.is_some())
+            .find(|span| span.node == viewer.focused_node && span.source.is_some())
         {
-            let column = UnicodeWidthStr::width(&line.text[..span.range.start]);
-            let available =
-                usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 3);
-            let offset = self
-                .horizontal_offsets
-                .entry(viewer.anchor_line)
-                .or_default();
-            if column < *offset || column >= offset.saturating_add(available) {
-                *offset = column;
-            }
+            self.reveal_byte_range(viewer, span.range.clone());
+        }
+    }
+
+    fn reveal_byte_range(&mut self, viewer: &JsonViewer, range: Range<usize>) {
+        let line = &viewer.visible[viewer.focused_line_index()].line;
+        let start_byte = line
+            .text
+            .grapheme_indices(true)
+            .find(|(byte, text)| byte + text.len() > range.start)
+            .map_or(range.start, |(byte, _)| byte);
+        let end_byte = line
+            .text
+            .grapheme_indices(true)
+            .find(|(byte, text)| byte + text.len() >= range.end)
+            .map_or(range.end, |(byte, text)| byte + text.len());
+        let start = UnicodeWidthStr::width(&line.text[..start_byte]);
+        let end = UnicodeWidthStr::width(&line.text[..end_byte]);
+        let available =
+            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 3);
+        let offset = self
+            .horizontal_offsets
+            .entry(viewer.absolute_anchor_line)
+            .or_default();
+        if start < *offset || end > offset.saturating_add(available) {
+            *offset = start;
         }
     }
 
@@ -472,7 +491,7 @@ impl ScreenWriter {
     }
 
     fn scroll_focused_line(&mut self, viewer: &JsonViewer, count: usize, right: bool) {
-        let absolute = viewer.anchor_line;
+        let absolute = viewer.absolute_anchor_line;
         let width = UnicodeWidthStr::width(
             viewer.visible[viewer.focused_line_index()]
                 .line
@@ -488,7 +507,7 @@ impl ScreenWriter {
     }
 
     pub fn scroll_focused_line_to_an_end(&mut self, viewer: &JsonViewer) {
-        let absolute = viewer.anchor_line;
+        let absolute = viewer.absolute_anchor_line;
         let width = UnicodeWidthStr::width(
             viewer.visible[viewer.focused_line_index()]
                 .line
@@ -498,30 +517,26 @@ impl ScreenWriter {
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
         let offset = self.horizontal_offsets.entry(absolute).or_default();
-        *offset = if *offset == 0 {
-            width.saturating_sub(available.saturating_sub(1))
-        } else {
-            0
-        };
+        let end = width.saturating_sub(available.saturating_sub(1));
+        *offset = if *offset < end { end } else { 0 };
     }
 
     pub fn scroll_line_to_search_match(&mut self, viewer: &JsonViewer, range: Range<usize>) {
-        let absolute = viewer.anchor_line;
         let line = &viewer.visible[viewer.focused_line_index()].line;
-        if let Some(span) = line.spans.iter().find(|span| {
-            span.node == viewer.focused_row
-                && span
-                    .source
-                    .as_ref()
-                    .is_some_and(|source| source.start < range.end && range.start < source.end)
-        }) {
-            let column = UnicodeWidthStr::width(&line.text[..span.range.start]);
-            let available =
-                usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 3);
-            let offset = self.horizontal_offsets.entry(absolute).or_default();
-            if column < *offset || column >= offset.saturating_add(available) {
-                *offset = column;
-            }
+        let target = line
+            .spans
+            .iter()
+            .filter(|span| span.node == viewer.focused_node)
+            .find_map(|span| span.matching_ranges(&range).into_iter().next());
+        if let Some(target) = target {
+            self.reveal_byte_range(viewer, target);
+            // The match may lie deep inside the token; generic node focus must
+            // not move the next paint back to that token's beginning.
+            self.last_focus = Some((
+                viewer.focused_node,
+                viewer.absolute_anchor_line,
+                self.dimensions.width,
+            ));
         }
     }
 }

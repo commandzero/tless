@@ -10,9 +10,9 @@ pub struct JsonViewer {
     pub layout: Layout,
     pub visible: Vec<VisibleLine>,
     /// Index into the visibility projection, not the parsed node list.
-    pub top_row: Index,
-    pub focused_row: Index,
-    pub anchor_line: usize,
+    pub top_visible_line: Index,
+    pub focused_node: Index,
+    pub absolute_anchor_line: usize,
     jump_distance: Option<usize>,
     desired_depth: usize,
     pub dimensions: TTYDimensions,
@@ -23,14 +23,14 @@ impl JsonViewer {
     pub fn new(flatjson: FlatJson) -> Self {
         let layout = Layout::new(&flatjson);
         let visible = layout.project(&flatjson);
-        let anchor_line = layout.nodes[0].line;
+        let absolute_anchor_line = layout.nodes[0].line;
         Self {
             flatjson,
             layout,
             visible,
-            top_row: 0,
-            focused_row: 0,
-            anchor_line,
+            top_visible_line: 0,
+            focused_node: 0,
+            absolute_anchor_line,
             jump_distance: None,
             desired_depth: 0,
             dimensions: TTYDimensions::default(),
@@ -41,19 +41,20 @@ impl JsonViewer {
     pub fn focused_line_index(&self) -> usize {
         self.visible
             .iter()
-            .position(|v| v.absolute == self.anchor_line)
+            .position(|v| v.absolute == self.absolute_anchor_line)
             .unwrap_or(0)
     }
 
     #[cfg(test)]
-    pub fn index_of_focused_row_on_screen(&self) -> u16 {
-        self.focused_line_index().saturating_sub(self.top_row) as u16
+    pub fn index_of_focused_node_on_screen(&self) -> u16 {
+        self.focused_line_index()
+            .saturating_sub(self.top_visible_line) as u16
     }
 
     fn focus(&mut self, node: usize) {
-        self.focused_row = normalize_node(&self.flatjson, node);
-        self.focused_row = self.flatjson.first_visible_ancestor(self.focused_row);
-        self.anchor_line = self.layout.nodes[self.focused_row].line;
+        self.focused_node = normalize_node(&self.flatjson, node);
+        self.focused_node = self.flatjson.first_visible_ancestor(self.focused_node);
+        self.absolute_anchor_line = self.layout.nodes[self.focused_node].line;
     }
 
     fn reveal(&mut self, node: usize, source: Option<usize>) {
@@ -79,28 +80,30 @@ impl JsonViewer {
                             .is_some_and(|range| range.contains(&source))
                 })
             }) {
-                self.anchor_line = line;
+                self.absolute_anchor_line = line;
             }
         }
     }
 
     fn refresh_projection(&mut self) {
         self.visible = self.layout.project(&self.flatjson);
-        let recovered = self.flatjson.first_visible_ancestor(self.focused_row);
-        if recovered != self.focused_row {
+        let recovered = self.flatjson.first_visible_ancestor(self.focused_node);
+        if recovered != self.focused_node {
             self.focus(recovered);
         }
-        self.top_row = self.top_row.min(self.visible.len().saturating_sub(1));
+        self.top_visible_line = self
+            .top_visible_line
+            .min(self.visible.len().saturating_sub(1));
     }
 
     fn ensure_visible(&mut self) {
         let index = self.focused_line_index();
         let height = usize::from(self.dimensions.height).max(1);
         let padding = usize::from(self.scrolloff_setting).min((height - 1) / 2);
-        if index < self.top_row + padding {
-            self.top_row = index.saturating_sub(padding);
-        } else if index >= self.top_row + height - padding {
-            self.top_row = (index + padding + 1)
+        if index < self.top_visible_line + padding {
+            self.top_visible_line = index.saturating_sub(padding);
+        } else if index >= self.top_visible_line + height - padding {
+            self.top_visible_line = (index + padding + 1)
                 .saturating_sub(height)
                 .min(self.visible.len().saturating_sub(height));
         }
@@ -123,16 +126,17 @@ impl JsonViewer {
     fn focus_line(&mut self, index: usize, retain_field: bool) {
         let owner = self.visible[index].line.owner;
         let mut node = owner;
-        if retain_field && self.flatjson[self.focused_row].key_range.is_some() {
+        if retain_field
+            && self.layout.nodes[self.focused_node].table_cell
+            && self.layout.nodes[owner].table_row
+        {
             // Match the logical column ordinal, including escaped-equivalent keys.
-            if let OptionIndex::Index(parent) = self.flatjson[self.focused_row].parent {
-                if self.layout.nodes[parent].line == self.layout.nodes[self.focused_row].line
-                    && self.flatjson[owner].is_expanded()
-                {
+            if let OptionIndex::Index(parent) = self.flatjson[self.focused_node].parent {
+                if self.flatjson[owner].is_expanded() {
                     let mut ordinal = 0;
                     let mut child = self.flatjson[parent].first_child();
                     while let OptionIndex::Index(candidate) = child {
-                        if candidate == self.focused_row {
+                        if candidate == self.focused_node {
                             break;
                         }
                         ordinal += 1;
@@ -156,14 +160,14 @@ impl JsonViewer {
     }
 
     fn parent(&mut self) {
-        if let OptionIndex::Index(parent) = self.flatjson[self.focused_row].parent {
+        if let OptionIndex::Index(parent) = self.flatjson[self.focused_node].parent {
             self.focus(parent);
         }
     }
 
     fn sibling(&mut self, count: usize, next: bool) {
         for _ in 0..count {
-            let before = self.focused_row;
+            let before = self.focused_node;
             let sibling = if next {
                 self.flatjson[before].next_sibling
             } else {
@@ -190,7 +194,7 @@ impl JsonViewer {
             } else {
                 self.parent();
             }
-            if self.focused_row == before {
+            if self.focused_node == before {
                 break;
             }
         }
@@ -207,7 +211,7 @@ impl JsonViewer {
     }
 
     fn collapse_siblings(&mut self, collapsed: bool, deep: bool) {
-        let mut node = match self.flatjson[self.focused_row].parent {
+        let mut node = match self.flatjson[self.focused_node].parent {
             OptionIndex::Index(parent) => self.flatjson[parent].first_child(),
             OptionIndex::Nil => OptionIndex::Index(0),
         };
@@ -226,23 +230,72 @@ impl JsonViewer {
     }
 
     fn scroll(&mut self, count: usize, down: bool) {
-        self.top_row = if down {
-            self.top_row
+        self.top_visible_line = if down {
+            self.top_visible_line
                 .saturating_add(count)
                 .min(self.visible.len() - 1)
         } else {
-            self.top_row.saturating_sub(count)
+            self.top_visible_line.saturating_sub(count)
         };
         let height = usize::from(self.dimensions.height).max(1);
         let focus = self.focused_line_index();
-        let index = focus.clamp(
-            self.top_row,
-            (self.top_row + height - 1).min(self.visible.len() - 1),
-        );
+        let padding = usize::from(self.scrolloff_setting).min((height - 1) / 2);
+        let first = (self.top_visible_line + padding).min(self.visible.len() - 1);
+        let last = (self.top_visible_line + height - padding - 1).min(self.visible.len() - 1);
+        let index = focus.clamp(first, last.max(first));
         let index = (index..self.visible.len())
             .find(|&i| !self.visible[i].line.separator)
             .unwrap_or(index);
         if index != focus {
+            self.focus_line(index, true);
+        }
+    }
+
+    fn move_until_depth_change(&mut self, down: bool) {
+        let mut depth = self.flatjson[self.focused_node].depth;
+        let mut moved = false;
+        loop {
+            let previous_node = self.focused_node;
+            let previous_line = self.absolute_anchor_line;
+            self.vertical(1, down);
+            if self.absolute_anchor_line == previous_line {
+                break;
+            }
+            let next_depth = self.flatjson[self.focused_node].depth;
+            if next_depth != depth {
+                if !down && !moved && next_depth > depth {
+                    depth = next_depth;
+                } else {
+                    if moved && (down && next_depth > depth || !down) {
+                        self.focus(previous_node);
+                        self.absolute_anchor_line = previous_line;
+                    }
+                    break;
+                }
+            }
+            moved = true;
+        }
+    }
+
+    fn jump(&mut self, distance: usize, down: bool) {
+        let previous_top = self.top_visible_line;
+        let screen_index = self.focused_line_index().saturating_sub(previous_top);
+        let height = usize::from(self.dimensions.height).max(1);
+        self.top_visible_line = if down {
+            previous_top
+                .saturating_add(distance)
+                .min(self.visible.len().saturating_sub(height))
+                .max(previous_top)
+        } else {
+            previous_top.saturating_sub(distance)
+        };
+        if self.top_visible_line == previous_top {
+            self.vertical(distance, down);
+        } else {
+            let index = (self.top_visible_line + screen_index).min(self.visible.len() - 1);
+            let index = (index..self.visible.len())
+                .find(|&i| !self.visible[i].line.separator)
+                .unwrap_or(index);
             self.focus_line(index, true);
         }
     }
@@ -254,20 +307,20 @@ impl JsonViewer {
             Action::MoveUp(n) => self.vertical(n, false),
             Action::MoveDown(n) => self.vertical(n, true),
             Action::MoveRight => {
-                if self.flatjson[self.focused_row].is_collapsed() {
-                    self.collapse(self.focused_row, false);
+                if self.flatjson[self.focused_node].is_collapsed() {
+                    self.collapse(self.focused_node, false);
                     self.refresh_projection();
                 } else if let OptionIndex::Index(child) =
-                    self.flatjson[self.focused_row].first_child()
+                    self.flatjson[self.focused_node].first_child()
                 {
                     self.focus(child);
                 }
             }
             Action::MoveLeft => {
-                if self.layout.nodes[self.focused_row].collapsible
-                    && self.flatjson[self.focused_row].is_expanded()
+                if self.layout.nodes[self.focused_node].collapsible
+                    && self.flatjson[self.focused_node].is_expanded()
                 {
-                    self.collapse(self.focused_row, true);
+                    self.collapse(self.focused_node, true);
                     self.refresh_projection();
                 } else {
                     self.parent();
@@ -278,7 +331,7 @@ impl JsonViewer {
             Action::FocusNextSibling(n) => self.sibling(n, true),
             Action::FocusFirstSibling | Action::FocusLastSibling => {
                 let last = matches!(action, Action::FocusLastSibling);
-                let mut node = match self.flatjson[self.focused_row].parent {
+                let mut node = match self.flatjson[self.focused_node].parent {
                     OptionIndex::Index(parent) => self.flatjson[parent].first_child().unwrap(),
                     OptionIndex::Nil => 0,
                 };
@@ -297,23 +350,13 @@ impl JsonViewer {
             }
             Action::FocusTop => {
                 self.focus(0);
-                self.top_row = 0;
+                self.top_visible_line = 0;
             }
             Action::FocusBottom => {
                 self.focus_line(self.visible.len() - 1, false);
             }
             Action::MoveUpUntilDepthChange | Action::MoveDownUntilDepthChange => {
-                let down = matches!(action, Action::MoveDownUntilDepthChange);
-                let depth = self.flatjson[self.focused_row].depth;
-                loop {
-                    let before = self.focused_line_index();
-                    self.vertical(1, down);
-                    if before == self.focused_line_index()
-                        || self.flatjson[self.focused_row].depth != depth
-                    {
-                        break;
-                    }
-                }
+                self.move_until_depth_change(matches!(action, Action::MoveDownUntilDepthChange));
             }
             Action::JumpTo { line, make_visible } => {
                 let line = line.min(self.layout.lines.len() - 1);
@@ -347,8 +390,7 @@ impl JsonViewer {
                     .jump_distance
                     .unwrap_or((usize::from(self.dimensions.height) / 2).max(1));
                 let down = matches!(action, Action::JumpDown(_));
-                self.vertical(distance, down);
-                self.scroll(distance, down);
+                self.jump(distance, down);
                 track = false;
             }
             Action::MoveFocusedLineToTop
@@ -362,12 +404,12 @@ impl JsonViewer {
                     Action::MoveFocusedLineToCenter => height / 2,
                     _ => height - 1,
                 };
-                self.top_row = self.focused_line_index().saturating_sub(padding);
+                self.top_visible_line = self.focused_line_index().saturating_sub(padding);
                 track = false;
             }
             Action::ClickArrow(row) => {
-                let index =
-                    (self.top_row + usize::from(row.saturating_sub(1))).min(self.visible.len() - 1);
+                let index = (self.top_visible_line + usize::from(row.saturating_sub(1)))
+                    .min(self.visible.len() - 1);
                 let node = self.visible[index].line.owner;
                 self.focus(node);
                 self.collapse(node, !self.flatjson[node].is_collapsed());
@@ -375,8 +417,8 @@ impl JsonViewer {
             }
             Action::ToggleCollapsed => {
                 self.collapse(
-                    self.focused_row,
-                    !self.flatjson[self.focused_row].is_collapsed(),
+                    self.focused_node,
+                    !self.flatjson[self.focused_node].is_collapsed(),
                 );
                 self.refresh_projection();
             }
@@ -398,7 +440,7 @@ impl JsonViewer {
                 | Action::MoveFocusedLineToBottom
                 | Action::ResizeViewerDimensions(_)
         ) {
-            self.desired_depth = self.flatjson[self.focused_row].depth;
+            self.desired_depth = self.flatjson[self.focused_node].depth;
         }
         if track {
             self.ensure_visible();
@@ -517,7 +559,7 @@ mod tests {
     }
     fn path(v: &JsonViewer) -> String {
         v.flatjson
-            .build_path_to_node(PathType::Dot, v.focused_row)
+            .build_path_to_node(PathType::Dot, v.focused_node)
             .unwrap()
     }
     fn act(v: &mut JsonViewer, actions: &[Action]) {
@@ -531,17 +573,17 @@ mod tests {
         let mut v = viewer(r#"{"tags":["rust","cli"],"done":true}"#);
         act(&mut v, &[Action::MoveRight, Action::MoveRight]);
         assert_eq!(path(&v), ".tags[0]");
-        let line = v.anchor_line;
+        let line = v.absolute_anchor_line;
         v.perform_action(Action::FocusNextSibling(1));
         assert_eq!(path(&v), ".tags[1]");
         assert_eq!(
-            &v.flatjson.1[v.flatjson[v.focused_row].range.clone()],
+            &v.flatjson.1[v.flatjson[v.focused_node].range.clone()],
             "\"cli\""
         );
-        assert_eq!(line, v.anchor_line);
+        assert_eq!(line, v.absolute_anchor_line);
         v.perform_action(Action::MoveDown(1));
         assert_eq!(path(&v), ".done");
-        assert_eq!(v.anchor_line, line + 1);
+        assert_eq!(v.absolute_anchor_line, line + 1);
         v.perform_action(Action::MoveUp(1));
         assert_eq!(path(&v), ".tags");
     }
@@ -561,13 +603,13 @@ mod tests {
         assert_eq!(path(&v), ".users[0].name");
         v.perform_action(Action::MoveDown(1));
         assert_eq!(
-            &v.flatjson.1[v.flatjson[v.focused_row].range.clone()],
+            &v.flatjson.1[v.flatjson[v.focused_node].range.clone()],
             "\"Lin\""
         );
-        let line = v.anchor_line;
+        let line = v.absolute_anchor_line;
         v.perform_action(Action::FocusParent);
         assert_eq!(path(&v), ".users[1]");
-        assert_eq!(line, v.anchor_line);
+        assert_eq!(line, v.absolute_anchor_line);
         v.perform_action(Action::FocusParent);
         assert_eq!(path(&v), ".users");
     }
@@ -585,13 +627,13 @@ mod tests {
                 Action::ToggleCollapsed,
             ],
         );
-        let child = v.focused_row;
+        let child = v.focused_node;
         act(&mut v, &[Action::FocusParent, Action::ToggleCollapsed]);
         assert_eq!(v.visible.len(), 2);
         v.perform_action(Action::MoveRight);
         assert!(v.flatjson[child].is_collapsed());
         v.perform_action(Action::MoveRight);
-        assert_eq!(v.focused_row, child);
+        assert_eq!(v.focused_node, child);
         v.perform_action(Action::MoveRight);
         assert!(!v.flatjson[child].is_collapsed());
         v.perform_action(Action::MoveRight);
@@ -613,32 +655,35 @@ mod tests {
         });
         assert_eq!(path(&v), ".users[1]");
         act(&mut v, &[Action::MoveRight, Action::FocusNextSibling(1)]);
-        let node = v.focused_row;
+        let node = v.focused_node;
         let key = v.flatjson[node].key_range.as_ref().unwrap().start;
         act(&mut v, &[Action::FocusParent, Action::ToggleCollapsed]);
         v.perform_action(Action::FocusNode {
             node,
             source: Some(key),
         });
-        assert_eq!(v.focused_row, node);
-        assert_eq!(v.anchor_line, 0, "shared key header is the display anchor");
+        assert_eq!(v.focused_node, node);
+        assert_eq!(
+            v.absolute_anchor_line, 0,
+            "shared key header is the display anchor"
+        );
         assert_eq!(path(&v), ".users[1].name");
     }
 
     #[test]
     fn separator_jumps_skip_annotations_and_empty_roots_remain_selectable() {
         let mut v = JsonViewer::new(parse_top_level_yaml("---\n{}\n---\n42\n".into()).unwrap());
-        let first = v.focused_row;
+        let first = v.focused_node;
         v.perform_action(Action::MoveDown(1));
-        assert_ne!(first, v.focused_row);
+        assert_ne!(first, v.focused_node);
         assert!(!v.visible[v.focused_line_index()].line.separator);
         v.perform_action(Action::MoveUp(1));
-        assert_eq!(v.focused_row, first);
+        assert_eq!(v.focused_node, first);
         v.perform_action(Action::JumpTo {
             line: 2,
             make_visible: false,
         });
-        assert_ne!(v.focused_row, first);
+        assert_ne!(v.focused_node, first);
         let mut empty = viewer("{}");
         act(
             &mut empty,
@@ -648,7 +693,7 @@ mod tests {
                 Action::FocusBottom,
             ],
         );
-        assert_eq!(empty.focused_row, 0);
+        assert_eq!(empty.focused_node, 0);
         assert_eq!(empty.visible.len(), 1);
         assert!(empty.visible[0].line.text.is_empty());
     }
@@ -666,14 +711,14 @@ mod tests {
         let col = UnicodeWidthStr::width(&v.layout.lines[0].text[..span.range.start]);
         let (node, source) = crate::lineprinter::hit_test(&v.visible[0].line, col);
         v.perform_action(Action::FocusNode { node, source });
-        assert_eq!(v.focused_row, second);
+        assert_eq!(v.focused_node, second);
         v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
             width: 2,
             height: 0,
         }));
-        assert_eq!(v.focused_row, second);
+        assert_eq!(v.focused_node, second);
         v.perform_action(Action::ClickArrow(1));
-        assert_eq!(v.focused_row, 0);
+        assert_eq!(v.focused_node, 0);
         assert!(v.flatjson[0].is_collapsed());
     }
 
@@ -692,21 +737,137 @@ mod tests {
             height: 8,
         }));
         v.perform_action(Action::MoveDown(12));
-        assert_eq!(v.anchor_line, 12);
-        assert!(v.index_of_focused_row_on_screen() < 8);
+        assert_eq!(v.absolute_anchor_line, 12);
+        assert!(v.index_of_focused_node_on_screen() < 8);
         v.perform_action(Action::MoveFocusedLineToCenter);
-        assert_eq!(v.index_of_focused_row_on_screen(), 4);
+        assert_eq!(v.index_of_focused_node_on_screen(), 4);
         v.perform_action(Action::PageDown(1));
-        assert!(v.top_row >= 8);
+        assert!(v.top_visible_line >= 8);
         v.perform_action(Action::JumpDown(Some(3)));
-        let before = v.anchor_line;
+        let before = v.absolute_anchor_line;
         v.perform_action(Action::JumpUp(None));
-        assert_eq!(v.anchor_line, before - 3);
+        assert_eq!(v.absolute_anchor_line, before - 3);
         v.perform_action(Action::MoveDown(usize::MAX));
-        assert_eq!(v.anchor_line, 29);
+        assert_eq!(v.absolute_anchor_line, 29);
         v.perform_action(Action::MoveUp(usize::MAX));
-        assert_eq!(v.anchor_line, 0);
+        assert_eq!(v.absolute_anchor_line, 0);
         v.perform_action(Action::PageDown(usize::MAX));
-        assert!(v.top_row < v.visible.len());
+        assert!(v.top_visible_line < v.visible.len());
+    }
+    #[test]
+    fn ordinary_fields_and_table_cells_enter_inline_array_owner_vertically() {
+        let mut v = viewer(r#"{"x":1,"tags":[2,3]}"#);
+        act(&mut v, &[Action::MoveRight, Action::MoveDown(1)]);
+        assert_eq!(path(&v), ".tags");
+        let mut v = viewer(r#"{"users":[{"a":1}],"tags":[2,3]}"#);
+        act(
+            &mut v,
+            &[
+                Action::MoveRight,
+                Action::MoveRight,
+                Action::MoveRight,
+                Action::MoveDown(1),
+            ],
+        );
+        assert_eq!(path(&v), ".tags");
+    }
+
+    #[test]
+    fn retained_depth_and_first_last_sibling_motions_follow_logical_boundaries() {
+        let mut v = viewer(r#"{"a":1,"obj":{"b":2,"c":{"d":3},"e":4},"z":5}"#);
+        act(
+            &mut v,
+            &[Action::MoveRight, Action::MoveDownUntilDepthChange],
+        );
+        assert_eq!(path(&v), ".obj");
+        v.perform_action(Action::MoveDownUntilDepthChange);
+        assert_eq!(path(&v), ".obj.b");
+        v.perform_action(Action::MoveDownUntilDepthChange);
+        assert_eq!(path(&v), ".obj.c");
+        act(
+            &mut v,
+            &[Action::MoveRight, Action::MoveDownUntilDepthChange],
+        );
+        assert_eq!(path(&v), ".obj.e");
+        v.perform_action(Action::MoveUpUntilDepthChange);
+        assert_eq!(path(&v), ".obj.c.d");
+        v.perform_action(Action::MoveUpUntilDepthChange);
+        assert_eq!(path(&v), ".obj.c");
+        v.perform_action(Action::FocusFirstSibling);
+        assert_eq!(path(&v), ".obj.b");
+        v.perform_action(Action::FocusLastSibling);
+        assert_eq!(path(&v), ".obj.e");
+        act(&mut v, &[Action::FocusParent, Action::FocusLastSibling]);
+        assert_eq!(path(&v), ".z");
+        v.perform_action(Action::FocusFirstSibling);
+        assert_eq!(path(&v), ".a");
+    }
+
+    #[test]
+    fn deep_collapse_and_expand_preserve_siblings_and_recover_viewport() {
+        let mut v = viewer(r#"{"a":{"b":{"x":1}},"c":{"d":{"y":2}},"last":3}"#);
+        v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
+            width: 40,
+            height: 3,
+        }));
+        act(
+            &mut v,
+            &[
+                Action::MoveRight,
+                Action::FocusNextSibling(1),
+                Action::MoveFocusedLineToTop,
+                Action::DeepCollapseNodeAndSiblings,
+            ],
+        );
+        assert_eq!(path(&v), ".c");
+        assert_eq!(v.visible.len(), 3);
+        assert!(v.flatjson[1].is_collapsed());
+        assert!(v.flatjson[2].is_collapsed());
+        assert!(v.focused_line_index() >= v.top_visible_line);
+        v.perform_action(Action::ExpandNodeAndSiblings);
+        assert!(!v.flatjson[1].is_collapsed());
+        assert!(
+            v.flatjson[2].is_collapsed(),
+            "shallow expansion restores nested collapse"
+        );
+        v.perform_action(Action::DeepExpandNodeAndSiblings);
+        assert!(v
+            .flatjson
+            .0
+            .iter()
+            .filter(|row| row.is_container())
+            .all(|row| row.is_expanded()));
+        assert_eq!(path(&v), ".c");
+        assert!(v.index_of_focused_node_on_screen() < 3);
+    }
+
+    #[test]
+    fn scrolloff_and_half_window_eof_bounds_are_retained() {
+        let input = format!(
+            "{{{}}}",
+            (0..30)
+                .map(|i| format!("\"k{i}\":{i}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let mut v = viewer(&input);
+        v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
+            width: 40,
+            height: 10,
+        }));
+        v.scrolloff_setting = 2;
+        v.perform_action(Action::ScrollDown(5));
+        assert_eq!(v.focused_line_index(), 7);
+        v.perform_action(Action::ScrollUp(3));
+        assert!(v.focused_line_index() <= v.top_visible_line + 7);
+        v.perform_action(Action::FocusBottom);
+        for _ in 0..5 {
+            v.perform_action(Action::JumpDown(None));
+        }
+        assert_eq!(v.top_visible_line, 20);
+        assert_eq!(v.focused_line_index(), 29);
+        v.perform_action(Action::JumpUp(None));
+        assert_eq!(v.top_visible_line, 15);
+        assert_eq!(v.focused_line_index(), 24);
     }
 }
