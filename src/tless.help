@@ -85,8 +85,8 @@
   zt           Move the focused node to the top of the screen.
   zb           Move the focused node to the bottom of the screen.
 
-  .         *  Scroll a truncated TOON line one cell to the right (or [4mN[0m cells).
-  ,         *  Scroll a truncated TOON line one cell to the left  (or [4mN[0m cells).
+  .         *  Scroll a truncated TOON line 10 cells to the right (or 10 × [4mN[0m cells).
+  ,         *  Scroll a truncated TOON line 10 cells to the left  (or 10 × [4mN[0m cells).
   ;            Scroll a truncated TOON line all the way to the end, or, if
                  already at the end, back to the start.
 

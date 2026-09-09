@@ -347,6 +347,19 @@ mod terminal_commands {
     }
 
     #[test]
+    fn horizontal_keys_move_in_ten_cell_increments() {
+        let input = r#""0123456789abcdefghijKLMNOPQRSTUVWXYZ0123456789abcdefghij""#;
+        for (commands, expected) in [
+            (".q", "…abcdefghij"),
+            ("2.q", "…KLMNOPQRST"),
+            ("2.,q", "…abcdefghij"),
+        ] {
+            let output = strip_styles(&session_with_width(input, commands, None, 35));
+            assert!(output.contains(expected), "{}", output);
+        }
+    }
+
+    #[test]
     fn semicolon_reaches_the_end_from_an_intermediate_horizontal_offset() {
         let input = format!("\"{}TAIL\"", "a".repeat(150));
         let output = strip_styles(&session_with_width(&input, "10.;q", None, 35));

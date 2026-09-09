@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Scroll horizontally in ten-cell increments with `,` and `.`, multiplied by numeric prefixes.
+
 - Preserve value colors when collapsing short primitive arrays whose complete inline form fits the terminal.
 
 - Remove the `input` prefix from status-bar paths; show `.` at the document root. [#4](https://github.com/commandzero/tless/pull/4)

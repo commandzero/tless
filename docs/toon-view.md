@@ -75,6 +75,8 @@ address. Relative numbers count visible vertical motions. Root warning
 separators have absolute addresses but vertical navigation skips them.
 
 Long individual values and table rows scroll horizontally without wrapping.
+`,` and `.` scroll left and right by 10 terminal cells per press; a numeric
+prefix multiplies that distance.
 Resizing keeps the selected value while automatic array layouts adapt to the
 available width. Line addresses follow the resulting layout. Collapsed previews give up width before count and
 warning annotations; warnings remain reachable through horizontal scrolling.

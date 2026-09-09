@@ -418,13 +418,13 @@ impl App {
                             }),
                         },
                         Key::Char('.') => {
-                            let count = self.parse_input_buffer_as_number();
+                            let count = self.parse_input_buffer_as_number().saturating_mul(10);
                             self.screen_writer
                                 .scroll_focused_line_right(&self.viewer, count);
                             None
                         }
                         Key::Char(',') => {
-                            let count = self.parse_input_buffer_as_number();
+                            let count = self.parse_input_buffer_as_number().saturating_mul(10);
                             self.screen_writer
                                 .scroll_focused_line_left(&self.viewer, count);
                             None
