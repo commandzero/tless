@@ -666,12 +666,7 @@ impl Layout {
                     line.owner = node;
                     if !flat[node].is_array() {
                         let count = info.entry_count;
-                        line.token(
-                            &format!(" {count} {}", if count == 1 { "entry" } else { "entries" }),
-                            node,
-                            TokenRole::Count,
-                            None,
-                        );
+                        line.token(&format!(" {{{count}}}"), node, TokenRole::Count, None);
                     }
                     let mut messages: Vec<_> = self.own_warnings[node]
                         .iter()
@@ -1210,10 +1205,7 @@ mod tests {
         flat.collapse(rows[1]);
         let collapsed = layout.project(&flat);
         assert_eq!(collapsed[2].absolute, 2);
-        assert!(collapsed[2]
-            .line
-            .text
-            .starts_with("   2 entries a: .nan,b: 4"));
+        assert!(collapsed[2].line.text.starts_with("   {2} a: .nan,b: 4"));
         assert!(collapsed[2]
             .line
             .text

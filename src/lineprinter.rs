@@ -161,7 +161,7 @@ pub fn paint(
                 span.role,
                 TokenRole::Preview | TokenRole::Count | TokenRole::Warning
             );
-            if focused.contains(&span.node) {
+            if focused.contains(&span.node) && !style.dimmed {
                 style.fg = style.fg.bright();
             }
             let overlaps = |query: &Range<usize>| {
@@ -322,8 +322,27 @@ mod tests {
         let projection = layout.project(&flat);
         let line = &projection[0].line;
         let fitted = fit_annotations(line, 50);
-        assert!(fitted.text.contains("2 entries"));
+        assert!(fitted.text.contains("{2}"));
         assert!(fitted.text.contains("# WARN"));
+        let render = |focus| {
+            let mut terminal = VisibleEscapesTerminal::new(false, true);
+            paint(
+                &mut terminal,
+                &fitted,
+                focus,
+                LineViewport::new(&fitted, 0, 0),
+                200,
+                &[],
+                &(0..0),
+            )
+            .unwrap();
+            terminal.output().to_string()
+        };
+        let selected = render(1..flat[1].pair_index().unwrap() + 1);
+        let unselected = render(0..0);
+        // Count, preview, and warning styles stay identical when their owner is focused.
+        let hints = |text: String| text.split_once("_FG(LightBlack)_").unwrap().1.to_string();
+        assert_eq!(hints(selected), hints(unselected));
         for span in &fitted.spans {
             assert!(span.range.end <= fitted.text.len());
             assert!(fitted.text.is_char_boundary(span.range.start));

@@ -55,7 +55,7 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline pri
 
 ### Requirement: Syntax styling
 
-Keys and table field names SHALL share a syntax category. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. TOON array counts SHALL use structural styling. Expanded data SHALL retain its data styling. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling.
+Keys and table field names SHALL share a syntax category. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. TOON array counts SHALL use structural styling. Expanded data SHALL retain its data styling. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling. These annotations SHALL remain subdued without focus highlighting or bold when their owning container is selected.
 
 #### Scenario: Expanded primitive array
 
@@ -65,13 +65,13 @@ Keys and table field names SHALL share a syntax category. Strings, numbers, bool
 
 ### Requirement: Collapse presentation
 
-Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Collapsing SHALL retain the container's header, hide its contents, and append a subdued preview in document order. A collapsed object SHALL show its immediate-entry count as `1 entry` or `N entries`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
+Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Collapsing SHALL retain the container's header, hide its contents, and append a subdued preview in document order. A collapsed object SHALL show its immediate-entry count as `{N}`, such as `{1}` or `{7}`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
 
 #### Scenario: Object and array collapse
 
 - **WHEN** `owner` has 2 immediate fields and `tags` has 3 items, and both are collapsed
 - **THEN** their lines SHALL retain `owner:` and `tags[3]:`
-- **AND** only `owner` SHALL receive `2 entries`
+- **AND** only `owner` SHALL receive `{2}`
 - **AND** both previews SHALL use subdued TOON-style spelling and escaping
 
 #### Scenario: Tabular row collapse

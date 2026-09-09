@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Show collapsed object counts as subdued `{N}` hints and keep collapsed annotations out of selection highlighting. [#4](https://github.com/commandzero/tless/pull/4)
+
 - Use bright colors instead of bold for selection, lighten the current line number, and limit focus highlighting to the selected display line. [#4](https://github.com/commandzero/tless/pull/4)
 
 - **Breaking:** Replace Line/Data modes with one TOON document view in every build. Remove `--mode`, `-m`, interactive `m`, and closing-delimiter navigation. Remove obsolete flags from scripts and use parent/child navigation for containers. Absolute jumps now address expanded TOON lines. See [the document view](docs/toon-view.md). [#4](https://github.com/commandzero/tless/pull/4)

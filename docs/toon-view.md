@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T21:17:20Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T21:22:03Z }
 ---
 
 # TOON document view
@@ -47,7 +47,9 @@ row's field identity. Generated warnings, counts, and previews add no matches.
 
 The `▾` and `▸` arrows occupy a separate gutter. Collapsing retains a container
 header and shows a subdued preview. Objects also show their immediate-entry
-count. Arrays keep the count already in their TOON header. Expanding an ancestor
+count as `{N}`, such as `{7}` for seven entries. Counts, previews, and warnings
+remain subdued even on the selected line. Arrays keep the count already in their
+TOON header. Expanding an ancestor
 restores descendant collapse states. Empty containers have no collapse arrow.
 
 Absolute line numbers are on by default; relative numbers are off. Keep using
