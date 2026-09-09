@@ -10,15 +10,53 @@ lazy_static::lazy_static! {
     pub static ref JS_IDENTIFIER: Regex = Regex::new("^[_$a-zA-Z][_$a-zA-Z0-9]*$").unwrap();
 }
 
+/// Indentation suppression and horizontal scrolling have different semantics:
+/// only scrolling hides document content and earns a leading ellipsis.
+#[derive(Clone, Copy, Debug)]
+pub struct LineViewport {
+    pub horizontal_offset: usize,
+    pub removed_indentation: usize,
+}
+
+impl LineViewport {
+    pub fn new(line: &DisplayLine, horizontal_offset: usize, indentation_reduction: usize) -> Self {
+        let removed_indentation = line
+            .text
+            .bytes()
+            .take(indentation_reduction)
+            .take_while(|byte| *byte == b' ')
+            .count();
+        Self {
+            horizontal_offset,
+            removed_indentation,
+        }
+    }
+
+    pub fn source_column(self, viewport_column: usize) -> usize {
+        self.removed_indentation
+            + self.horizontal_offset
+            + viewport_column.saturating_sub(usize::from(self.horizontal_offset > 0))
+    }
+
+    pub fn reduced_column(self, source_column: usize) -> usize {
+        source_column.saturating_sub(self.removed_indentation)
+    }
+
+    pub fn content_width(self, line: &DisplayLine) -> usize {
+        UnicodeWidthStr::width(line.text.as_str()).saturating_sub(self.removed_indentation)
+    }
+}
+
 pub fn paint(
     terminal: &mut impl Terminal,
     line: &DisplayLine,
     focused: Range<usize>,
-    offset: usize,
+    viewport: LineViewport,
     width: usize,
     matches: &[Range<usize>],
     current: &Range<usize>,
 ) -> std::fmt::Result {
+    let offset = viewport.removed_indentation + viewport.horizontal_offset;
     // Inspect only the requested window plus one cell; long inline arrays must
     // not be measured in full on every redraw at their left edge.
     let mut total = 0;
@@ -33,7 +71,7 @@ pub fn paint(
         .iter()
         .filter(|span| span.node == focused.start)
         .collect();
-    let left = usize::from(offset > 0);
+    let left = usize::from(viewport.horizontal_offset > 0);
     let right = usize::from(total > offset.saturating_add(width.saturating_sub(left)));
     let available = width.saturating_sub(left + right);
     if width == 0 {
@@ -179,7 +217,7 @@ mod tests {
             &mut terminal,
             line,
             usize::MAX..usize::MAX,
-            offset,
+            LineViewport::new(line, offset, 0),
             width,
             &[],
             &(0..0),
@@ -247,7 +285,7 @@ mod tests {
             &mut terminal,
             &layout.lines[0],
             usize::MAX..usize::MAX,
-            0,
+            LineViewport::new(&layout.lines[0], 0, 0),
             100,
             &[],
             &(0..0),
@@ -285,7 +323,16 @@ mod tests {
             let line = &layout.lines[layout.nodes[focus].line];
             let end = flat[focus].pair_index().unwrap() + 1;
             let mut terminal = VisibleEscapesTerminal::new(false, true);
-            paint(&mut terminal, line, focus..end, 0, 100, &[], &(0..0)).unwrap();
+            paint(
+                &mut terminal,
+                line,
+                focus..end,
+                LineViewport::new(line, 0, 0),
+                100,
+                &[],
+                &(0..0),
+            )
+            .unwrap();
             let output = terminal.output();
             assert!(output.contains("_B_"), "{}", output);
             assert!(!output.contains("_!B_"), "{}", output);
@@ -303,7 +350,7 @@ mod tests {
             &mut terminal,
             &layout.lines[0],
             0..1,
-            0,
+            LineViewport::new(&layout.lines[0], 0, 0),
             100,
             std::slice::from_ref(&query),
             &query,
@@ -313,5 +360,94 @@ mod tests {
         let before = output.find("aaaa").unwrap();
         assert!(!output[..before].contains("_BG(Yellow)_"), "{}", output);
         assert!(output[before..].contains("_BG(Yellow)_"), "{}", output);
+    }
+    fn reduced_text(line: &DisplayLine, viewport: LineViewport, width: usize) -> String {
+        let mut terminal = TextOnlyTerminal::new();
+        paint(
+            &mut terminal,
+            line,
+            usize::MAX..usize::MAX,
+            viewport,
+            width,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        terminal.output().to_string()
+    }
+
+    #[test]
+    fn indentation_reduction_removes_only_layout_spaces_without_scroll_ellipsis() {
+        let flat = parse_top_level_json(r#"{"root":{"nested":{"value":1}}}"#.into()).unwrap();
+        let layout = Layout::new(&flat);
+        let root = &layout.lines[0];
+        let nested = &layout.lines[2];
+        assert_eq!(
+            reduced_text(root, LineViewport::new(root, 0, 100), 100),
+            "root:"
+        );
+        assert_eq!(
+            reduced_text(nested, LineViewport::new(nested, 0, 2), 100),
+            "  value: 1"
+        );
+        assert_eq!(
+            reduced_text(nested, LineViewport::new(nested, 0, 100), 100),
+            "value: 1"
+        );
+        assert_eq!(
+            reduced_text(nested, LineViewport::new(nested, 0, 0), 100),
+            "    value: 1"
+        );
+        assert_eq!(nested.text, "    value: 1", "cached layout is unchanged");
+        let flat = parse_top_level_json(r#"[{"values":[1],"other":{}}]"#.into()).unwrap();
+        let layout = Layout::new(&flat);
+        let list = &layout.lines[1];
+        assert!(reduced_text(list, LineViewport::new(list, 0, 100), 100).starts_with("- values"));
+        let roots = parse_top_level_json("1 2".into()).unwrap();
+        let layout = Layout::new(&roots);
+        let separator = &layout.lines[0];
+        assert_eq!(
+            reduced_text(separator, LineViewport::new(separator, 0, 100), 100),
+            separator.text
+        );
+    }
+
+    #[test]
+    fn reduced_indentation_keeps_unicode_cell_hits_and_search_coordinates() {
+        let flat = parse_top_level_json(r#"{"root":{"rows":[{"id":1,"name":"界NEEDLE"}]}}"#.into())
+            .unwrap();
+        let layout = Layout::new(&flat);
+        let source_start = flat.1.find("NEEDLE").unwrap();
+        let query = source_start..source_start + 6;
+        let line = layout
+            .lines
+            .iter()
+            .find(|line| line.text.contains("界NEEDLE"))
+            .unwrap();
+        let span = line
+            .spans
+            .iter()
+            .find(|span| !span.matching_ranges(&query).is_empty())
+            .unwrap();
+        let cell_column = UnicodeWidthStr::width(&line.text[..span.range.start]);
+        let viewport = LineViewport::new(line, 0, 2);
+        let displayed_cell_column = viewport.reduced_column(cell_column);
+        assert_eq!(
+            hit_test(line, viewport.source_column(displayed_cell_column)).0,
+            span.node
+        );
+        let matched = span.matching_ranges(&query)[0].clone();
+        let source_column = UnicodeWidthStr::width(&line.text[..matched.start]);
+        let search_offset = viewport.reduced_column(source_column);
+        let searched = LineViewport::new(line, search_offset, 2);
+        assert_eq!(reduced_text(line, searched, 10), "…NEEDLE");
+        assert_eq!(hit_test(line, searched.source_column(1)).0, span.node);
+        assert_eq!(
+            searched.content_width(line),
+            UnicodeWidthStr::width(line.text.as_str()) - 2
+        );
+        // Indentation suppression is independent of a real one-cell horizontal scroll.
+        let scrolled = LineViewport::new(line, 1, 100);
+        assert!(reduced_text(line, scrolled, 10).starts_with('…'));
     }
 }
