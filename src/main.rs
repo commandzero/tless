@@ -32,6 +32,7 @@ mod search;
 mod terminal;
 #[cfg(feature = "toon")]
 mod toon;
+mod toon_display;
 mod truncatedstrview;
 mod types;
 mod viewer;
