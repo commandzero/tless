@@ -1414,4 +1414,32 @@ mod tests {
         let key = yaml("? [\"\\u0001\"]\n: value\n");
         assert!(text(&key).contains("Non-string key; Non-standard string escape"));
     }
+    #[test]
+    fn mixed_warning_kinds_follow_node_order_and_hidden_summary_is_last() {
+        let flat = yaml(r#"["\u0001", .inf, 1e1000000]"#);
+        let layout = Layout::new(&flat);
+        assert_eq!(
+            layout.lines[0].text,
+            r#"[3]: "\u0001",.inf,1e1000000  # WARN Non-standard string escape at [0]; Non-finite number at [1]; Non-canonical number at [2]"#
+        );
+        assert_eq!(
+            layout
+                .warnings
+                .iter()
+                .map(|warning| warning.kind)
+                .collect::<Vec<_>>(),
+            vec![
+                WarningKind::NonStandardStringEscape,
+                WarningKind::NonFiniteNumber,
+                WarningKind::NonCanonicalNumber
+            ]
+        );
+        let mut flat = yaml(".inf: {a: .inf}");
+        let layout = Layout::new(&flat);
+        flat.collapse(1);
+        assert!(layout.project(&flat)[0]
+            .line
+            .text
+            .ends_with("# WARN Non-finite number; Non-string key; Contains 1 hidden warnings"));
+    }
 }
