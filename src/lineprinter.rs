@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn reveal_window_reserves_only_actual_clipping_markers() {
         let flat = parse_top_level_json(r#"{"x":"aaaaaaaaaaaaaaaaaaaaaaaaaaZ"}"#.into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let line = &layout.lines[0];
         for (width, offset, visible, expected) in [
             (30, 0, 0..30, "x: aaaaaaaaaaaaaaaaaaaaaaaaaaZ"),
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn clipping_uses_grapheme_cell_boundaries_and_horizontal_scrolling() {
         let flat = parse_top_level_json(r#"["界","é",3]"#.into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let line = &layout.lines[0];
         for width in 0..20 {
             for offset in 0..16 {
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn counts_and_final_warnings_take_space_before_previews() {
         let mut flat = parse_top_level_yaml("box:\n  a: .inf\n  b: ordinary\n".into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         flat.collapse(1);
         let projection = layout.project(&flat);
         let line = &projection[0].line;
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn expanded_scalars_have_distinct_styles_and_only_annotations_are_dimmed() {
         let flat = parse_top_level_json(r#"[1,true,null,"hello"]"#.into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let mut terminal = VisibleEscapesTerminal::new(false, true);
         paint(
             &mut terminal,
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn generated_warning_text_is_not_highlighted_as_a_search_match() {
         let flat = parse_top_level_yaml("value: .inf".into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let line = &layout.lines[0];
         assert!(line
             .spans
@@ -404,7 +404,7 @@ mod tests {
     fn container_focus_brightens_row_values_and_implicit_root_fields() {
         for (input, focus) in [(r#"[{"a":1}]"#, 1), (r#"{"a":1}"#, 0)] {
             let flat = parse_top_level_json(input.into()).unwrap();
-            let layout = Layout::new(&flat);
+            let layout = Layout::canonical(&flat);
             let line = &layout.lines[layout.nodes[focus].line];
             let end = flat[focus].pair_index().unwrap() + 1;
             let mut terminal = VisibleEscapesTerminal::new(false, true);
@@ -427,7 +427,7 @@ mod tests {
     #[test]
     fn mapped_search_does_not_highlight_unrelated_string_characters() {
         let flat = parse_top_level_json(r#""aaaaNEEDLE""#.into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let source = flat.1.find("NEEDLE").unwrap();
         let query = source..source + 6;
         let mut terminal = VisibleEscapesTerminal::new(false, true);
@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn indentation_reduction_removes_only_layout_spaces_without_scroll_ellipsis() {
         let flat = parse_top_level_json(r#"{"root":{"nested":{"value":1}}}"#.into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let root = &layout.lines[0];
         let nested = &layout.lines[2];
         assert_eq!(
@@ -486,11 +486,11 @@ mod tests {
         );
         assert_eq!(nested.text, "    value: 1", "cached layout is unchanged");
         let flat = parse_top_level_json(r#"[{"values":[1],"other":{}}]"#.into()).unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let list = &layout.lines[1];
         assert!(reduced_text(list, LineViewport::new(list, 0, 100), 100).starts_with("- values"));
         let roots = parse_top_level_json("1 2".into()).unwrap();
-        let layout = Layout::new(&roots);
+        let layout = Layout::canonical(&roots);
         let separator = &layout.lines[0];
         assert_eq!(
             reduced_text(separator, LineViewport::new(separator, 0, 100), 100),
@@ -502,7 +502,7 @@ mod tests {
     fn reduced_indentation_keeps_unicode_cell_hits_and_search_coordinates() {
         let flat = parse_top_level_json(r#"{"root":{"rows":[{"id":1,"name":"界NEEDLE"}]}}"#.into())
             .unwrap();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let source_start = flat.1.find("NEEDLE").unwrap();
         let query = source_start..source_start + 6;
         let line = layout
@@ -543,7 +543,7 @@ mod tests {
             (r#"{"outer":{"nested":["界",2]}}"#, 2),
         ] {
             let flat = parse_top_level_json(input.into()).unwrap();
-            let layout = Layout::new(&flat);
+            let layout = Layout::canonical(&flat);
             let line = layout
                 .lines
                 .iter()

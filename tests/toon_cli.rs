@@ -229,6 +229,27 @@ mod terminal_commands {
     }
 
     #[test]
+    fn right_expands_inline_arrays_into_navigable_lines() {
+        let output = session(r#"["alpha","beta"]"#, "ljpp q");
+        let clean = strip_styles(&output);
+        assert!(clean.contains("[2]: alpha,beta"), "{}", clean);
+        assert!(clean.contains("  - alpha"), "{}", clean);
+        assert!(clean.contains("  - beta"), "{}", clean);
+        assert!(output.contains("\"alpha\"\r\n\r\nPress any key to continue."));
+    }
+
+    #[test]
+    fn arrays_start_multiline_when_large_or_too_wide() {
+        for (input, width, last) in [
+            ("[1,2,3,4,5,6]", 120, "  - 6"),
+            (r#"{"items":["alpha","beta"]}"#, 20, "  - beta"),
+        ] {
+            let output = strip_styles(&session_with_width(input, "q", None, width));
+            assert!(output.contains(last), "{}", output);
+        }
+    }
+
+    #[test]
     fn hidden_search_reveals_and_prints_the_cell_without_annotations() {
         let output = session(
             r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,

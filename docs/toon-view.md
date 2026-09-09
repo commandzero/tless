@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T21:40:48Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T21:48:57Z }
 ---
 
 # TOON document view
@@ -12,7 +12,10 @@ The interactive viewer renders JSON, YAML, and TOON through the same TOON 3.0
 profile, using 2-space indentation, commas, and no key folding. Rendering works
 in every build. The optional `toon` feature controls input and standard export.
 
-Object fields keep their parsed order. Primitive arrays share a line. Arrays
+Object fields keep their parsed order. Primitive arrays with at most five
+elements share a line when the entire line fits the terminal, including its
+indentation, gutters, and annotations. Otherwise each element gets its own
+list line. Arrays
 of objects use a table only when all rows have the same nonempty, unique string
 fields in the same order and all cells are primitive. Other arrays use lists.
 
@@ -37,6 +40,9 @@ has visible descendants. Inline elements and table cells keep individual focus.
 
 Up/down moves through visible data lines. Parent, child, and sibling motions
 move through parsed values, including elements and cells sharing one line.
+Press `l` or Right Arrow on an inline array to show one element per line while
+keeping the array selected. Press it again to select the first element. This
+explicit multiline choice survives resizing and collapsing/reopening the array.
 Moving down from a table cell retains its field on the next expanded table row.
 A cell's path includes the row index and key, such as `users[1].name`. Its
 parent is the row object, whose parent is the array. Duplicate entries remain
@@ -60,8 +66,9 @@ expanded TOON lines, so collapse leaves gaps. Values sharing a line share its
 address. Relative numbers count visible vertical motions. Root warning
 separators have absolute addresses but vertical navigation skips them.
 
-Long lines scroll horizontally without wrapping. Resizing keeps the selected
-value and array layout. Collapsed previews give up width before count and
+Long individual values and table rows scroll horizontally without wrapping.
+Resizing keeps the selected value while automatic array layouts adapt to the
+available width. Line addresses follow the resulting layout. Collapsed previews give up width before count and
 warning annotations; warnings remain reachable through horizontal scrolling.
 
 Line/Data modes, `--mode`, `-m`, interactive `m`, and matching-closing-delimiter

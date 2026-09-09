@@ -1,6 +1,7 @@
 use crate::flatjson::{FlatJson, Index, OptionIndex};
 use crate::toon_display::{normalize_node, Layout, VisibleLine};
 use crate::types::TTYDimensions;
+use std::collections::HashSet;
 #[cfg(test)]
 use unicode_width::UnicodeWidthStr;
 
@@ -17,11 +18,15 @@ pub struct JsonViewer {
     desired_depth: usize,
     pub dimensions: TTYDimensions,
     pub scrolloff_setting: u16,
+    expanded_arrays: HashSet<usize>,
+    line_numbers: bool,
+    pub layout_generation: usize,
 }
 
 impl JsonViewer {
     pub fn new(flatjson: FlatJson) -> Self {
-        let layout = Layout::new(&flatjson);
+        let layout =
+            Self::layout_for_view(&flatjson, TTYDimensions::default(), true, &HashSet::new());
         let visible = layout.project(&flatjson);
         let absolute_anchor_line = layout.nodes[0].line;
         Self {
@@ -35,7 +40,73 @@ impl JsonViewer {
             desired_depth: 0,
             dimensions: TTYDimensions::default(),
             scrolloff_setting: 3,
+            expanded_arrays: HashSet::new(),
+            line_numbers: true,
+            layout_generation: 0,
         }
+    }
+
+    pub fn set_viewport(&mut self, dimensions: TTYDimensions, line_numbers: bool) {
+        let reflow = dimensions.width != self.dimensions.width || line_numbers != self.line_numbers;
+        let height_changed = dimensions.height != self.dimensions.height;
+        self.dimensions = dimensions;
+        self.line_numbers = line_numbers;
+        if reflow {
+            self.rebuild_layout();
+        }
+        if reflow || height_changed {
+            self.ensure_visible();
+        }
+    }
+
+    fn layout_for_view(
+        flat: &FlatJson,
+        dimensions: TTYDimensions,
+        line_numbers: bool,
+        expanded_arrays: &HashSet<usize>,
+    ) -> Layout {
+        // Start with the smallest gutter and only grow it: expanding arrays can
+        // increase the number of digits, which can force another array onto lines.
+        let mut number_width = if line_numbers { 3 } else { 0 };
+        loop {
+            let width = usize::from(dimensions.width).saturating_sub(number_width + 2);
+            let layout = Layout::for_view(flat, width, expanded_arrays);
+            let required = if line_numbers {
+                layout.lines.len().to_string().len().max(2) + 1
+            } else {
+                0
+            };
+            if required <= number_width {
+                return layout;
+            }
+            number_width = required;
+        }
+    }
+
+    fn rebuild_layout(&mut self) {
+        let top_node = self
+            .visible
+            .get(self.top_visible_line)
+            .map(|line| line.line.owner);
+        self.layout = Self::layout_for_view(
+            &self.flatjson,
+            self.dimensions,
+            self.line_numbers,
+            &self.expanded_arrays,
+        );
+        self.refresh_projection();
+        self.focus(self.focused_node);
+        if let Some(top_node) = top_node {
+            let top = self.flatjson.first_visible_ancestor(top_node);
+            if let Some(index) = self
+                .visible
+                .iter()
+                .position(|line| line.absolute == self.layout.nodes[top].line)
+            {
+                self.top_visible_line = index;
+            }
+        }
+        self.layout_generation = self.layout_generation.wrapping_add(1);
     }
 
     pub fn focused_line_index(&self) -> usize {
@@ -309,7 +380,15 @@ impl JsonViewer {
             Action::MoveRight => {
                 if self.flatjson[self.focused_node].is_collapsed() {
                     self.collapse(self.focused_node, false);
-                    self.refresh_projection();
+                    if self.layout.nodes[self.focused_node].inline_array {
+                        self.expanded_arrays.insert(self.focused_node);
+                        self.rebuild_layout();
+                    } else {
+                        self.refresh_projection();
+                    }
+                } else if self.layout.nodes[self.focused_node].inline_array {
+                    self.expanded_arrays.insert(self.focused_node);
+                    self.rebuild_layout();
                 } else if let OptionIndex::Index(child) =
                     self.flatjson[self.focused_node].first_child()
                 {
@@ -426,7 +505,9 @@ impl JsonViewer {
             Action::DeepCollapseNodeAndSiblings => self.collapse_siblings(true, true),
             Action::ExpandNodeAndSiblings => self.collapse_siblings(false, false),
             Action::DeepExpandNodeAndSiblings => self.collapse_siblings(false, true),
-            Action::ResizeViewerDimensions(dimensions) => self.dimensions = dimensions,
+            Action::ResizeViewerDimensions(dimensions) => {
+                self.set_viewport(dimensions, self.line_numbers)
+            }
         }
         if !matches!(
             action,
@@ -569,9 +650,153 @@ mod tests {
     }
 
     #[test]
+    fn right_expands_inline_array_before_entering_elements() {
+        let mut v = viewer("[1,2]");
+        assert_eq!(v.visible.len(), 1);
+        v.perform_action(Action::MoveRight);
+        assert_eq!(v.focused_node, 0);
+        assert_eq!(
+            v.visible
+                .iter()
+                .map(|line| line.line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["[2]:", "  - 1", "  - 2"]
+        );
+        v.perform_action(Action::MoveRight);
+        assert_eq!(path(&v), "[0]");
+    }
+
+    #[test]
+    fn arrays_default_to_multiline_above_five_elements() {
+        assert_eq!(viewer("[1,2,3,4,5]").visible.len(), 1);
+        let v = viewer("[1,2,3,4,5,6]");
+        assert_eq!(v.visible.len(), 7);
+        assert_eq!(v.visible[6].line.text, "  - 6");
+    }
+
+    #[test]
+    fn inline_array_fit_includes_gutters_and_terminal_cells() {
+        let mut v = viewer(r#"{"tags":["界","é"]}"#);
+        // tags[2]: 界,é occupies 13 cells, plus five gutter cells.
+        v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
+            width: 18,
+            height: 24,
+        }));
+        assert_eq!(v.visible.len(), 1);
+        v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
+            width: 17,
+            height: 24,
+        }));
+        assert_eq!(v.visible.len(), 3);
+        assert_eq!(v.visible[1].line.text, "  - 界");
+        v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
+            width: 18,
+            height: 24,
+        }));
+        assert_eq!(v.visible.len(), 1);
+    }
+
+    #[test]
+    fn explicit_array_expansion_survives_resize_collapse_and_search() {
+        let mut v = viewer(r#"{"box":{"tags":["rust","cli"]},"tail":0}"#);
+        act(
+            &mut v,
+            &[Action::MoveRight, Action::MoveRight, Action::MoveRight],
+        );
+        assert_eq!(path(&v), ".box.tags");
+        assert_eq!(v.visible[2].line.text, "    - rust");
+        let array = v.focused_node;
+        act(&mut v, &[Action::MoveLeft, Action::MoveRight]);
+        assert_eq!(v.focused_node, array);
+        assert!(!v.layout.nodes[array].inline_array);
+        let child = v.flatjson[array].first_child().unwrap();
+        let second = v.flatjson[child].next_sibling.unwrap();
+        v.perform_action(Action::MoveLeft);
+        v.perform_action(Action::FocusNode {
+            node: second,
+            source: Some(v.flatjson[second].range.start),
+        });
+        assert_eq!(path(&v), ".box.tags[1]");
+        assert_eq!(v.visible[v.focused_line_index()].line.text, "    - cli");
+        v.set_viewport(
+            TTYDimensions {
+                width: 200,
+                height: 24,
+            },
+            false,
+        );
+        assert_eq!(v.focused_node, second);
+        assert!(!v.layout.nodes[array].inline_array);
+        assert_eq!(&v.flatjson.1[v.flatjson[second].range.clone()], "\"cli\"");
+    }
+
+    #[test]
+    fn array_fit_rechecks_line_number_digits_and_number_visibility() {
+        let mut fields = vec!["\"wide\":[1,2,3,4,5,6]".to_string()];
+        fields.extend((0..94).map(|i| format!("\"k{i}\":0")));
+        fields.push("\"tags\":[\"界\",\"é\"]".into());
+        let mut v = viewer(&format!("{{{}}}", fields.join(",")));
+        v.set_viewport(
+            TTYDimensions {
+                width: 18,
+                height: 24,
+            },
+            true,
+        );
+        assert!(v.layout.lines.len() > 99);
+        assert_eq!(v.visible.last().unwrap().line.text, "  - é");
+        v.set_viewport(
+            TTYDimensions {
+                width: 18,
+                height: 24,
+            },
+            false,
+        );
+        assert_eq!(v.visible.last().unwrap().line.text, "tags[2]: 界,é");
+    }
+
+    #[test]
+    fn inline_array_warning_width_is_included_without_losing_warnings() {
+        let mut v = JsonViewer::new(parse_top_level_yaml("[.inf, 1]".into()).unwrap());
+        assert_eq!(v.visible.len(), 1);
+        v.set_viewport(
+            TTYDimensions {
+                width: 25,
+                height: 24,
+            },
+            true,
+        );
+        assert_eq!(v.visible.len(), 3);
+        assert_eq!(v.visible[1].line.text, "  - .inf  # WARN Non-finite number");
+        assert_eq!(v.layout.warnings.len(), 1);
+        v.perform_action(Action::MoveLeft);
+        assert!(v.visible[0]
+            .line
+            .text
+            .contains("Contains 1 hidden warnings"));
+    }
+
+    #[test]
+    fn right_opens_collapsed_inline_arrays_as_multiline() {
+        let mut v = viewer("[1,2]");
+        act(&mut v, &[Action::MoveLeft, Action::MoveRight]);
+        assert_eq!(v.focused_node, 0);
+        assert_eq!(v.visible.len(), 3);
+        v.perform_action(Action::ClickArrow(1));
+        assert_eq!(v.visible.len(), 1);
+        v.perform_action(Action::ClickArrow(1));
+        assert_eq!(v.visible.len(), 3);
+    }
+
+    #[test]
     fn inline_values_retain_individual_identity_and_copy_ranges() {
         let mut v = viewer(r#"{"tags":["rust","cli"],"done":true}"#);
-        act(&mut v, &[Action::MoveRight, Action::MoveRight]);
+        v.perform_action(Action::MoveRight);
+        let child = v.flatjson[v.focused_node].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: child,
+            source: None,
+        });
         assert_eq!(path(&v), ".tags[0]");
         let line = v.absolute_anchor_line;
         v.perform_action(Action::FocusNextSibling(1));
@@ -717,6 +942,8 @@ mod tests {
             height: 0,
         }));
         assert_eq!(v.focused_node, second);
+        assert_eq!(v.absolute_anchor_line, 2);
+        v.perform_action(Action::FocusTop);
         v.perform_action(Action::ClickArrow(1));
         assert_eq!(v.focused_node, 0);
         assert!(v.flatjson[0].is_collapsed());

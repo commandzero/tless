@@ -31,7 +31,14 @@ The viewer SHALL render every supported input format with the TOON 3.0 profile: 
 
 ### Requirement: Native TOON layout
 
-Fully expanded standard-compatible data SHALL use TOON object fields, inline primitive arrays, uniform primitive-only object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string field sets shared by every row. Array order and object entry order SHALL be preserved. When a table would reorder a row's fields, the array SHALL use list form. Stripping presentation styling and gutters from fully expanded standard-compatible content SHALL leave valid TOON text.
+Fully expanded standard-compatible data SHALL use TOON object fields, inline or multiline primitive arrays, uniform primitive-only object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string field sets shared by every row. Array order and object entry order SHALL be preserved. When a table would reorder a row's fields, the array SHALL use list form. Stripping presentation styling and gutters from fully expanded standard-compatible content SHALL leave valid TOON text.
+
+#### Scenario: Primitive array default layout
+
+- **WHEN** a nonempty primitive array has at most five elements and its inline line fits the terminal
+- **THEN** it SHALL render inline, counting indentation, gutters, annotations, and Unicode terminal cells toward the width
+- **AND** an exact fit SHALL remain inline
+- **AND** an array with more than five elements or an overflowing inline line SHALL render a counted header followed by one list line per element
 
 #### Scenario: Table and inline array
 
@@ -85,7 +92,7 @@ Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when co
 
 - **WHEN** a user collapses an inline primitive array
 - **THEN** the header SHALL remain and its values SHALL become a subdued preview
-- **AND** expanding it SHALL restore syntax-colored inline values
+- **AND** expanding it SHALL restore syntax-colored values in its chosen layout, with `l` or Right Arrow selecting multiline presentation
 
 #### Scenario: Collapse restoration
 
@@ -95,7 +102,7 @@ Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when co
 
 ### Requirement: Gutters and terminal width
 
-Optional absolute and relative line numbers SHALL remain available outside the document text with existing visibility defaults. Absolute numbers SHALL identify lines in the fully expanded TOON layout, beginning at 1; collapsed descendants SHALL produce gaps. Relative numbers SHALL count visible display-line motions. Long expanded lines SHALL use horizontal scrolling without soft wrapping or width-dependent changes between array forms. Rendering SHALL escape control characters and respect terminal cell widths.
+Optional absolute and relative line numbers SHALL remain available outside the document text with existing visibility defaults. Absolute numbers SHALL identify lines in the fully expanded TOON layout, beginning at 1; collapsed descendants SHALL produce gaps. Relative numbers SHALL count visible display-line motions. Automatic primitive-array layouts SHALL be recalculated on terminal-width or gutter-visibility changes while preserving logical selection and collapse states. Explicit multiline choices SHALL survive resize and collapse/reopen. Absolute addresses SHALL follow the current fully expanded layout. Long individual values and table rows SHALL use horizontal scrolling without soft wrapping. Rendering SHALL escape control characters and respect terminal cell widths.
 
 #### Scenario: Shared-line numbering
 

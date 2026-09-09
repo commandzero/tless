@@ -32,9 +32,9 @@
                      expanded object or array.
 
   l  RightArrow    When focused on a collapsed object or array, expand the
-                     object or array. When focused on an expanded object or
-                     array, move focus to the first child. When focused on
-                     non-container values, does nothing.
+                     object or array. Inline arrays become multiline, keeping
+                     the array selected. Otherwise, move into the first child
+                     of an expanded container. Does nothing on scalar values.
 
   J         *  Move to the focused node's next     sibling 1 or [4mN[0m times.
   K         *  Move to the focused node's previous sibling 1 or [4mN[0m times.

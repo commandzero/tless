@@ -158,7 +158,6 @@ impl App {
 
     pub fn run(&mut self, input: Box<dyn Iterator<Item = io::Result<TuiEvent>>>) {
         let dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
-        self.viewer.dimensions = dimensions.without_status_bar();
         self.screen_writer.dimensions = dimensions;
         self.draw_screen();
 
@@ -593,6 +592,10 @@ impl App {
     }
 
     fn draw_screen(&mut self) {
+        self.viewer.set_viewport(
+            self.screen_writer.dimensions.without_status_bar(),
+            self.screen_writer.show_line_numbers || self.screen_writer.show_relative_line_numbers,
+        );
         self.screen_writer.print(
             &self.viewer,
             &self.input_buffer,

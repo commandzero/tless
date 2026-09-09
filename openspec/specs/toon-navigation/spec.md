@@ -24,13 +24,20 @@ The viewer SHALL distinguish container focus from child-value focus even when th
 
 ### Requirement: Vertical and structural motion
 
-Up/down and counted vertical motions SHALL move over visible display lines, excluding root-separator annotation lines. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. Moving into an expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. Closing-delimiter matching SHALL have no action or help entry.
+Up/down and counted vertical motions SHALL move over visible display lines, excluding root-separator annotation lines. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. Moving into an inline array with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. Closing-delimiter matching SHALL have no action or help entry.
 
 #### Scenario: Table motion
 
 - **WHEN** focus is on the name cell of a table row and the user moves down to another expanded row
 - **THEN** focus SHALL move to that row's name cell
 - **AND** a parent motion SHALL focus the row object, followed by the array on a second parent motion
+
+#### Scenario: Expand an inline array
+
+- **WHEN** an inline array is selected and the user presses `l` or Right Arrow
+- **THEN** its values SHALL move onto individual list lines and the array SHALL remain selected
+- **AND** the next child motion SHALL focus its first element
+- **AND** opening a collapsed inline array with that motion SHALL also select multiline presentation
 
 #### Scenario: Inline siblings
 

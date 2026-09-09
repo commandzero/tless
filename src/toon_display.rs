@@ -2,6 +2,7 @@
 use crate::flatjson::{FlatJson, KeyValue, OptionIndex, Value};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenRole {
@@ -67,6 +68,7 @@ pub struct NodeLayout {
     pub header_end: usize,
     pub collapsible: bool,
     pub entry_count: usize,
+    pub inline_array: bool,
     pub table_row: bool,
     pub table_cell: bool,
     pub descendant_warnings: usize,
@@ -115,6 +117,9 @@ pub struct Layout {
     keys: Vec<Option<String>>,
     scalars: Vec<String>,
     line_containers: Vec<Vec<usize>>,
+    inline_width: usize,
+    inline_limit: usize,
+    expanded_arrays: HashSet<usize>,
 }
 
 pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
@@ -172,7 +177,22 @@ impl DisplayLine {
     }
 }
 impl Layout {
-    pub fn new(flat: &FlatJson) -> Self {
+    /// Unconstrained canonical layout for the retained TOON grammar fixtures.
+    #[cfg(test)]
+    pub fn canonical(flat: &FlatJson) -> Self {
+        Self::build(flat, usize::MAX, usize::MAX, &HashSet::new())
+    }
+
+    pub fn for_view(flat: &FlatJson, width: usize, expanded_arrays: &HashSet<usize>) -> Self {
+        Self::build(flat, width, 5, expanded_arrays)
+    }
+
+    fn build(
+        flat: &FlatJson,
+        width: usize,
+        limit: usize,
+        expanded_arrays: &HashSet<usize>,
+    ) -> Self {
         let n = flat.0.len();
         let mut result = Self {
             lines: vec![],
@@ -183,6 +203,9 @@ impl Layout {
             keys: vec![None; n],
             scalars: vec![String::new(); n],
             line_containers: vec![],
+            inline_width: width,
+            inline_limit: limit,
+            expanded_arrays: expanded_arrays.clone(),
         };
         for (i, row) in flat.0.iter().enumerate() {
             if row.is_closing_of_container() {
@@ -363,6 +386,23 @@ impl Layout {
         result
             .warnings
             .sort_by_key(|warning| (warning.node, warning.kind));
+        // Include warning annotations in the fit decision, after their locators
+        // are known. Moving values to separate lines also moves their warnings.
+        let overflowing: Vec<_> = result
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(node, info)| {
+                !flat[*node].is_closing_of_container()
+                    && info.inline_array
+                    && UnicodeWidthStr::width(result.lines[info.line].text.as_str()) > width
+            })
+            .map(|(node, _)| node)
+            .collect();
+        if !overflowing.is_empty() {
+            result.expanded_arrays.extend(overflowing);
+            return Self::build(flat, width, limit, &result.expanded_arrays);
+        }
         result
     }
     fn key(&self, flat: &FlatJson, node: usize) -> String {
@@ -513,7 +553,19 @@ impl Layout {
                 }
                 line.token(":", node, TokenRole::Structure, None);
                 self.nodes[node].header_end = line.text.len();
-                if kids.iter().all(|&i| scalar(flat, i)) {
+                let inline_width = UnicodeWidthStr::width(line.text.as_str())
+                    + kids
+                        .iter()
+                        .map(|&i| UnicodeWidthStr::width(self.scalars[i].as_str()))
+                        .sum::<usize>()
+                    + kids.len(); // One leading space and commas between values.
+                let inline = kids.is_empty()
+                    || (kids.iter().all(|&i| scalar(flat, i))
+                        && kids.len() <= self.inline_limit
+                        && inline_width <= self.inline_width
+                        && !self.expanded_arrays.contains(&node));
+                if inline {
+                    self.nodes[node].inline_array = !kids.is_empty();
                     if !kids.is_empty() {
                         line.text.push(' ');
                     }
@@ -1030,7 +1082,7 @@ mod tests {
         FlatJson(rows, text, depth)
     }
     fn text(flat: &FlatJson) -> String {
-        Layout::new(flat)
+        Layout::canonical(flat)
             .lines
             .iter()
             .map(|l| l.text.as_str())
@@ -1114,7 +1166,7 @@ mod tests {
     #[test]
     fn duplicate_decoded_keys_keep_identity() {
         let flat = json(r#"{"box":{"a":1,"\u0061":2}}"#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         assert_eq!(
             text(&flat),
             "box:\n  a: 1  # WARN Duplicate key\n  a: 2  # WARN Duplicate key"
@@ -1188,7 +1240,7 @@ mod tests {
     #[test]
     fn shared_header_mapping_and_table_row_collapse() {
         let mut flat = yaml("- a: .inf\n  b: 2\n- a: .nan\n  b: 4\n");
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let rows = children(&flat, 0);
         let fields = children(&flat, rows[1]);
         let key_span = layout.lines[0]
@@ -1221,12 +1273,12 @@ mod tests {
     #[test]
     fn escaped_locators_and_semantic_warning_counts() {
         let flat = yaml("- \"a\\nb\": .inf\n- \"a\\nb\": .nan\n");
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         assert!(layout.lines[1].text.ends_with("at field \"a\\nb\""));
         assert_eq!(layout.nodes[0].descendant_warnings, 2);
         assert_eq!(layout.warnings.len(), 2);
         let mut flat = json(r#"{"a":{"x":1,"x":2},"a":0}"#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         flat.collapse(1);
         let visible = layout.project(&flat);
         assert!(visible[0]
@@ -1238,7 +1290,7 @@ mod tests {
     #[test]
     fn root_anchors_and_bounded_preview() {
         let mut flat = json("{\"a\":{\"b\":1},\"c\":2}");
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         assert_eq!(layout.nodes[0].line, 0);
         assert!(!layout.nodes[0].collapsible);
         flat.collapse(1);
@@ -1255,7 +1307,7 @@ mod tests {
         flat[0].range = 0..length;
         flat[1].range = 1..length - 1;
         flat[2].range = length - 1..length;
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         flat.collapse(0);
         let visible = layout.project(&flat);
         assert!(visible[0].line.text.len() < 280);
@@ -1264,7 +1316,7 @@ mod tests {
     #[test]
     fn mappings_and_collapse_restore() {
         let mut flat = json(r#"{"tags":[1,2],"rows":[{"a":3},{"a":4}],"obj":{"x":{"y":5}}}"#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         assert_eq!(layout.nodes[2].line, layout.nodes[3].line);
         assert_ne!(layout.nodes[2].spans, layout.nodes[3].spans);
         flat.collapse(1);
@@ -1278,7 +1330,7 @@ mod tests {
         flat.expand(1);
         assert_eq!(layout.project(&flat)[0].line.text, layout.lines[0].text);
         let mut dup = json(r#"{"a":{"b":{"x":1,"x":2}}}"#);
-        let l = Layout::new(&dup);
+        let l = Layout::canonical(&dup);
         dup.collapse(2);
         dup.collapse(1);
         assert!(l.project(&dup)[0]
@@ -1305,7 +1357,7 @@ mod tests {
             text(&flat),
             r#"? ["quote\"x","\\literal",{"a:b":[true,null,1]}]: value  # WARN Non-string key"#
         );
-        assert!(!Layout::new(&flat)
+        assert!(!Layout::canonical(&flat)
             .warnings
             .iter()
             .any(|w| w.kind == WarningKind::NonCanonicalNumber));
@@ -1320,7 +1372,7 @@ mod tests {
     #[test]
     fn collapsed_table_header_retains_field_style_source_and_identity() {
         let mut flat = json(r#"[{"a":1},{"a":2}]"#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         flat.collapse(0);
         let projected = layout.project(&flat);
         let keys: Vec<_> = projected[0]
@@ -1345,7 +1397,7 @@ mod tests {
             r#"{"value":"\u754c\n\"\\\ud83d\ude00NEEDLE"}"#,
         ] {
             let flat = json(input);
-            let layout = Layout::new(&flat);
+            let layout = Layout::canonical(&flat);
             let source = flat.1.find("NEEDLE").unwrap();
             let span = layout.lines[0]
                 .spans
@@ -1362,7 +1414,7 @@ mod tests {
             );
         }
         let flat = json(r#""\u0061b\u0063""#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let span = &layout.lines[0].spans[0];
         assert_eq!(span.matching_ranges(&(1..7)), vec![0..1]);
         assert_eq!(layout.lines[0].text, "abc");
@@ -1375,7 +1427,7 @@ mod tests {
         let mut flat = json(r#""""#);
         flat.1 = input;
         flat.0[0].range = 0..flat.1.len();
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         let span = &layout.lines[0].spans[0];
         assert_eq!(span.source_map.len(), 1);
         assert_eq!(
@@ -1387,7 +1439,7 @@ mod tests {
     #[test]
     fn unsupported_control_escapes_are_warned_but_literal_escape_text_is_not() {
         let flat = json(r#"{"control":"\u0001","literal":"\\u0001","line":"\n"}"#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         assert_eq!(
             layout.lines[0].text,
             r#"control: "\u0001"  # WARN Non-standard string escape"#
@@ -1409,7 +1461,7 @@ mod tests {
     #[test]
     fn mixed_warning_kinds_follow_node_order_and_hidden_summary_is_last() {
         let flat = yaml(r#"["\u0001", .inf, 1e1000000]"#);
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         assert_eq!(
             layout.lines[0].text,
             r#"[3]: "\u0001",.inf,1e1000000  # WARN Non-standard string escape at [0]; Non-finite number at [1]; Non-canonical number at [2]"#
@@ -1427,7 +1479,7 @@ mod tests {
             ]
         );
         let mut flat = yaml(".inf: {a: .inf}");
-        let layout = Layout::new(&flat);
+        let layout = Layout::canonical(&flat);
         flat.collapse(1);
         assert!(layout.project(&flat)[0]
             .line

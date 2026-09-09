@@ -29,6 +29,7 @@ pub struct ScreenWriter {
 
     indentation_reduction: u16,
     last_focus: Option<(usize, usize, u16)>,
+    layout_generation: usize,
     horizontal_offsets: HashMap<Index, usize>,
 }
 
@@ -67,6 +68,7 @@ impl ScreenWriter {
             show_relative_line_numbers: options.show_relative_line_numbers,
             indentation_reduction: 0,
             last_focus: None,
+            layout_generation: 0,
             horizontal_offsets: HashMap::new(),
         }
     }
@@ -83,7 +85,16 @@ impl ScreenWriter {
         self.print_status_bar(viewer, input_buffer, input_filename, search_state, message);
     }
 
+    fn sync_layout(&mut self, viewer: &JsonViewer) {
+        if self.layout_generation != viewer.layout_generation {
+            self.horizontal_offsets.clear();
+            self.last_focus = None;
+            self.layout_generation = viewer.layout_generation;
+        }
+    }
+
     pub fn print_viewer(&mut self, viewer: &JsonViewer, search_state: &SearchState) {
+        self.sync_layout(viewer);
         let focus = (
             viewer.focused_node,
             viewer.absolute_anchor_line,
@@ -535,6 +546,7 @@ impl ScreenWriter {
     }
 
     pub fn scroll_line_to_search_match(&mut self, viewer: &JsonViewer, range: Range<usize>) {
+        self.sync_layout(viewer);
         let line = &viewer.visible[viewer.focused_line_index()].line;
         let target = line
             .spans
