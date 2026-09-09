@@ -479,15 +479,14 @@ impl ScreenWriter {
         let viewport = self.line_viewport(&viewer.visible[viewer.focused_line_index()]);
         let start = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..start_byte]));
         let end = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..end_byte]));
-        let available =
-            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 3);
+        let document_width =
+            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
+        let visible_columns = viewport.visible_columns(line, document_width);
         let offset = self
             .horizontal_offsets
             .entry(viewer.absolute_anchor_line)
             .or_default();
-        if start < viewport.horizontal_offset
-            || end > viewport.horizontal_offset.saturating_add(available)
-        {
+        if start < visible_columns.start || end > visible_columns.end {
             *offset = start;
         }
     }

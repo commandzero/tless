@@ -60,9 +60,44 @@ impl LineViewport {
         source_column.saturating_sub(self.removed_indentation)
     }
 
+    fn paint_window(self, line: &DisplayLine, width: usize) -> PaintWindow {
+        let offset = self.removed_indentation + self.horizontal_offset;
+        // Inspect only the requested window plus one cell; long inline arrays must
+        // not be measured in full on every redraw at their left edge.
+        let mut total = 0;
+        for grapheme in line.text.graphemes(true) {
+            total += UnicodeWidthStr::width(grapheme);
+            if total > offset.saturating_add(width) {
+                break;
+            }
+        }
+        let left = usize::from(self.horizontal_offset > 0);
+        let right = usize::from(total > offset.saturating_add(width.saturating_sub(left)));
+        let available = width.saturating_sub(left + right);
+        PaintWindow {
+            left,
+            right,
+            available,
+        }
+    }
+
+    pub fn visible_columns(self, line: &DisplayLine, width: usize) -> Range<usize> {
+        self.horizontal_offset
+            ..self
+                .horizontal_offset
+                .saturating_add(self.paint_window(line, width).available)
+    }
+
     pub fn content_width(self, line: &DisplayLine) -> usize {
         UnicodeWidthStr::width(line.text.as_str()).saturating_sub(self.removed_indentation)
     }
+}
+
+/// Document cells remaining after the clipping markers actually needed by a line.
+struct PaintWindow {
+    left: usize,
+    right: usize,
+    available: usize,
 }
 
 pub fn paint(
@@ -75,23 +110,17 @@ pub fn paint(
     current: &Range<usize>,
 ) -> std::fmt::Result {
     let offset = viewport.removed_indentation + viewport.horizontal_offset;
-    // Inspect only the requested window plus one cell; long inline arrays must
-    // not be measured in full on every redraw at their left edge.
-    let mut total = 0;
-    for grapheme in line.text.graphemes(true) {
-        total += UnicodeWidthStr::width(grapheme);
-        if total > offset.saturating_add(width) {
-            break;
-        }
-    }
+    let window = viewport.paint_window(line, width);
+    let PaintWindow {
+        left,
+        right,
+        available,
+    } = window;
     let focused_spans: Vec<_> = line
         .spans
         .iter()
         .filter(|span| span.node == focused.start)
         .collect();
-    let left = usize::from(viewport.horizontal_offset > 0);
-    let right = usize::from(total > offset.saturating_add(width.saturating_sub(left)));
-    let available = width.saturating_sub(left + right);
     if width == 0 {
         return Ok(());
     }
@@ -243,6 +272,24 @@ mod tests {
         .unwrap();
         terminal.output().to_string()
     }
+    #[test]
+    fn reveal_window_reserves_only_actual_clipping_markers() {
+        let flat = parse_top_level_json(r#"{"x":"aaaaaaaaaaaaaaaaaaaaaaaaaaZ"}"#.into()).unwrap();
+        let layout = Layout::new(&flat);
+        let line = &layout.lines[0];
+        for (width, offset, visible, expected) in [
+            (30, 0, 0..30, "x: aaaaaaaaaaaaaaaaaaaaaaaaaaZ"),
+            (29, 0, 0..28, "x: aaaaaaaaaaaaaaaaaaaaaaaaa…"),
+            (30, 1, 1..30, "…: aaaaaaaaaaaaaaaaaaaaaaaaaaZ"),
+            (28, 1, 1..27, "…: aaaaaaaaaaaaaaaaaaaaaaaa…"),
+            (0, 0, 0..0, ""),
+        ] {
+            let viewport = LineViewport::new(line, offset, 0);
+            assert_eq!(viewport.visible_columns(line, width), visible);
+            assert_eq!(text(line, width, offset), expected);
+        }
+    }
+
     #[test]
     fn clipping_uses_grapheme_cell_boundaries_and_horizontal_scrolling() {
         let flat = parse_top_level_json(r#"["界","é",3]"#.into()).unwrap();

@@ -265,6 +265,16 @@ mod terminal_commands {
     }
 
     #[test]
+    fn search_in_the_last_fully_visible_column_does_not_scroll() {
+        let value = format!("{}Z", "a".repeat(26));
+        let input = format!("{{\"x\":\"{}\"}}", value);
+        let output = strip_styles(&session_with_width(&input, "/Z\nq", None, 35));
+        let line = format!("x: {}", value);
+        assert!(output.matches(&line).count() >= 2, "{}", output);
+        assert!(!output.contains("…Z"), "{}", output);
+    }
+
+    #[test]
     fn long_string_search_reveals_the_match_inside_its_token() {
         let input = format!("{{\"value\":\"{}NEEDLE\"}}", "a".repeat(150));
         let output = strip_styles(&session_with_width(&input, "/NEEDLE\nq", None, 35));
