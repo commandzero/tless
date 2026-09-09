@@ -1,27 +1,27 @@
 ## 1. Completion gate
 
-- [ ] 1.1 Inspect and pin the OpenSpec CLI used locally and in CI; verify native active, main-spec, and archived validation with telemetry disabled.
-- [ ] 1.2 Add one PR-scoped completion entry point shared by preflight and CI; verify added, edited, deleted, renamed, and explicitly associated changes, plus unrelated active changes.
-- [ ] 1.3 Require preserved archives, native validation, and delta-to-main-spec synchronization review before merge; verify deleted-only changes, skipped synchronization, already-synced specs, and multiple associated changes without duplicating the native validator.
+- [x] 1.1 Inspect and pin the OpenSpec CLI used locally and in CI; verify native active, main-spec, and archived validation with telemetry disabled.
+- [x] 1.2 Add one PR-scoped completion entry point shared by preflight and CI; verify added, edited, deleted, renamed, and explicitly associated changes, plus unrelated active changes.
+- [x] 1.3 Require preserved archives, native validation, and delta-to-main-spec synchronization review before merge; verify deleted-only changes, skipped synchronization, already-synced specs, and multiple associated changes without duplicating the native validator.
 
 ## 2. Parsed-node layout
 
-- [ ] 2.1 Add an unconditional TOON display module with stable node identities, line ownership, spans, and container extents; verify mappings for nested objects, inline elements, and table cells without export-adapter conversion.
-- [ ] 2.2 Implement standard TOON object, primitive-array, table, and list layouts; verify retained grammar fixtures and exact outputs for root primitives, empty roots, nested arrays, and arrays of empty objects.
-- [ ] 2.3 Implement quoting, escaping, field-order preservation, and table eligibility; verify ambiguous strings, delimiters, duplicate fields, non-string keys, and differing row key order.
-- [ ] 2.4 Implement exact decimal normalization with checked sizing and the 4096-character fallback; verify decimal precision, negative zero, noncanonical YAML numeric spellings, exponent bounds, and no huge decimal allocation.
+- [x] 2.1 Add an unconditional TOON display module with stable node identities, line ownership, spans, and container extents; verify mappings for nested objects, inline elements, and table cells without export-adapter conversion.
+- [x] 2.2 Implement standard TOON object, primitive-array, table, and list layouts; verify retained grammar fixtures and exact outputs for root primitives, empty roots, nested arrays, and arrays of empty objects.
+- [x] 2.3 Implement quoting, escaping, field-order preservation, and table eligibility; verify ambiguous strings, delimiters, duplicate fields, non-string keys, and differing row key order.
+- [x] 2.4 Implement exact decimal normalization with checked sizing and the 4096-character fallback; verify decimal precision, negative zero, noncanonical YAML numeric spellings, exponent bounds, and no huge decimal allocation.
 
 ## 3. Display extensions
 
-- [ ] 3.1 Preserve and annotate duplicate entries using decoded key equality; verify all occurrences, escaped equivalent keys, order, identity, and immediate object counts.
-- [ ] 3.2 Render non-finite values and typed compact non-string keys with warnings; verify infinities, NaN, numeric versus string keys, and recursive complex keys without type coercion.
+- [x] 3.1 Preserve and annotate duplicate entries using decoded key equality; verify all occurrences, escaped equivalent keys, order, identity, and immediate object counts.
+- [x] 3.2 Render non-finite values and typed compact non-string keys with warnings; verify infinities, NaN, numeric versus string keys, and recursive complex keys without type coercion.
 - [ ] 3.3 Render multiple roots with warning separators; verify root shape, order, empty roots, absolute addresses, and separator selection behavior.
-- [ ] 3.4 Add deterministic warning records and shared-line comments with escaped locators; verify ordering, one final comment per line, source strings containing `# WARN`, and controls in field names.
-- [ ] 3.5 Cache descendant warning counts; verify collapsed ancestors retain their own warnings and count hidden semantic warnings without counting painted duplicates.
+- [x] 3.4 Add deterministic warning records and shared-line comments with escaped locators; verify ordering, one final comment per line, source strings containing `# WARN`, and controls in field names.
+- [x] 3.5 Cache descendant warning counts; verify collapsed ancestors retain their own warnings and count hidden semantic warnings without counting painted duplicates.
 
 ## 4. Collapse and viewport
 
-- [ ] 4.1 Project collapse state over TOON layout; verify header retention, table-row collapse, inline-array previews, empty containers, and descendant-state restoration.
+- [x] 4.1 Project collapse state over TOON layout; verify header retention, table-row collapse, inline-array previews, empty containers, and descendant-state restoration.
 - [ ] 4.2 Apply syntax and annotation styles; verify expanded values are not subdued previews, arrays receive no duplicate count, and objects count immediate entries.
 - [ ] 4.3 Preserve optional gutters with TOON absolute addresses and relative visible-motion counts; verify shared-line values, collapsed gaps, separator skipping, and existing defaults.
 - [ ] 4.4 Add cell-aware clipping and horizontal scrolling; verify preview truncation, narrow terminals, wide/combining Unicode, escaped controls, reachable warnings, and resize-stable layouts.
