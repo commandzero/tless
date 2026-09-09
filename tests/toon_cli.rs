@@ -239,6 +239,16 @@ mod terminal_commands {
     }
 
     #[test]
+    fn terminal_resize_reflows_arrays_before_another_keypress() {
+        // The helper resizes on ^R without sending that byte to the app.
+        // If resize waits for input, q exits before a multiline redraw occurs.
+        let output = strip_styles(&session(r#"["alpha","beta"]"#, "\x12q"));
+        assert!(output.contains("[2]: alpha,beta"), "{}", output);
+        assert!(output.contains("  - alpha"), "{}", output);
+        assert!(output.contains("  - beta"), "{}", output);
+    }
+
+    #[test]
     fn arrays_start_multiline_when_large_or_too_wide() {
         for (input, width, last) in [
             ("[1,2,3,4,5,6]", 120, "  - 6"),

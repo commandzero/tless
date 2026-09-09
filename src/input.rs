@@ -7,8 +7,6 @@ use std::io::{stdin, Read, Stdin};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 
-const POLL_INFINITE_TIMEOUT: i32 = -1;
-const SIGWINCH_PIPE_INDEX: usize = 0;
 const BUFFER_SIZE: usize = 1024;
 
 const ESCAPE: u8 = 0o33;
@@ -151,31 +149,13 @@ impl<const N: usize> Iterator for BufferedInput<N> {
 }
 
 struct TuiInput {
-    poll_fds: [libc::pollfd; 2],
     sigwinch_pipe: UnixStream,
     buffered_input: BufferedInput<BUFFER_SIZE>,
 }
 
 impl TuiInput {
     fn new(input: Stdin, sigwinch_pipe: UnixStream) -> TuiInput {
-        let sigwinch_fd = sigwinch_pipe.as_raw_fd();
-        let stdin_fd = input.as_raw_fd();
-
-        let poll_fds: [libc::pollfd; 2] = [
-            libc::pollfd {
-                fd: sigwinch_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            },
-            libc::pollfd {
-                fd: stdin_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            },
-        ];
-
         TuiInput {
-            poll_fds,
             sigwinch_pipe,
             buffered_input: BufferedInput::new(input),
         }
@@ -213,30 +193,45 @@ impl Iterator for TuiInput {
             return self.get_event_from_buffered_input();
         }
 
-        let poll_res: Option<io::Error>;
-
-        loop {
-            match unsafe { libc::poll(self.poll_fds.as_mut_ptr(), 2, POLL_INFINITE_TIMEOUT) } {
-                -1 => {
-                    let err = io::Error::last_os_error();
-                    if err.kind() != io::ErrorKind::Interrupted {
-                        poll_res = Some(err);
-                        break;
-                    }
-                    // Try poll again.
-                }
-                _ => {
-                    poll_res = None;
-                    break;
-                }
+        let input_fd = self.buffered_input.input.as_raw_fd();
+        let signal_fd = self.sigwinch_pipe.as_raw_fd();
+        if [input_fd, signal_fd]
+            .iter()
+            .any(|&fd| fd < 0 || fd as usize >= libc::FD_SETSIZE)
+        {
+            return Some(Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "terminal descriptor exceeds select capacity",
+            )));
+        }
+        let signal_ready = loop {
+            // macOS poll reports POLLNVAL for /dev/tty even though it can be
+            // read. select supports it and lets resize signals interrupt an
+            // otherwise idle terminal without waiting for a keypress.
+            let mut readable: libc::fd_set = unsafe { std::mem::zeroed() };
+            let ready = unsafe {
+                libc::FD_ZERO(&mut readable);
+                libc::FD_SET(input_fd, &mut readable);
+                libc::FD_SET(signal_fd, &mut readable);
+                libc::select(
+                    input_fd.max(signal_fd) + 1,
+                    &mut readable,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
             };
-        }
+            if ready == -1 {
+                let error = io::Error::last_os_error();
+                if error.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Some(Err(error));
+            }
+            break unsafe { libc::FD_ISSET(signal_fd, &readable) };
+        };
 
-        if let Some(poll_err) = poll_res {
-            return Some(Err(poll_err));
-        }
-
-        if self.poll_fds[SIGWINCH_PIPE_INDEX].revents & libc::POLLIN != 0 {
+        if signal_ready {
             // Just make this big enough to absorb a bunch of unacknowledged SIGWINCHes.
             let mut buf = [0; 32];
             let _ = self.sigwinch_pipe.read(&mut buf);

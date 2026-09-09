@@ -7,7 +7,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- Expand inline arrays to multiline with `l` or Right Arrow; default to multiline above five elements or when the inline line exceeds the available terminal width. [#4](https://github.com/commandzero/tless/pull/4)
+- Expand inline arrays to multiline with `l` or Right Arrow; default to multiline above five elements or when the inline line exceeds the available terminal width. Reflow immediately on terminal resize, including on macOS. [#4](https://github.com/commandzero/tless/pull/4)
 
 - Show collapsed object counts as subdued `{N}` hints, separate preview fields with `; `, and keep collapsed annotations out of selection highlighting. [#4](https://github.com/commandzero/tless/pull/4)
 
