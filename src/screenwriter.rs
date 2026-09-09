@@ -141,9 +141,15 @@ impl ScreenWriter {
         }
     }
 
-    fn line_offset(&self, absolute: usize) -> usize {
-        self.horizontal_offsets.get(&absolute).copied().unwrap_or(0)
-            + usize::from(self.indentation_reduction) * 2
+    fn line_viewport(&self, line: &crate::toon_display::VisibleLine) -> lp::LineViewport {
+        lp::LineViewport::new(
+            &line.line,
+            self.horizontal_offsets
+                .get(&line.absolute)
+                .copied()
+                .unwrap_or(0),
+            usize::from(self.indentation_reduction) * 2,
+        )
     }
 
     pub fn mouse_action(&self, viewer: &JsonViewer, row: u16, column: u16) -> Action {
@@ -154,13 +160,14 @@ impl ScreenWriter {
         if column >= number_width && column < number_width + 2 {
             Action::ClickArrow(row)
         } else {
-            let offset = self.line_offset(viewer.visible[index].absolute);
-            let column = column.saturating_sub(number_width + 2 + usize::from(offset > 0)) + offset;
+            let viewport = self.line_viewport(&viewer.visible[index]);
+            let column = viewport.source_column(column.saturating_sub(number_width + 2));
             let line = &viewer.visible[index].line;
-            let fitted = if offset == 0 {
+            let fitted = if viewport.horizontal_offset == 0 {
                 lp::fit_annotations(
                     line,
-                    usize::from(self.dimensions.width).saturating_sub(number_width + 2),
+                    usize::from(self.dimensions.width).saturating_sub(number_width + 2)
+                        + viewport.removed_indentation,
                 )
             } else {
                 std::borrow::Cow::Borrowed(line)
@@ -227,9 +234,9 @@ impl ScreenWriter {
                 continue;
             }
             self.terminal.write_char(' ')?;
-            let offset = self.line_offset(visible.absolute);
-            let fitted = if offset == 0 {
-                lp::fit_annotations(line, available - 2)
+            let viewport = self.line_viewport(visible);
+            let fitted = if viewport.horizontal_offset == 0 {
+                lp::fit_annotations(line, available - 2 + viewport.removed_indentation)
             } else {
                 std::borrow::Cow::Borrowed(line)
             };
@@ -240,7 +247,7 @@ impl ScreenWriter {
                     crate::flatjson::OptionIndex::Index(end) => end + 1,
                     _ => viewer.focused_node + 1,
                 },
-                offset,
+                viewport,
                 available - 2,
                 &matches,
                 &current,
@@ -469,8 +476,9 @@ impl ScreenWriter {
             .grapheme_indices(true)
             .find(|(byte, text)| byte + text.len() >= range.end)
             .map_or(range.end, |(byte, text)| byte + text.len());
-        let start = UnicodeWidthStr::width(&line.text[..start_byte]);
-        let end = UnicodeWidthStr::width(&line.text[..end_byte]);
+        let viewport = self.line_viewport(&viewer.visible[viewer.focused_line_index()]);
+        let start = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..start_byte]));
+        let end = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..end_byte]));
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 3);
         let offset = self
@@ -492,12 +500,8 @@ impl ScreenWriter {
 
     fn scroll_focused_line(&mut self, viewer: &JsonViewer, count: usize, right: bool) {
         let absolute = viewer.absolute_anchor_line;
-        let width = UnicodeWidthStr::width(
-            viewer.visible[viewer.focused_line_index()]
-                .line
-                .text
-                .as_str(),
-        );
+        let line = &viewer.visible[viewer.focused_line_index()];
+        let width = self.line_viewport(line).content_width(&line.line);
         let offset = self.horizontal_offsets.entry(absolute).or_default();
         *offset = if right {
             offset.saturating_add(count).min(width.saturating_sub(1))
@@ -508,12 +512,8 @@ impl ScreenWriter {
 
     pub fn scroll_focused_line_to_an_end(&mut self, viewer: &JsonViewer) {
         let absolute = viewer.absolute_anchor_line;
-        let width = UnicodeWidthStr::width(
-            viewer.visible[viewer.focused_line_index()]
-                .line
-                .text
-                .as_str(),
-        );
+        let line = &viewer.visible[viewer.focused_line_index()];
+        let width = self.line_viewport(line).content_width(&line.line);
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
         let offset = self.horizontal_offsets.entry(absolute).or_default();

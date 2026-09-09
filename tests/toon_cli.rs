@@ -495,7 +495,7 @@ fn removed_modes_are_usage_errors_and_help_describes_toon_addresses() {
         &["--mode", "data"][..],
         &["-m", "data"][..],
     ] {
-        let output = run(args, b"{}");
+        let output = run(args, b"");
         assert_eq!(output.status.code(), Some(2));
     }
     let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
