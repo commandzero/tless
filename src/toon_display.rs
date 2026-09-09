@@ -705,7 +705,7 @@ impl Layout {
         header: &DisplayLine,
         warning_width: usize,
     ) -> Option<DisplayLine> {
-        if !flat[node].is_array() || self.nodes[node].entry_count > self.inline_limit {
+        if !flat[node].is_array() || self.nodes[node].entry_count > self.inline_limit.min(5) {
             return None;
         }
         let kids = children(flat, node);
@@ -735,8 +735,16 @@ impl Layout {
                         )
                 })?
                 .clone();
+            let value = &original.text[span.range.clone()];
+            if UnicodeWidthStr::width(line.text.as_str())
+                + UnicodeWidthStr::width(value)
+                + warning_width
+                > self.inline_width
+            {
+                return None;
+            }
             let start = line.text.len();
-            line.text.push_str(&original.text[span.range.clone()]);
+            line.text.push_str(value);
             for map in &mut span.source_map {
                 map.display = start + map.display.start - span.range.start
                     ..start + map.display.end - span.range.start;
@@ -1364,7 +1372,7 @@ mod tests {
         flat[0].range = 0..length;
         flat[1].range = 1..length - 1;
         flat[2].range = length - 1..length;
-        let layout = Layout::canonical(&flat);
+        let layout = Layout::for_view(&flat, 120, &HashSet::new());
         flat.collapse(0);
         let visible = layout.project(&flat);
         assert!(visible[0].line.text.len() < 280);
@@ -1380,6 +1388,11 @@ mod tests {
         let visible = layout.project(&flat);
         assert_eq!(visible[0].line.text, "tags[2]: 1,2");
         assert!(visible[0]
+            .line
+            .spans
+            .iter()
+            .any(|s| s.role == TokenRole::Number));
+        assert!(!visible[0]
             .line
             .spans
             .iter()
