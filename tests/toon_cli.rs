@@ -113,7 +113,9 @@ mod terminal_commands {
             unsafe { libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) },
             -1
         );
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // Newly built binaries can start slowly on macOS. Keep interaction
+        // checks bounded separately once the first screen is available.
+        let mut deadline = Instant::now() + Duration::from_secs(90);
         let mut output = Vec::new();
         let mut sent = false;
         let mut keys = commands.bytes();
@@ -133,6 +135,7 @@ mod terminal_commands {
                     }
                     if !sent && String::from_utf8_lossy(&output).contains("tless-pty-") {
                         sent = true;
+                        deadline = Instant::now() + Duration::from_secs(10);
                     }
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
