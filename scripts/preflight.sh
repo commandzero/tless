@@ -17,6 +17,8 @@ lint() {
     shellcheck scripts/*.sh
     actionlint
     scripts/test-release.sh
+    scripts/test-openspec.sh
+    scripts/openspec-check.sh
     scripts/validate-docs.sh
 }
 
