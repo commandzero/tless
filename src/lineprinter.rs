@@ -26,6 +26,24 @@ impl LineViewport {
             .take(indentation_reduction)
             .take_while(|byte| *byte == b' ')
             .count();
+        // Painting skips a grapheme when a requested cell offset cuts through it.
+        // Resolve that effective boundary once so mouse and reveal coordinates
+        // use the same first visible cell, including after indentation removal.
+        let horizontal_offset = if horizontal_offset == 0 {
+            0
+        } else {
+            let requested_start = removed_indentation.saturating_add(horizontal_offset);
+            let mut aligned_start = 0;
+            for grapheme in line.text.graphemes(true) {
+                if aligned_start >= requested_start {
+                    break;
+                }
+                aligned_start += UnicodeWidthStr::width(grapheme);
+            }
+            aligned_start
+                .max(requested_start)
+                .saturating_sub(removed_indentation)
+        };
         Self {
             horizontal_offset,
             removed_indentation,
@@ -449,5 +467,37 @@ mod tests {
         // Indentation suppression is independent of a real one-cell horizontal scroll.
         let scrolled = LineViewport::new(line, 1, 100);
         assert!(reduced_text(line, scrolled, 10).starts_with('…'));
+    }
+    #[test]
+    fn wide_grapheme_scroll_boundary_uses_the_same_paint_and_mouse_offset() {
+        for (input, reduction) in [
+            (r#"{"nested":["界",2]}"#, 0),
+            (r#"{"outer":{"nested":["界",2]}}"#, 2),
+        ] {
+            let flat = parse_top_level_json(input.into()).unwrap();
+            let layout = Layout::new(&flat);
+            let line = layout
+                .lines
+                .iter()
+                .find(|line| line.text.contains('界'))
+                .unwrap();
+            let viewport = LineViewport::new(line, 12, reduction);
+            assert_eq!(viewport.horizontal_offset, 13);
+            assert_eq!(reduced_text(line, viewport, 30), "…,2");
+            let selected = hit_test(line, viewport.source_column(2)).0;
+            assert_eq!(&flat.1[flat[selected].range.clone()], "2");
+            let matching = line
+                .spans
+                .iter()
+                .find(|span| span.node == selected && span.source.is_some())
+                .unwrap();
+            let source = matching.source.clone().unwrap();
+            let painted_match = matching.matching_ranges(&source)[0].clone();
+            let column = UnicodeWidthStr::width(&line.text[..painted_match.start]);
+            assert_eq!(
+                viewport.reduced_column(column) - viewport.horizontal_offset + 1,
+                2
+            );
+        }
     }
 }

@@ -485,7 +485,9 @@ impl ScreenWriter {
             .horizontal_offsets
             .entry(viewer.absolute_anchor_line)
             .or_default();
-        if start < *offset || end > offset.saturating_add(available) {
+        if start < viewport.horizontal_offset
+            || end > viewport.horizontal_offset.saturating_add(available)
+        {
             *offset = start;
         }
     }
