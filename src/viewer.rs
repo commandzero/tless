@@ -250,9 +250,14 @@ impl JsonViewer {
 
     fn next_at_parent_level(&mut self) {
         let current = &self.flatjson[self.focused_node];
-        let destination = match current.parent {
+        let parent_next = match current.parent {
             OptionIndex::Index(parent) => self.flatjson[parent].next_sibling,
-            OptionIndex::Nil => current.next_sibling,
+            OptionIndex::Nil => OptionIndex::Nil,
+        };
+        let destination = if parent_next.is_nil() {
+            current.next_sibling
+        } else {
+            parent_next
         };
         if let OptionIndex::Index(node) = destination {
             self.focus(node);
@@ -890,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn parent_level_motions_only_fall_back_without_a_parent() {
+    fn parent_level_motions_prefer_parent_then_fall_back_to_siblings() {
         let mut v = viewer(r#"{"a":{"x":1,"y":2},"b":{"x":3,"y":4}}"#);
         act(&mut v, &[Action::MoveRight, Action::MoveRight]);
         v.perform_action(Action::FocusNextAtParentLevel);
@@ -903,8 +908,8 @@ mod tests {
         v.perform_action(Action::FocusNextAtParentLevel);
         assert_eq!(
             path(&v),
-            ".b.x",
-            "an existing parent prevents sibling fallback"
+            ".b.y",
+            "use the next sibling when the parent has no next sibling"
         );
         v.perform_action(Action::FocusParentOrPreviousSibling);
         assert_eq!(path(&v), ".b", "parent takes priority over .b.x");

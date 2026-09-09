@@ -45,8 +45,8 @@ keeping the array selected. Press it again to select the first element. This
 explicit multiline choice survives resizing and collapsing/reopening the array.
 `[` selects the current node's parent; `]` selects that parent's next sibling. For `{a: …, b: {x: …}, c: …}`, from `b.x` they select `b` and `c`.
 If there is no parent, `[` falls back to the current node's previous sibling.
-If there is no parent, `]` falls back to the current node's next sibling.
-If a parent exists but has no next sibling, `]` leaves focus unchanged. The destination keeps its collapse state. Focus stays put when
+If the parent has no next sibling, or there is no parent, `]` falls back to the
+current node's next sibling. The destination keeps its collapse state. Focus stays put when
 neither target exists.
 Moving down from a table cell retains its field on the next expanded table row.
 The status bar shows paths without an `input` prefix, such as `.users[1].name`,

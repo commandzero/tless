@@ -246,9 +246,10 @@ mod terminal_commands {
     }
 
     #[test]
-    fn bracket_fallbacks_select_siblings_only_without_a_parent() {
+    fn bracket_fallbacks_select_siblings_when_parent_targets_are_missing() {
         for (input, commands, expected) in [
-            (r#"{"only":{"x":1,"y":2}}"#, "ll]pp q", "1"),
+            (r#"{"a":{"x":1,"y":2},"b":3}"#, "ll]pp q", "3"),
+            (r#"{"only":{"x":1,"y":2}}"#, "ll]]pp q", "2"),
             ("1 2 3", "]pp q", "2"),
             ("1 2 3", "][pp q", "1"),
         ] {
