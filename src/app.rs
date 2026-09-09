@@ -463,6 +463,8 @@ impl App {
                         Key::Left | Key::Char('h') => Some(Action::MoveLeft),
                         Key::Right | Key::Char('l') => Some(Action::MoveRight),
                         Key::Char('H') => Some(Action::FocusParent),
+                        Key::Char('[') => Some(Action::FocusPreviousAtParentLevel),
+                        Key::Char(']') => Some(Action::FocusNextAtParentLevel),
                         Key::Char('c') => Some(Action::CollapseNodeAndSiblings),
                         Key::Char('C') => Some(Action::DeepCollapseNodeAndSiblings),
                         Key::Char('e') => Some(Action::ExpandNodeAndSiblings),

@@ -236,6 +236,20 @@ impl JsonViewer {
         }
     }
 
+    fn move_at_parent_level(&mut self, next: bool) {
+        let OptionIndex::Index(parent) = self.flatjson[self.focused_node].parent else {
+            return;
+        };
+        let destination = if next {
+            self.flatjson[parent].next_sibling
+        } else {
+            self.flatjson[parent].prev_sibling
+        };
+        if let OptionIndex::Index(node) = destination {
+            self.focus(node);
+        }
+    }
+
     fn sibling(&mut self, count: usize, next: bool) {
         for _ in 0..count {
             let before = self.focused_node;
@@ -406,6 +420,8 @@ impl JsonViewer {
                 }
             }
             Action::FocusParent => self.parent(),
+            Action::FocusPreviousAtParentLevel => self.move_at_parent_level(false),
+            Action::FocusNextAtParentLevel => self.move_at_parent_level(true),
             Action::FocusPrevSibling(n) => self.sibling(n, false),
             Action::FocusNextSibling(n) => self.sibling(n, true),
             Action::FocusFirstSibling | Action::FocusLastSibling => {
@@ -551,6 +567,8 @@ pub enum Action {
     MoveDownUntilDepthChange,
 
     FocusParent,
+    FocusPreviousAtParentLevel,
+    FocusNextAtParentLevel,
 
     // The behavior of these is subtle and stateful. These move to the
     // previous/next sibling of the focused element. If we are focused
@@ -837,6 +855,68 @@ mod tests {
         assert_eq!(line, v.absolute_anchor_line);
         v.perform_action(Action::FocusParent);
         assert_eq!(path(&v), ".users");
+    }
+
+    #[test]
+    fn parent_level_motions_select_adjacent_parent_entries() {
+        let mut v = viewer(r#"{"a":{"value":0},"b":{"x":1},"c":{"value":2}}"#);
+        // Preserve the destination's collapse state and select its header.
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::MoveLeft);
+        let a = v.focused_node;
+        act(&mut v, &[Action::FocusNextSibling(1), Action::MoveRight]);
+        assert_eq!(path(&v), ".b.x");
+        let x = v.focused_node;
+        v.perform_action(Action::FocusPreviousAtParentLevel);
+        assert_eq!(path(&v), ".a");
+        assert!(v.flatjson[a].is_collapsed());
+        v.perform_action(Action::FocusNode {
+            node: x,
+            source: None,
+        });
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(path(&v), ".c");
+        assert_eq!(v.absolute_anchor_line, v.layout.nodes[v.focused_node].line);
+    }
+
+    #[test]
+    fn parent_level_motions_keep_focus_at_document_boundaries() {
+        let mut v = viewer(r#"{"only":{"x":1}}"#);
+        for actions in [vec![], vec![Action::MoveRight], vec![Action::MoveRight]] {
+            act(&mut v, &actions);
+            let node = v.focused_node;
+            act(
+                &mut v,
+                &[
+                    Action::FocusPreviousAtParentLevel,
+                    Action::FocusNextAtParentLevel,
+                ],
+            );
+            assert_eq!(v.focused_node, node);
+        }
+    }
+
+    #[test]
+    fn parent_level_motions_use_table_row_identity() {
+        let mut v = viewer(r#"[{"x":1},{"x":2},{"x":3}]"#);
+        act(
+            &mut v,
+            &[
+                Action::MoveRight,
+                Action::FocusNextSibling(1),
+                Action::MoveRight,
+            ],
+        );
+        assert_eq!(path(&v), "[1].x");
+        let cell = v.focused_node;
+        v.perform_action(Action::FocusPreviousAtParentLevel);
+        assert_eq!(path(&v), "[0]");
+        v.perform_action(Action::FocusNode {
+            node: cell,
+            source: None,
+        });
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(path(&v), "[2]");
     }
 
     #[test]
