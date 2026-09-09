@@ -26,4 +26,15 @@ Code inspection confirms Layout::new runs on document construction, while naviga
 
 ## Final verification
 
-Pending full preflight, Rust 1.87 feature matrix, standards/spec review, synchronization, and archive validation.
+Reviewed implementation: c7e35ae, merged at f502558. Warning-order clarification and regression: 19a8e8d, merged at ddc5218.
+
+- Parallel standards and spec reviews identified 12 findings. A single fix implementer addressed all of them. Independent follow-up reviews closed every finding, including the final warning-order wording correction.
+- Fixes cover source-to-display substring mapping and search reveal, typed complex YAML keys, explicit table membership, inline warning locators, retained header styling, container focus, scrolloff/end-scroll behavior, archive preservation, and retained navigation tests.
+- Unsupported string controls now have an explicit terminal-safe display spelling and `Non-standard string escape` warning. Warning order is explicitly parsed-node order, then kind order within each node, with hidden summaries last.
+- All four feature profiles passed on Rust 1.97.1 and Rust 1.87.0 after the behavioral fixes. Before the final additional warning-order regression, counts were 62/81/64/83 unit tests and 12/19/12/19 CLI/PTY tests for minimal/default/sexp-only/combined respectively. No ignored or skipped tests. `RUST_TEST_THREADS=1` was used with disposable terminal access.
+- Repeated all 12 wide/narrow terminal acceptance assertions against the fixed build; all passed and every session exited successfully. Independent reviewer terminals also confirmed each reported behavior correction.
+- All 20 completion-gate fixtures passed under Bash 3.2. Both Clippy profiles and the docs validator passed.
+- Cargo.toml, Cargo.lock, and LICENSE have no changes relative to the PR base. The published codec dependency and existing licenses are preserved.
+- Compared every requirement and scenario with implementation evidence. Main specs preserve all 17 requirements and 38 scenarios from the three deltas, including their Purpose text, with no pending delta operations. Native strict active-change and main-spec validation passed.
+
+The final committed archive and full preflight are prepared together because preflight checks committed HEAD and rejects an active associated change. Final preflight results will be recorded after that check; any failure reopens the affected completion task before delivery.
