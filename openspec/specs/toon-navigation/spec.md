@@ -26,12 +26,12 @@ The viewer SHALL distinguish container focus from child-value focus even when th
 
 Up/down and counted vertical motions SHALL move over visible display lines, excluding root-separator annotation lines. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. Moving into an inline array with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. Closing-delimiter matching SHALL have no action or help entry.
 
-#### Scenario: Previous and next entry at the parent level
+#### Scenario: Parent and next entry at the parent level
 
 - **WHEN** a node is selected and the user presses `[` or `]`
-- **THEN** focus SHALL move to its parent's previous or next sibling, respectively
+- **THEN** `[` SHALL select the current parent, and `]` SHALL select that parent's next sibling
 - **AND** the destination itself SHALL be selected without descending into its children or changing collapse state
-- **AND** focus SHALL stay unchanged when the parent or the requested sibling does not exist
+- **AND** focus SHALL stay unchanged when the parent does not exist, or when `]` has no next sibling to select
 - **AND** this SHALL use parsed parent identity for inline array elements and table cells
 
 #### Scenario: Table motion

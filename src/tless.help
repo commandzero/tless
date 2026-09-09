@@ -36,7 +36,7 @@
                      the array selected. Otherwise, move into the first child
                      of an expanded container. Does nothing on scalar values.
 
-  [            Focus the previous sibling of the focused node's parent.
+  [            Focus the current node's parent.
   ]            Focus the next sibling of the focused node's parent.
                  Stay put if that entry does not exist; preserve collapse state.
 

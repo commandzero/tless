@@ -230,16 +230,15 @@ mod terminal_commands {
 
     #[test]
     fn brackets_move_to_entries_at_the_parent_level() {
-        for (motion, expected) in [("[", "10"), ("]", "30")] {
+        for (motion, expected) in [
+            ("[", "\"x\": 20"),
+            ("]", "30\r\n\r\nPress any key to continue."),
+        ] {
             let output = session(
                 r#"{"a":10,"b":{"x":20},"c":30}"#,
                 &format!("ljl{}pp q", motion),
             );
-            assert!(
-                output.contains(&format!("{}\r\n\r\nPress any key to continue.", expected)),
-                "{}",
-                output
-            );
+            assert!(output.contains(expected), "{}", output);
         }
     }
 
