@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Remove the `input` prefix from status-bar paths; show `.` at the document root. [#4](https://github.com/commandzero/tless/pull/4)
+
 - Add `[` and `]` motions to select the current parent or its next sibling without changing collapse state. [#4](https://github.com/commandzero/tless/pull/4)
 
 - Expand inline arrays to multiline with `l` or Right Arrow; default to multiline above five elements or when the inline line exceeds the available terminal width. Reflow immediately on terminal resize, including on macOS. [#4](https://github.com/commandzero/tless/pull/4)

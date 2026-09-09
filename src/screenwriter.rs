@@ -49,7 +49,6 @@ impl MessageSeverity {
     }
 }
 
-const PATH_BASE: &str = "input";
 const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
 
 impl ScreenWriter {
@@ -320,6 +319,9 @@ impl ScreenWriter {
             .flatjson
             .build_path_to_node(PathType::DotWithTopLevelIndex, viewer.focused_node)
             .unwrap();
+        if path_to_node.is_empty() {
+            path_to_node.push('.');
+        }
         let node = &viewer.layout.nodes[viewer.focused_node];
         if let (Some(occurrence), Some(total)) = (node.occurrence, node.occurrence_total) {
             write!(path_to_node, " (occurrence {occurrence} of {total})")?;
@@ -386,23 +388,17 @@ impl ScreenWriter {
         Ok(())
     }
 
-    // input.data.viewer.gameDetail.plays[3].playStats[0].gsisPlayer.id filename.>
-    // input.data.viewer.gameDetail.plays[3].playStats[0].gsisPlayer.id fi>
-    // // Path also shrinks if needed
-    // <.data.viewer.gameDetail.plays[3].playStats[0].gsisPlayer.id
     fn print_path_to_node_and_file_name(
         &mut self,
         path_to_node: &str,
         filename: &str,
         width: isize,
     ) -> std::fmt::Result {
-        let base_len = PATH_BASE.len() as isize;
         let path_display_width = UnicodeWidthStr::width(path_to_node) as isize;
         let row = self.dimensions.height.saturating_sub(1).max(1);
 
         let space_available_for_filename =
-            width - base_len - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
-        let mut space_available_for_base = width - path_display_width;
+            width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
         let inverted_style = terminal::Style {
             inverted: true,
@@ -412,43 +408,13 @@ impl ScreenWriter {
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
 
-        if truncated_filename.any_contents_visible() {
-            let filename_width = truncated_filename.used_space().unwrap();
-            space_available_for_base -= filename_width - SPACE_BETWEEN_PATH_AND_FILENAME;
-        }
-
-        let truncated_base = TruncatedStrView::init_back(PATH_BASE, space_available_for_base);
-
         self.terminal.position_cursor(1, row)?;
         self.terminal.set_style(&inverted_style)?;
-        self.terminal.set_bg(terminal::LIGHT_BLACK)?;
-
-        let base_slice = TruncatedStrSlice {
-            s: PATH_BASE,
-            truncated_view: &truncated_base,
+        let path_slice = TruncatedStrSlice {
+            s: path_to_node,
+            truncated_view: &TruncatedStrView::init_back(path_to_node, width),
         };
-
-        write!(self.terminal, "{base_slice}")?;
-
-        self.terminal.set_bg(terminal::DEFAULT)?;
-
-        // If the path is the exact same width as the screen, we won't print out anything
-        // for the PATH_BASE, and the path won't be truncated. But there is truncated
-        // content (the PATH_BASE), so we'll just manually handle this case.
-        if truncated_base.used_space().is_none() && path_display_width == width {
-            self.terminal.write_char('…')?;
-            let mut graphemes = path_to_node.graphemes(true);
-            // Skip one character.
-            graphemes.next();
-            self.terminal.write_str(graphemes.as_str())?;
-        } else {
-            let path_slice = TruncatedStrSlice {
-                s: path_to_node,
-                truncated_view: &TruncatedStrView::init_back(path_to_node, width),
-            };
-
-            write!(self.terminal, "{path_slice}")?;
-        }
+        write!(self.terminal, "{path_slice}")?;
 
         if truncated_filename.any_contents_visible() {
             let filename_width = truncated_filename.used_space().unwrap();

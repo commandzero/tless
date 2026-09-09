@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T22:18:23Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T22:29:56Z }
 ---
 
 # TOON document view
@@ -47,7 +47,8 @@ explicit multiline choice survives resizing and collapsing/reopening the array.
 The destination stays expanded or collapsed as it was. If there is no parent or
 no next sibling for `]`, focus stays put.
 Moving down from a table cell retains its field on the next expanded table row.
-A cell's path includes the row index and key, such as `users[1].name`. Its
+The status bar shows paths without an `input` prefix, such as `.users[1].name`,
+and shows `.` at the document root. A cell's path includes its row index and key. Its
 parent is the row object, whose parent is the array. Duplicate entries remain
 separate selections, with an occurrence number beside the path.
 
