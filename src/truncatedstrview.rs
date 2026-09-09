@@ -191,13 +191,13 @@ impl TruncatedStrView {
     /// Check whether this is a view of a string that is totally elided,
     /// that is, it is represented by a single ellipsis.
     pub fn is_completely_elided(&self) -> bool {
-        self.range.map_or(false, |r| r.is_completely_elided())
+        self.range.is_some_and(|r| r.is_completely_elided())
     }
 
     /// Check whether this is a view of a string that fits in the available
     /// space and shows at least one character (i.e., isn't totally elided).
     pub fn any_contents_visible(&self) -> bool {
-        self.range.map_or(false, |r| !r.is_completely_elided())
+        self.range.is_some_and(|r| !r.is_completely_elided())
     }
 
     // Creates a RangeAdjuster that represents the current state of
@@ -831,7 +831,7 @@ mod tests {
             assert_eq!(
                 expected_state, &formatted,
                 "expected scroll_right({}) to be {}",
-                &prev_formatted, &expected_state,
+                prev_formatted, expected_state,
             );
             curr_state = next_state;
             prev_formatted = formatted;
@@ -848,7 +848,7 @@ mod tests {
             assert_eq!(
                 expected_state, &formatted,
                 "expected scroll_left({}) to be {}",
-                &prev_formatted, &expected_state,
+                prev_formatted, expected_state,
             );
             curr_state = next_state;
             prev_formatted = formatted;
@@ -939,7 +939,7 @@ mod tests {
             assert_eq!(
                 expansion, &formatted,
                 "expected expand({}) to be {}",
-                &prev_formatted, &expansion,
+                prev_formatted, expansion,
             );
 
             curr_state = next_state;
@@ -1056,7 +1056,7 @@ mod tests {
             assert_eq!(
                 shrunk, &formatted,
                 "expected shrink({}) to be {}",
-                &prev_formatted, &shrunk,
+                prev_formatted, shrunk,
             );
 
             curr_state = next_state;
@@ -1118,7 +1118,7 @@ mod tests {
             assert_eq!(
                 expected_focused, &formatted,
                 "Case {}: expected focus({}, {}..{}) to be {}",
-                i, &initial_formatted, range.start, range.end, &expected_focused,
+                i, initial_formatted, range.start, range.end, expected_focused,
             );
         }
     }

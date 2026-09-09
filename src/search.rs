@@ -576,7 +576,7 @@ mod tests {
         if let Some((_, wrapped)) = search.active_search_state() {
             assert_eq!(wrapped, expected);
         } else {
-            assert!(false, "Not in an active search state");
+            panic!("Not in an active search state");
         }
     }
 }
