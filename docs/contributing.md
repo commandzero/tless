@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: codex/gpt-6, at: 2026-09-07T18:22:11Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T06:08:38Z }
 ---
 
 # Contributing
@@ -15,6 +15,8 @@ Changes can diverge from upstream conventions while preserving its license and a
 
 Use the shared [repo-man bundle](../../repo-man/index.md).
 Clone CommandZero/repo-man beside this checkout if that link is unavailable.
+The user-level copy at `~/.agents/memory/repo-man/` is also an accepted source
+for this workspace when the sibling checkout is unavailable.
 This repository adopts its applicable Rust, Bash, CLI, preflight, updates,
 versioning, and release guidance, including draft recommendations.
 The pending TUI and release-target documents do not provide complete requirements.
@@ -63,6 +65,30 @@ Workflow changes trigger the same checks. Dependabot maintains action pins and d
 Describe behavior changes and validation. Update the Unreleased changelog for notable
 user effects, including upgrade instructions for breaks. Pure maintenance does not
 require a changelog entry. Preserve old upstream commit and release history.
+
+## OpenSpec completion gate
+
+OpenSpec planning artifacts live under `openspec/`, outside the `docs/` OKF bundle.
+Run all OpenSpec CLI commands with `OPENSPEC_TELEMETRY=0`.
+Planning workflows create artifacts without implementing their tasks.
+
+Before an associated implementation PR merges:
+
+1. Complete and verify the change's implementation tasks.
+2. Synchronize its delta requirements into main specs and archive its artifacts.
+   Deleting an active change directory alone does not satisfy this gate.
+3. Pass native OpenSpec validation for the affected changes and specs, including
+   archived-task validation, using the pinned CLI selected during implementation.
+4. Review delta-to-main-spec correspondence explicitly. Archive presence and syntax
+   validation alone do not prove synchronization or implementation correctness.
+5. Run a PR-scoped completion check through one local entry point shared with CI.
+   Select associated changes from added, edited, deleted, and renamed Git paths,
+   plus explicit associations when artifacts are absent from the PR diff.
+   Unrelated active changes must not block the PR.
+
+The first implementation using this planning tree must add and document the shared
+check before merge. This planning-only change defines the gate; it does not claim
+that CI enforces it yet. Do not replace the CLI's validators with custom parsers.
 
 ## Compatibility and release ownership
 
