@@ -36,9 +36,10 @@
                      the array selected. Otherwise, move into the first child
                      of an expanded container. Does nothing on scalar values.
 
-  [            Focus the current node's parent.
-  ]            Focus the next sibling of the focused node's parent.
-                 Stay put if that entry does not exist; preserve collapse state.
+  [            Focus the parent, or the previous sibling if there is no parent.
+  ]            Focus the parent's next sibling, or the current node's next
+                 sibling if there is no eligible parent-level entry.
+                 Stay put if neither target exists; preserve collapse state.
 
   J         *  Move to the focused node's next     sibling 1 or [4mN[0m times.
   K         *  Move to the focused node's previous sibling 1 or [4mN[0m times.

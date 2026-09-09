@@ -243,6 +243,21 @@ mod terminal_commands {
     }
 
     #[test]
+    fn bracket_fallbacks_select_siblings_when_parent_targets_are_missing() {
+        for (input, commands, expected) in [
+            (r#"{"only":{"x":1,"y":2}}"#, "ll]pp q", "2"),
+            ("1 2 3", "][pp q", "1"),
+        ] {
+            let output = session(input, commands);
+            assert!(
+                output.contains(&format!("{}\r\n\r\nPress any key to continue.", expected)),
+                "{}",
+                output
+            );
+        }
+    }
+
+    #[test]
     fn right_expands_inline_arrays_into_navigable_lines() {
         let output = session(r#"["alpha","beta"]"#, "ljpp q");
         let clean = strip_styles(&output);

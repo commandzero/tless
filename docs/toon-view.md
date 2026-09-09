@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T22:29:56Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T22:49:34Z }
 ---
 
 # TOON document view
@@ -44,8 +44,10 @@ Press `l` or Right Arrow on an inline array to show one element per line while
 keeping the array selected. Press it again to select the first element. This
 explicit multiline choice survives resizing and collapsing/reopening the array.
 `[` selects the current node's parent; `]` selects that parent's next sibling. For `{a: …, b: {x: …}, c: …}`, from `b.x` they select `b` and `c`.
-The destination stays expanded or collapsed as it was. If there is no parent or
-no next sibling for `]`, focus stays put.
+If there is no parent, `[` falls back to the current node's previous sibling.
+If there is no eligible parent-level entry, `]` falls back to the current node's
+next sibling. The destination keeps its collapse state. Focus stays put when
+neither target exists.
 Moving down from a table cell retains its field on the next expanded table row.
 The status bar shows paths without an `input` prefix, such as `.users[1].name`,
 and shows `.` at the document root. A cell's path includes its row index and key. Its

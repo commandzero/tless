@@ -31,7 +31,9 @@ Up/down and counted vertical motions SHALL move over visible display lines, excl
 - **WHEN** a node is selected and the user presses `[` or `]`
 - **THEN** `[` SHALL select the current parent, and `]` SHALL select that parent's next sibling
 - **AND** the destination itself SHALL be selected without descending into its children or changing collapse state
-- **AND** focus SHALL stay unchanged when the parent does not exist, or when `]` has no next sibling to select
+- **AND** `[` SHALL fall back to the current node's previous sibling when there is no parent
+- **AND** `]` SHALL fall back to the current node's next sibling when its parent has no next sibling or there is no parent
+- **AND** focus SHALL stay unchanged when neither the preferred target nor its fallback exists
 - **AND** this SHALL use parsed parent identity for inline array elements and table cells
 
 #### Scenario: Table motion

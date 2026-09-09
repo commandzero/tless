@@ -236,11 +236,29 @@ impl JsonViewer {
         }
     }
 
-    fn next_at_parent_level(&mut self) {
-        let OptionIndex::Index(parent) = self.flatjson[self.focused_node].parent else {
-            return;
+    fn parent_or_previous_sibling(&mut self) {
+        let current = &self.flatjson[self.focused_node];
+        let destination = if current.parent.is_nil() {
+            current.prev_sibling
+        } else {
+            current.parent
         };
-        let destination = self.flatjson[parent].next_sibling;
+        if let OptionIndex::Index(node) = destination {
+            self.focus(node);
+        }
+    }
+
+    fn next_at_parent_level(&mut self) {
+        let current = &self.flatjson[self.focused_node];
+        let preferred = match current.parent {
+            OptionIndex::Index(parent) => self.flatjson[parent].next_sibling,
+            OptionIndex::Nil => OptionIndex::Nil,
+        };
+        let destination = if preferred.is_nil() {
+            current.next_sibling
+        } else {
+            preferred
+        };
         if let OptionIndex::Index(node) = destination {
             self.focus(node);
         }
@@ -416,6 +434,7 @@ impl JsonViewer {
                 }
             }
             Action::FocusParent => self.parent(),
+            Action::FocusParentOrPreviousSibling => self.parent_or_previous_sibling(),
             Action::FocusNextAtParentLevel => self.next_at_parent_level(),
             Action::FocusPrevSibling(n) => self.sibling(n, false),
             Action::FocusNextSibling(n) => self.sibling(n, true),
@@ -562,6 +581,7 @@ pub enum Action {
     MoveDownUntilDepthChange,
 
     FocusParent,
+    FocusParentOrPreviousSibling,
     FocusNextAtParentLevel,
 
     // The behavior of these is subtle and stateful. These move to the
@@ -861,7 +881,7 @@ mod tests {
         act(&mut v, &[Action::FocusNextSibling(1), Action::MoveRight]);
         assert_eq!(path(&v), ".b.x");
         let x = v.focused_node;
-        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::FocusParentOrPreviousSibling);
         assert_eq!(path(&v), ".b");
         assert!(v.flatjson[v.focused_node].is_expanded());
         assert!(v.flatjson[a].is_collapsed());
@@ -875,20 +895,58 @@ mod tests {
     }
 
     #[test]
+    fn parent_level_motions_fall_back_to_current_siblings() {
+        let mut v = viewer(r#"{"a":{"x":1,"y":2},"b":{"x":3,"y":4}}"#);
+        act(&mut v, &[Action::MoveRight, Action::MoveRight]);
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(
+            path(&v),
+            ".b",
+            "parent-level entry takes priority over .a.y"
+        );
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(path(&v), ".b.y", "fall back when .b has no next sibling");
+        v.perform_action(Action::FocusParentOrPreviousSibling);
+        assert_eq!(path(&v), ".b", "parent takes priority over .b.x");
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(path(&v), ".b", "no destination leaves focus unchanged");
+    }
+
+    #[test]
+    fn parent_level_motions_fall_back_between_document_roots() {
+        let mut v = viewer("1 2 3");
+        let first = v.focused_node;
+        v.perform_action(Action::FocusNextAtParentLevel);
+        let second = v.focused_node;
+        assert_ne!(second, first);
+        assert_eq!(&v.flatjson.1[v.flatjson[second].range.clone()], "2");
+        v.perform_action(Action::FocusParent);
+        assert_eq!(v.focused_node, second, "H remains a strict parent motion");
+        v.perform_action(Action::FocusParentOrPreviousSibling);
+        assert_eq!(v.focused_node, first);
+        v.perform_action(Action::FocusParentOrPreviousSibling);
+        assert_eq!(v.focused_node, first);
+    }
+
+    #[test]
     fn parent_level_motions_keep_focus_at_document_boundaries() {
         let mut v = viewer(r#"{"only":{"x":1}}"#);
         act(
             &mut v,
-            &[Action::FocusParent, Action::FocusNextAtParentLevel],
+            &[
+                Action::FocusParentOrPreviousSibling,
+                Action::FocusNextAtParentLevel,
+            ],
         );
         assert_eq!(v.focused_node, 0);
         act(&mut v, &[Action::MoveRight, Action::MoveRight]);
         assert_eq!(path(&v), ".only.x");
         v.perform_action(Action::FocusNextAtParentLevel);
         assert_eq!(path(&v), ".only.x");
-        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::FocusParentOrPreviousSibling);
         assert_eq!(path(&v), ".only");
-        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::FocusParentOrPreviousSibling);
         assert_eq!(v.focused_node, 0);
     }
 
@@ -905,7 +963,7 @@ mod tests {
         );
         assert_eq!(path(&v), "[1].x");
         let cell = v.focused_node;
-        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::FocusParentOrPreviousSibling);
         assert_eq!(path(&v), "[1]");
         v.perform_action(Action::FocusNode {
             node: cell,
