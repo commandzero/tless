@@ -221,9 +221,9 @@ impl App {
             // we'll also stop considering the search active if the collapsed state
             // of the focused row changes.
             let mut jumped_to_search_match = false;
-            let focused_row_before = self.viewer.focused_row;
-            let previous_collapsed_state_of_focused_row =
-                self.viewer.flatjson[focused_row_before].is_collapsed();
+            let focused_node_before = self.viewer.focused_node;
+            let previous_collapsed_state_of_focused_node =
+                self.viewer.flatjson[focused_node_before].is_collapsed();
 
             let action = match event {
                 // Put this first so the current input state doesn't get reset
@@ -577,10 +577,10 @@ impl App {
                 // we're no longer actively searching. If the focused row was expanded
                 // or collapsed, we're still searching, but there's no longer a current
                 // match.
-                if focused_row_before != self.viewer.focused_row {
+                if focused_node_before != self.viewer.focused_node {
                     self.search_state.set_no_longer_actively_searching();
-                } else if previous_collapsed_state_of_focused_row
-                    != self.viewer.flatjson[focused_row_before].is_collapsed()
+                } else if previous_collapsed_state_of_focused_node
+                    != self.viewer.flatjson[focused_node_before].is_collapsed()
                 {
                     self.search_state
                         .set_matches_visible_if_actively_searching();
@@ -724,7 +724,7 @@ impl App {
     }
 
     fn initialize_object_key_search(&mut self, direction: SearchDirection) -> bool {
-        if let Some(key_range) = &self.viewer.flatjson[self.viewer.focused_row].key_range {
+        if let Some(key_range) = &self.viewer.flatjson[self.viewer.focused_node].key_range {
             // Note key_range already includes quotes around key.
             let object_key = format!("{}: ", &self.viewer.flatjson.1[key_range.clone()]);
             self.initialize_search(direction, object_key)
@@ -747,7 +747,7 @@ impl App {
         }
 
         let destination = self.search_state.jump_to_match(
-            self.viewer.focused_row,
+            self.viewer.focused_node,
             &self.viewer.flatjson,
             jump_direction,
             jumps,
@@ -839,32 +839,32 @@ impl App {
 
     fn get_content_target_data(&self, content_target: ContentTarget) -> Result<String, String> {
         let json = &self.viewer.flatjson.1;
-        let focused_row_index = self.viewer.focused_row;
-        let focused_row = &self.viewer.flatjson[focused_row_index];
+        let focused_node_index = self.viewer.focused_node;
+        let focused_node = &self.viewer.flatjson[focused_node_index];
 
         let data = match content_target {
             #[cfg(feature = "toon")]
             ContentTarget::ToonValue => crate::toon::encode_value(
                 &self.viewer.flatjson,
-                focused_row_index,
+                focused_node_index,
                 crate::toon::EncodeOptions::default(),
             )
             .map_err(|e| e.to_string())?,
-            ContentTarget::PrettyPrintedValue if focused_row.is_container() => self
+            ContentTarget::PrettyPrintedValue if focused_node.is_container() => self
                 .viewer
                 .flatjson
-                .pretty_printed_value(focused_row_index)
+                .pretty_printed_value(focused_node_index)
                 .unwrap(),
             ContentTarget::PrettyPrintedValue | ContentTarget::OneLineValue => {
-                let range = focused_row.range.clone();
+                let range = focused_node.range.clone();
                 json[range].to_string()
             }
             ContentTarget::String => {
-                if !focused_row.is_string() {
+                if !focused_node.is_string() {
                     return Err("Current value is not a string".to_string());
                 }
 
-                let range = focused_row.range.clone();
+                let range = focused_node.range.clone();
                 let quoteless_range = (range.start + 1)..(range.end - 1);
                 let string_value = &json[quoteless_range];
 
@@ -876,7 +876,7 @@ impl App {
                 }
             }
             ContentTarget::Key => {
-                let Some(key_range) = &focused_row.key_range else {
+                let Some(key_range) = &focused_node.key_range else {
                     return Err("No object key to copy".to_string());
                 };
 
@@ -901,7 +901,7 @@ impl App {
 
                 self.viewer
                     .flatjson
-                    .build_path_to_node(path_type, focused_row_index)?
+                    .build_path_to_node(path_type, focused_node_index)?
             }
         };
 
@@ -914,12 +914,12 @@ impl App {
                 // Checked when the user first hits 'y'.
                 let clipboard = self.clipboard_context.as_mut().unwrap();
 
-                let focused_row = &self.viewer.flatjson[self.viewer.focused_row];
+                let focused_node = &self.viewer.flatjson[self.viewer.focused_node];
 
                 let content_type = match content_target {
                     #[cfg(feature = "toon")]
                     ContentTarget::ToonValue => "TOON value",
-                    ContentTarget::PrettyPrintedValue if focused_row.is_container() => {
+                    ContentTarget::PrettyPrintedValue if focused_node.is_container() => {
                         "pretty-printed value"
                     }
                     ContentTarget::PrettyPrintedValue | ContentTarget::OneLineValue => "value",

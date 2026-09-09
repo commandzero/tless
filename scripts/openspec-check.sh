@@ -52,9 +52,16 @@ while IFS= read -r id; do
     [[ ${#archives[@]} == 1 && -d ${archives[0]} ]] || { echo "$id: require exactly one preserved archive." >&2; exit 1; }
     archive=${archives[0]}
     # Preserve every tracked artifact from the base, while allowing its final edits.
-    git ls-tree -r --name-only "$merge_base" -- "openspec/changes/$id/" > "$stage/artifacts"
+    git ls-tree -r --name-only "$merge_base" -- openspec/changes > "$stage/artifacts"
     while IFS= read -r path; do
-        relative=${path#openspec/changes/"$id"/}
+        case $path in
+            openspec/changes/"$id"/*) relative=${path#openspec/changes/"$id"/} ;;
+            openspec/changes/archive/????-??-??-"$id"/*)
+                relative=${path#openspec/changes/archive/}
+                relative=${relative#*/}
+                ;;
+            *) continue ;;
+        esac
         [[ -f $archive/$relative ]] || { echo "$id: archive lost $relative" >&2; exit 1; }
     done < "$stage/artifacts"
     [[ -f $archive/proposal.md && -f $archive/tasks.md ]] || { echo "$id: archive needs proposal.md and tasks.md." >&2; exit 1; }

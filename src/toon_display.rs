@@ -1,5 +1,5 @@
 //! TOON document layout over parsed row identities, independent of the optional codec.
-use crate::flatjson::{FlatJson, OptionIndex, Value};
+use crate::flatjson::{FlatJson, KeyValue, OptionIndex, Value};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
@@ -21,7 +21,38 @@ pub struct Span {
     pub node: usize,
     pub role: TokenRole,
     pub source: Option<Range<usize>>,
+    pub source_map: Vec<SourceMap>,
 }
+#[derive(Clone, Debug)]
+pub struct SourceMap {
+    pub source: Range<usize>,
+    pub display: Range<usize>,
+}
+
+impl Span {
+    pub fn matching_ranges(&self, query: &Range<usize>) -> Vec<Range<usize>> {
+        let overlaps = |range: &Range<usize>| range.start < query.end && query.start < range.end;
+        if !self.source.as_ref().is_some_and(overlaps) {
+            return vec![];
+        }
+        if self.source_map.is_empty() {
+            return vec![self.range.clone()];
+        }
+        self.source_map
+            .iter()
+            .filter(|map| overlaps(&map.source))
+            .map(|map| {
+                if map.source.len() == map.display.len() {
+                    map.display.start + query.start.max(map.source.start) - map.source.start
+                        ..map.display.start + query.end.min(map.source.end) - map.source.start
+                } else {
+                    map.display.clone()
+                }
+            })
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DisplayLine {
     pub text: String,
@@ -36,6 +67,8 @@ pub struct NodeLayout {
     pub header_end: usize,
     pub collapsible: bool,
     pub entry_count: usize,
+    pub table_row: bool,
+    pub table_cell: bool,
     pub descendant_warnings: usize,
     /// One-based occurrence ordinal, only present for repeated decoded keys.
     pub occurrence: Option<usize>,
@@ -49,6 +82,7 @@ pub enum WarningKind {
     NonCanonicalNumber,
     NonStringKey,
     MultipleRoots,
+    NonStandardStringEscape,
 }
 impl WarningKind {
     fn message(self) -> &'static str {
@@ -58,6 +92,7 @@ impl WarningKind {
             Self::NonCanonicalNumber => "Non-canonical number",
             Self::NonStringKey => "Non-string key",
             Self::MultipleRoots => "Multiple document roots",
+            Self::NonStandardStringEscape => "Non-standard string escape",
         }
     }
 }
@@ -98,6 +133,17 @@ fn children(flat: &FlatJson, node: usize) -> Vec<usize> {
     }
     result
 }
+fn string_key(flat: &FlatJson, node: usize) -> Option<String> {
+    match &flat[node].key_value {
+        Some(KeyValue::String(text)) => Some(text.clone()),
+        Some(_) => None,
+        None => flat[node]
+            .key_range
+            .as_ref()
+            .map(|range| decode_string(&flat.1[range.clone()])),
+    }
+}
+
 fn scalar(flat: &FlatJson, node: usize) -> bool {
     matches!(
         flat[node].value,
@@ -121,6 +167,7 @@ impl DisplayLine {
             node,
             role,
             source,
+            source_map: vec![],
         });
     }
 }
@@ -143,21 +190,40 @@ impl Layout {
             }
             if let Some(range) = &row.key_range {
                 let raw = &flat.1[range.clone()];
-                if raw.starts_with('"') {
-                    result.keys[i] = Some(decode_string(raw));
+                if let Some(key) = &row.key_value {
+                    match key {
+                        KeyValue::String(text) => {
+                            result.keys[i] = Some(text.clone());
+                            if unsupported_controls(text) {
+                                result.own_warnings[i].push(WarningKind::NonStandardStringEscape);
+                            }
+                        }
+                        key => {
+                            result.own_warnings[i].push(WarningKind::NonStringKey);
+                            let (text, warnings) = compact_key(key);
+                            result.keys[i] = Some(format!("? {text}"));
+                            result.own_warnings[i].extend(warnings);
+                        }
+                    }
                 } else {
-                    result.own_warnings[i].push(WarningKind::NonStringKey);
-                    let inner = raw
-                        .strip_prefix('[')
-                        .and_then(|s| s.strip_suffix(']'))
-                        .unwrap_or(raw);
-                    let (text, warnings) = compact_key(inner);
-                    result.keys[i] = Some(format!("? {text}"));
-                    result.own_warnings[i].extend(warnings);
+                    let text = decode_string(raw);
+                    if unsupported_controls(&text) {
+                        result.own_warnings[i].push(WarningKind::NonStandardStringEscape);
+                    }
+                    result.keys[i] = Some(text);
                 }
             }
             result.scalars[i] = match row.value {
-                Value::String => quote_value(&decode_string(&flat.1[row.range.clone()])),
+                Value::String => {
+                    let decoded = row
+                        .string_value
+                        .clone()
+                        .unwrap_or_else(|| decode_string(&flat.1[row.range.clone()]));
+                    if unsupported_controls(&decoded) {
+                        result.own_warnings[i].push(WarningKind::NonStandardStringEscape);
+                    }
+                    quote_value(&decoded)
+                }
                 Value::Number => {
                     let (text, warning) = number(&flat.1[row.range.clone()]);
                     result.own_warnings[i].extend(warning);
@@ -172,29 +238,22 @@ impl Layout {
                 !kids.is_empty() && !(row.parent.is_nil() && !row.is_array());
             if row.is_opening_of_container() && !row.is_array() {
                 let mut counts = HashMap::new();
-                // Decode directly because children's cached keys have not been built yet.
+                // Read typed YAML keys or decode JSON keys before child caches exist.
                 for &child in &kids {
-                    if let Some(range) = &flat[child].key_range {
-                        let raw = &flat.1[range.clone()];
-                        if raw.starts_with('"') {
-                            *counts.entry(decode_string(raw)).or_insert(0usize) += 1;
-                        }
+                    if let Some(key) = string_key(flat, child) {
+                        *counts.entry(key).or_insert(0usize) += 1;
                     }
                 }
                 let mut ordinal = HashMap::new();
                 for child in kids {
-                    if let Some(range) = &flat[child].key_range {
-                        let raw = &flat.1[range.clone()];
-                        if raw.starts_with('"') {
-                            let key = decode_string(raw);
-                            if counts[&key] > 1 {
-                                let occurrence = ordinal.entry(key).or_insert(0);
-                                *occurrence += 1;
-                                result.nodes[child].occurrence = Some(*occurrence);
-                                result.nodes[child].occurrence_total =
-                                    Some(counts[&decode_string(raw)]);
-                                result.own_warnings[child].push(WarningKind::DuplicateKey);
-                            }
+                    if let Some(key) = string_key(flat, child) {
+                        let total = counts[&key];
+                        if total > 1 {
+                            let occurrence = ordinal.entry(key).or_insert(0);
+                            *occurrence += 1;
+                            result.nodes[child].occurrence = Some(*occurrence);
+                            result.nodes[child].occurrence_total = Some(total);
+                            result.own_warnings[child].push(WarningKind::DuplicateKey);
                         }
                     }
                 }
@@ -257,6 +316,44 @@ impl Layout {
         }
         for line_idx in 0..result.lines.len() {
             result.annotate(flat, line_idx);
+            let line = &mut result.lines[line_idx];
+            for span in &mut line.spans {
+                if matches!(span.role, TokenRole::Key | TokenRole::String) {
+                    if let Some(source) = &span.source {
+                        let row = &flat[span.node];
+                        let parsed = if span.role == TokenRole::Key {
+                            match &row.key_value {
+                                Some(KeyValue::String(text)) => Some(text.as_str()),
+                                _ => None,
+                            }
+                        } else {
+                            row.string_value.as_deref()
+                        };
+                        let raw = &flat.1[source.clone()];
+                        if raw.starts_with('"') {
+                            span.source_map = string_source_map(
+                                raw,
+                                parsed,
+                                &line.text[span.range.clone()],
+                                source.start,
+                                span.range.start,
+                            );
+                        }
+                    }
+                }
+            }
+            for span in &mut line.spans {
+                if let Some(source) = &span.source {
+                    if span.source_map.is_empty()
+                        && flat.1[source.clone()] == line.text[span.range.clone()]
+                    {
+                        span.source_map.push(SourceMap {
+                            source: source.clone(),
+                            display: span.range.clone(),
+                        });
+                    }
+                }
+            }
             for span in &result.lines[line_idx].spans {
                 result.nodes[span.node]
                     .spans
@@ -353,6 +450,7 @@ impl Layout {
                             node,
                             role: TokenRole::Structure,
                             source: None,
+                            source_map: vec![],
                         });
                         first.owner = node;
                     }
@@ -379,6 +477,12 @@ impl Layout {
                     None,
                 );
                 if table {
+                    for &row in &kids {
+                        self.nodes[row].table_row = true;
+                        for field in children(flat, row) {
+                            self.nodes[field].table_cell = true;
+                        }
+                    }
                     let table_fields: Vec<_> =
                         kids.iter().map(|&row| children(flat, row)).collect();
                     line.token("{", node, TokenRole::Structure, None);
@@ -401,6 +505,7 @@ impl Layout {
                                 node: other,
                                 role: TokenRole::Key,
                                 source: flat[other].key_range.clone(),
+                                source_map: vec![],
                             });
                         }
                     }
@@ -514,11 +619,14 @@ impl Layout {
         let mut messages = vec![];
         for node in ids {
             for warning in &self.own_warnings[node] {
-                let locator = if node != owner && flat[node].parent == OptionIndex::Index(owner) {
-                    if flat[owner].is_array() {
+                let locator = if self.nodes[node].table_cell {
+                    format!(
+                        " at field {}",
+                        quote_json(self.keys[node].as_deref().unwrap_or(""))
+                    )
+                } else if let OptionIndex::Index(parent) = flat[node].parent {
+                    if flat[parent].is_array() && self.nodes[node].line == self.nodes[parent].line {
                         format!(" at [{}]", flat[node].index_in_parent)
-                    } else if let Some(key) = &self.keys[node] {
-                        format!(" at field {}", quote_json(key))
                     } else {
                         String::new()
                     }
@@ -554,10 +662,7 @@ impl Layout {
                 if let Some(node) = collapsed {
                     let info = &self.nodes[node];
                     line.text.truncate(info.header_end);
-                    line.spans.retain(|s| {
-                        s.range.end <= info.header_end
-                            && (s.node == node || s.role == TokenRole::Structure)
-                    });
+                    line.spans.retain(|s| s.range.end <= info.header_end);
                     line.owner = node;
                     if !flat[node].is_array() {
                         let count = info.entry_count;
@@ -755,120 +860,149 @@ fn number(raw: &str) -> (String, Option<WarningKind>) {
     (text, None)
 }
 
-/// The parser wraps non-string object keys in an extra pair of brackets.
-/// Read that notation directly, retaining ordered object pairs and scalar types.
-fn compact_key(raw: &str) -> (String, Vec<WarningKind>) {
-    struct Reader<'a> {
-        text: &'a str,
-        offset: usize,
-        warnings: Vec<WarningKind>,
-    }
-    impl Reader<'_> {
-        fn whitespace(&mut self) {
-            while self
-                .text
-                .as_bytes()
-                .get(self.offset)
-                .is_some_and(|b| b.is_ascii_whitespace())
-            {
-                self.offset += 1;
-            }
+/// Map decoded characters back to the matcher spelling, retaining quote removal
+/// and escapes. Stream characters into coalesced runs without per-character storage.
+fn string_source_map(
+    raw: &str,
+    parsed: Option<&str>,
+    rendered: &str,
+    source: usize,
+    display: usize,
+) -> Vec<SourceMap> {
+    let quoted = rendered.starts_with('"') && rendered.ends_with('"');
+    let mut mappings = Vec::<SourceMap>::new();
+    let mut rendered_bytes = 0;
+    let mut valid = true;
+    let mut append = |text: &str, range: Range<usize>| {
+        valid &= rendered.get(rendered_bytes..rendered_bytes + text.len()) == Some(text);
+        let map = SourceMap {
+            source: source + range.start..source + range.end,
+            display: display + rendered_bytes..display + rendered_bytes + text.len(),
+        };
+        if let Some(previous) = mappings.last_mut().filter(|previous| {
+            previous.source.len() == previous.display.len()
+                && map.source.len() == map.display.len()
+                && previous.source.end == map.source.start
+                && previous.display.end == map.display.start
+        }) {
+            previous.source.end = map.source.end;
+            previous.display.end = map.display.end;
+        } else {
+            mappings.push(map);
         }
-        fn value(&mut self, key: bool) -> String {
-            self.whitespace();
-            if key && self.text.as_bytes().get(self.offset) == Some(&b'[') {
-                self.offset += 1;
-                let value = self.value(false);
-                self.whitespace();
-                if self.text.as_bytes().get(self.offset) == Some(&b']') {
-                    self.offset += 1;
-                }
-                return value;
-            }
-            match self.text.as_bytes().get(self.offset) {
-                Some(b'"') => {
-                    let start = self.offset;
-                    self.offset += 1;
-                    while let Some(&b) = self.text.as_bytes().get(self.offset) {
-                        self.offset += 1;
-                        if b == b'\\' {
-                            self.offset = (self.offset + 1).min(self.text.len());
-                        } else if b == b'"' {
-                            break;
-                        }
-                    }
-                    quote_json(&decode_string(&self.text[start..self.offset]))
-                }
-                Some(b'[') | Some(b'{') => {
-                    let object = self.text.as_bytes()[self.offset] == b'{';
-                    self.offset += 1;
-                    let close = if object { b'}' } else { b']' };
-                    let mut items = vec![];
-                    loop {
-                        self.whitespace();
-                        if self.text.as_bytes().get(self.offset) == Some(&close) {
-                            self.offset += 1;
-                            break;
-                        }
-                        if self.offset >= self.text.len() {
-                            break;
-                        }
-                        let begin = self.offset;
-                        let mut item = self.value(object);
-                        if object {
-                            self.whitespace();
-                            if self.text.as_bytes().get(self.offset) == Some(&b':') {
-                                self.offset += 1;
-                            }
-                            item.push(':');
-                            item.push_str(&self.value(false));
-                        }
-                        items.push(item);
-                        self.whitespace();
-                        if self.text.as_bytes().get(self.offset) == Some(&b',') {
-                            self.offset += 1;
-                        } else if self.text.as_bytes().get(self.offset) != Some(&close)
-                            || self.offset == begin
-                        {
-                            break;
-                        }
-                    }
-                    format!(
-                        "{}{}{}",
-                        if object { '{' } else { '[' },
-                        items.join(","),
-                        close as char
-                    )
-                }
-                _ => {
-                    let start = self.offset;
-                    while self
-                        .text
-                        .as_bytes()
-                        .get(self.offset)
-                        .is_some_and(|b| !b.is_ascii_whitespace() && !b",]}:".contains(b))
-                    {
-                        self.offset += 1;
-                    }
-                    let token = &self.text[start..self.offset];
-                    if matches!(token, "true" | "false" | "null") {
-                        token.to_owned()
-                    } else {
-                        let (text, warning) = number(token);
-                        self.warnings.extend(warning);
-                        text
-                    }
-                }
-            }
-        }
-    }
-    let mut reader = Reader {
-        text: raw,
-        offset: 0,
-        warnings: vec![],
+        rendered_bytes += text.len();
     };
-    let text = reader.value(false);
-    (text, reader.warnings)
+    if quoted {
+        append("\"", 0..1);
+    }
+    let mut character = |ch: char, range: Range<usize>| {
+        let mut buffer = [0; 4];
+        if quoted {
+            match ch {
+                '"' => append("\\\"", range),
+                '\\' => append("\\\\", range),
+                '\n' => append("\\n", range),
+                '\r' => append("\\r", range),
+                '\t' => append("\\t", range),
+                ch if ch.is_control() => append(&format!("\\u{:04x}", ch as u32), range),
+                ch => append(ch.encode_utf8(&mut buffer), range),
+            }
+        } else {
+            append(ch.encode_utf8(&mut buffer), range);
+        }
+    };
+    if let Some(parsed) = parsed {
+        let mut offset = 1;
+        for ch in parsed.chars() {
+            let length = if ch == '\n' { 2 } else { ch.len_utf8() };
+            character(ch, offset..offset + length);
+            offset += length;
+        }
+    } else {
+        let mut offset = 1;
+        let end = raw.len().saturating_sub(1);
+        while offset < end {
+            let start = offset;
+            let ch = raw[offset..].chars().next().unwrap();
+            offset += ch.len_utf8();
+            if ch == '\\' && offset < end {
+                let escaped = raw.as_bytes()[offset];
+                offset += 1;
+                if escaped == b'u' {
+                    offset = (offset + 4).min(end);
+                    if raw
+                        .get(start + 2..offset)
+                        .and_then(|s| u16::from_str_radix(s, 16).ok())
+                        .is_some_and(|code| (0xd800..=0xdbff).contains(&code))
+                        && raw[offset..].starts_with("\\u")
+                    {
+                        offset = (offset + 6).min(end);
+                    }
+                }
+                for ch in decode_string(&format!("\"{}\"", &raw[start..offset])).chars() {
+                    character(ch, start..offset);
+                }
+            } else {
+                character(ch, start..offset);
+            }
+        }
+    }
+    if quoted {
+        append("\"", raw.len() - 1..raw.len());
+    }
+    if valid && rendered_bytes == rendered.len() {
+        mappings
+    } else {
+        vec![]
+    }
+}
+
+fn unsupported_controls(text: &str) -> bool {
+    text.chars()
+        .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
+}
+
+fn compact_key(key: &KeyValue) -> (String, Vec<WarningKind>) {
+    fn render(key: &KeyValue, warnings: &mut Vec<WarningKind>) -> String {
+        match key {
+            KeyValue::String(text) => {
+                if unsupported_controls(text) {
+                    warnings.push(WarningKind::NonStandardStringEscape);
+                }
+                quote_json(text)
+            }
+            KeyValue::Number(token) => {
+                let (text, warning) = number(token);
+                warnings.extend(warning);
+                text
+            }
+            KeyValue::Boolean(value) => value.to_string(),
+            KeyValue::Null => "null".into(),
+            KeyValue::Array(values) => format!(
+                "[{}]",
+                values
+                    .iter()
+                    .map(|value| render(value, warnings))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            KeyValue::Object(entries) => format!(
+                "{{{}}}",
+                entries
+                    .iter()
+                    .map(|(key, value)| format!(
+                        "{}:{}",
+                        render(key, warnings),
+                        render(value, warnings)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        }
+    }
+    let mut warnings = vec![];
+    let text = render(key, &mut warnings);
+    (text, warnings)
 }
 
 fn bounded_prefix(text: &str, limit: usize) -> &str {
@@ -1162,5 +1296,122 @@ mod tests {
         dup.expand(1);
         assert!(dup[2].is_collapsed());
         assert_eq!(l.project(&dup).len(), 2);
+    }
+    #[test]
+    fn typed_complex_keys_preserve_quotes_backslashes_and_nested_values() {
+        let flat = yaml("? {'quote\"x': true}\n: value\n");
+        assert!(
+            flat.1.contains(r#""quote"x": true"#),
+            "historical copy/search spelling remains unchanged"
+        );
+        assert_eq!(
+            text(&flat),
+            r#"? {"quote\"x":true}: value  # WARN Non-string key"#
+        );
+        let flat = yaml("? ['quote\"x', '\\literal', {'a:b': [true, null, 1]}]\n: value\n");
+        assert_eq!(
+            text(&flat),
+            r#"? ["quote\"x","\\literal",{"a:b":[true,null,1]}]: value  # WARN Non-string key"#
+        );
+        assert!(!Layout::new(&flat)
+            .warnings
+            .iter()
+            .any(|w| w.kind == WarningKind::NonCanonicalNumber));
+    }
+
+    #[test]
+    fn list_first_field_inline_warnings_keep_element_locators() {
+        let flat = yaml("- vals: [.inf, .nan]\n  nested: {}\n");
+        assert_eq!(text(&flat), "[1]:\n  - vals[2]: .inf,.nan  # WARN Non-finite number at [0]; Non-finite number at [1]\n    nested:");
+    }
+
+    #[test]
+    fn collapsed_table_header_retains_field_style_source_and_identity() {
+        let mut flat = json(r#"[{"a":1},{"a":2}]"#);
+        let layout = Layout::new(&flat);
+        flat.collapse(0);
+        let projected = layout.project(&flat);
+        let keys: Vec<_> = projected[0]
+            .line
+            .spans
+            .iter()
+            .filter(|span| span.role == TokenRole::Key)
+            .collect();
+        assert_eq!(keys.len(), 2);
+        assert_ne!(keys[0].node, keys[1].node);
+        assert!(keys.iter().all(|span| span.source.is_some()));
+        let column = keys[0].range.start;
+        let (node, source) = crate::lineprinter::hit_test(&projected[0].line, column);
+        assert_eq!(node, keys[0].node);
+        assert_eq!(source, keys[0].source.as_ref().map(|range| range.start));
+    }
+
+    #[test]
+    fn string_matches_map_only_the_rendered_substring_after_quotes_and_escapes() {
+        for input in [
+            r#"{"value":"aaaaaaaaNEEDLE"}"#,
+            r#"{"value":"\u754c\n\"\\\ud83d\ude00NEEDLE"}"#,
+        ] {
+            let flat = json(input);
+            let layout = Layout::new(&flat);
+            let source = flat.1.find("NEEDLE").unwrap();
+            let span = layout.lines[0]
+                .spans
+                .iter()
+                .find(|span| span.role == TokenRole::String)
+                .unwrap();
+            let ranges = span.matching_ranges(&(source..source + 6));
+            assert_eq!(
+                ranges
+                    .iter()
+                    .map(|range| &layout.lines[0].text[range.clone()])
+                    .collect::<String>(),
+                "NEEDLE"
+            );
+        }
+        let flat = json(r#""\u0061b\u0063""#);
+        let layout = Layout::new(&flat);
+        let span = &layout.lines[0].spans[0];
+        assert_eq!(span.matching_ranges(&(1..7)), vec![0..1]);
+        assert_eq!(layout.lines[0].text, "abc");
+    }
+
+    #[test]
+    fn large_plain_string_mapping_coalesces_without_character_storage() {
+        let input = format!("\"{}NEEDLE\"", "a".repeat(1_000_000));
+        // Exercise display allocation directly, independently of parser throughput.
+        let mut flat = json(r#""""#);
+        flat.1 = input;
+        flat.0[0].range = 0..flat.1.len();
+        let layout = Layout::new(&flat);
+        let span = &layout.lines[0].spans[0];
+        assert_eq!(span.source_map.len(), 1);
+        assert_eq!(
+            span.matching_ranges(&(1_000_001..1_000_007)),
+            vec![1_000_000..1_000_006]
+        );
+    }
+
+    #[test]
+    fn unsupported_control_escapes_are_warned_but_literal_escape_text_is_not() {
+        let flat = json(r#"{"control":"\u0001","literal":"\\u0001","line":"\n"}"#);
+        let layout = Layout::new(&flat);
+        assert_eq!(
+            layout.lines[0].text,
+            r#"control: "\u0001"  # WARN Non-standard string escape"#
+        );
+        assert_eq!(
+            layout
+                .warnings
+                .iter()
+                .filter(|warning| warning.kind == WarningKind::NonStandardStringEscape)
+                .count(),
+            1
+        );
+        assert!(!text(&flat).chars().any(|ch| ch == '\u{1}'));
+        let key = json(r#"{"\u0001":1}"#);
+        assert!(text(&key).contains("# WARN Non-standard string escape"));
+        let key = yaml("? [\"\\u0001\"]\n: value\n");
+        assert!(text(&key).contains("Non-string key; Non-standard string escape"));
     }
 }

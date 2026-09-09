@@ -300,19 +300,19 @@ mod tests {
         ] {
             toon.perform_action(action);
             reference.perform_action(action);
-            assert_eq!(toon.focused_row, reference.focused_row);
+            assert_eq!(toon.focused_node, reference.focused_node);
             assert_eq!(
-                toon.flatjson.pretty_printed_value(toon.focused_row),
+                toon.flatjson.pretty_printed_value(toon.focused_node),
                 reference
                     .flatjson
-                    .pretty_printed_value(reference.focused_row)
+                    .pretty_printed_value(reference.focused_node)
             );
             assert_eq!(
                 toon.flatjson
-                    .build_path_to_node(crate::flatjson::PathType::Bracket, toon.focused_row),
+                    .build_path_to_node(crate::flatjson::PathType::Bracket, toon.focused_node),
                 reference
                     .flatjson
-                    .build_path_to_node(crate::flatjson::PathType::Bracket, reference.focused_row)
+                    .build_path_to_node(crate::flatjson::PathType::Bracket, reference.focused_node)
             );
         }
         let mut a = SearchState::initialize_search(

@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T06:17:44Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T06:56:37Z }
 ---
 
 # TOON document view
@@ -72,6 +72,7 @@ limit: .inf  # WARN Non-finite number
 literal: ".inf"
 precise: 0.123456789012345678901
 huge: 1e1000000  # WARN Non-canonical number
+control: "\u0001"  # WARN Non-standard string escape
 ? 1: numeric-key-value  # WARN Non-string key
 "1": string-key-value
 ```
@@ -81,6 +82,13 @@ numbers retain numeric type as `.inf`, `-.inf`, or `.nan`. Finite decimal tokens
 normalize exactly without floating-point conversion. If expansion would exceed
 4096 characters, or a numeric spelling cannot be normalized without changing
 its value, the original parsed token stays visible with a warning.
+
+TOON 3.0 supports escapes for LF, CR, TAB, quotes, and backslashes. Other
+control characters use terminal-safe JSON-style `\uXXXX` spellings with
+`Non-standard string escape` warnings. These spellings are display extensions;
+a literal backslash-u string does not receive a warning. Within each node,
+warning order is duplicate key, non-finite number, non-canonical number,
+non-string key, multiple roots, non-standard string escape, then hidden counts.
 
 Non-string keys use `? ` followed by compact typed notation. Strings remain
 JSON-style quoted strings; arrays and ordered object pairs preserve key types

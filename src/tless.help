@@ -216,7 +216,8 @@
       Collapsed containers retain their header, counts, and warnings; previews
       are shown only while collapsed. # WARN annotations preserve exceptional
       parsed data such as duplicate keys, non-finite numbers, and non-string
-      keys. Multiple roots have warning separators. This extended display is
+      keys. Unsupported controls use \uXXXX with Non-standard string escape
+      warnings. Multiple roots have warning separators. This extended display is
       not an interchange format. Copy and export operate on parsed selections,
       without generated annotations; TOON export may normalize data or fail.
 

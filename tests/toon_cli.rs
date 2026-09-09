@@ -264,6 +264,20 @@ mod terminal_commands {
         assert!(output.contains("\"done\"\r\n\r\nPress any key to continue."));
     }
 
+    #[test]
+    fn long_string_search_reveals_the_match_inside_its_token() {
+        let input = format!("{{\"value\":\"{}NEEDLE\"}}", "a".repeat(150));
+        let output = strip_styles(&session_with_width(&input, "/NEEDLE\nq", None, 35));
+        assert!(output.contains("…NEEDLE"), "{}", output);
+    }
+
+    #[test]
+    fn semicolon_reaches_the_end_from_an_intermediate_horizontal_offset() {
+        let input = format!("\"{}TAIL\"", "a".repeat(150));
+        let output = strip_styles(&session_with_width(&input, "10.;q", None, 35));
+        assert!(output.contains("TAIL"), "{}", output);
+    }
+
     #[cfg(feature = "toon")]
     #[test]
     fn write_open_failure_reports_an_error_and_keeps_the_viewer_usable() {
