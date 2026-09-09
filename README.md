@@ -7,6 +7,8 @@ This is an independent fork of [jless](https://github.com/PaulJuliusMartinez/jle
 
 Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
 Press F1 or enter `:help` for in-app help.
+Every input uses one TOON document view, including JSON/YAML-only builds.
+See [the document view](docs/toon-view.md) for navigation and display warnings.
 
 ## Install
 
@@ -89,7 +91,7 @@ how to enable support. `--json` and `--yaml` override filename detection.
 
 This implementation targets `toon-spec: 3.0`, not TOON 4.x. It uses strict
 two-space decoding with literal dotted keys and supports declared comma, tab,
-and pipe delimiters. The viewer still uses its existing JSON Line/Data views.
+and pipe delimiters. The viewer renders with commas and two-space indentation.
 Searches operate on normalized JSON text, not the original TOON spelling.
 
 Use `yt` to copy or `pt` to print the complete focused value as canonical TOON.
@@ -104,7 +106,10 @@ requires one root; focused export also works with multi-root JSON input.
 TOON behavior follows the published `toon-format` 0.5.0 crate.
 Duplicate object keys use the last value. Decimal conversion can round, and very
 large numeric literals can become strings or change value. Table encoding can
-reorder object keys. This viewer is not an exact TOON data-conversion tool.
+reorder object keys. These conversions apply to standard TOON exports. The
+document view preserves the entries, order, and numeric precision in the parsed
+model and marks display extensions with `# WARN` comments. Extended display
+text is not standard TOON or a new export format.
 See [codec behavior and known limitations](docs/toon-codec.md) for concrete examples.
 Export rejects non-string YAML keys, non-finite numbers, and more than 256 nested
 containers relative to the selected root. Input depth follows the codec's own bound.
