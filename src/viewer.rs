@@ -901,7 +901,11 @@ mod tests {
         );
         v.perform_action(Action::MoveRight);
         v.perform_action(Action::FocusNextAtParentLevel);
-        assert_eq!(path(&v), ".b.x", "an existing parent prevents sibling fallback");
+        assert_eq!(
+            path(&v),
+            ".b.x",
+            "an existing parent prevents sibling fallback"
+        );
         v.perform_action(Action::FocusParentOrPreviousSibling);
         assert_eq!(path(&v), ".b", "parent takes priority over .b.x");
         v.perform_action(Action::FocusNextAtParentLevel);
