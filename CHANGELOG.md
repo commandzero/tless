@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Preserve value colors when collapsing short primitive arrays whose complete inline form fits the terminal.
+
 - Remove the `input` prefix from status-bar paths; show `.` at the document root. [#4](https://github.com/commandzero/tless/pull/4)
 
 - Add `[` and `]` motions to select the current parent or its next sibling, falling back to the current node's previous or next sibling when the respective parent target is unavailable, without changing collapse state. [#4](https://github.com/commandzero/tless/pull/4)

@@ -698,6 +698,56 @@ impl Layout {
             }
         }
     }
+    fn collapsed_inline_array(
+        &self,
+        flat: &FlatJson,
+        node: usize,
+        header: &DisplayLine,
+        warning_width: usize,
+    ) -> Option<DisplayLine> {
+        if !flat[node].is_array() || self.nodes[node].entry_count > self.inline_limit {
+            return None;
+        }
+        let kids = children(flat, node);
+        if !kids.iter().all(|&child| scalar(flat, child)) {
+            return None;
+        }
+        let mut line = header.clone();
+        for (index, child) in kids.into_iter().enumerate() {
+            line.token(
+                if index == 0 { " " } else { "," },
+                node,
+                TokenRole::Structure,
+                None,
+            );
+            let original = &self.lines[self.nodes[child].line];
+            let mut span = original
+                .spans
+                .iter()
+                .find(|span| {
+                    span.node == child
+                        && matches!(
+                            span.role,
+                            TokenRole::String
+                                | TokenRole::Number
+                                | TokenRole::Boolean
+                                | TokenRole::Null
+                        )
+                })?
+                .clone();
+            let start = line.text.len();
+            line.text.push_str(&original.text[span.range.clone()]);
+            for map in &mut span.source_map {
+                map.display = start + map.display.start - span.range.start
+                    ..start + map.display.end - span.range.start;
+            }
+            span.range = start..line.text.len();
+            line.spans.push(span);
+        }
+        (UnicodeWidthStr::width(line.text.as_str()) + warning_width <= self.inline_width)
+            .then_some(line)
+    }
+
     /// Applies current collapse flags without changing the cached expanded grammar.
     pub fn project(&self, flat: &FlatJson) -> Vec<VisibleLine> {
         let mut visible = vec![];
@@ -730,7 +780,19 @@ impl Layout {
                             info.descendant_warnings
                         ));
                     }
-                    if !self.previews[node].is_empty() {
+                    let warning = if messages.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  # WARN {}", messages.join("; "))
+                    };
+                    if let Some(inline) = self.collapsed_inline_array(
+                        flat,
+                        node,
+                        &line,
+                        UnicodeWidthStr::width(warning.as_str()),
+                    ) {
+                        line = inline;
+                    } else if !self.previews[node].is_empty() {
                         line.token(
                             &format!(" {}", self.previews[node]),
                             node,
@@ -739,12 +801,7 @@ impl Layout {
                         );
                     }
                     if !messages.is_empty() {
-                        line.token(
-                            &format!("  # WARN {}", messages.join("; ")),
-                            node,
-                            TokenRole::Warning,
-                            None,
-                        );
+                        line.token(&warning, node, TokenRole::Warning, None);
                     }
                     visible.push(VisibleLine { absolute, line });
                     absolute = info.extent.end.max(absolute + 1);
@@ -1367,6 +1424,45 @@ mod tests {
     fn list_first_field_inline_warnings_keep_element_locators() {
         let flat = yaml("- vals: [.inf, .nan]\n  nested: {}\n");
         assert_eq!(text(&flat), "[1]:\n  - vals[2]: .inf,.nan  # WARN Non-finite number at [0]; Non-finite number at [1]\n    nested:");
+    }
+
+    #[test]
+    fn collapsed_short_arrays_preserve_inline_value_roles() {
+        let mut flat = json(r#"["text",2,true,null,5]"#);
+        let layout = Layout::for_view(&flat, 120, &HashSet::from([0]));
+        flat.collapse(0);
+        let projected = layout.project(&flat);
+        let line = &projected[0].line;
+        assert_eq!(line.text, "[5]: text,2,true,null,5");
+        assert!(!line
+            .spans
+            .iter()
+            .any(|span| span.role == TokenRole::Preview));
+        for role in [
+            TokenRole::String,
+            TokenRole::Number,
+            TokenRole::Boolean,
+            TokenRole::Null,
+        ] {
+            assert!(line
+                .spans
+                .iter()
+                .any(|span| span.role == role && span.source.is_some()));
+        }
+        let narrow = Layout::for_view(&flat, 10, &HashSet::from([0]));
+        assert!(narrow.project(&flat)[0]
+            .line
+            .spans
+            .iter()
+            .any(|span| span.role == TokenRole::Preview));
+        let mut long = json("[1,2,3,4,5,6]");
+        let layout = Layout::for_view(&long, 120, &HashSet::new());
+        long.collapse(0);
+        assert!(layout.project(&long)[0]
+            .line
+            .spans
+            .iter()
+            .any(|span| span.role == TokenRole::Preview));
     }
 
     #[test]

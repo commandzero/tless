@@ -63,7 +63,9 @@ header and shows a subdued preview. Object fields use `; ` separators, such as
 `name: Ada; active: true`. Objects also show their immediate-entry
 count as `{N}`, such as `{7}` for seven entries. Counts, previews, and warnings
 remain subdued even on the selected line. Arrays keep the count already in their
-TOON header. Expanding an ancestor
+TOON header. A collapsed primitive array with at most five values keeps its
+value colors when the complete inline line fits the terminal, including after
+expanding it to multiline. Expanding an ancestor
 restores descendant collapse states. Empty containers have no collapse arrow.
 
 Absolute line numbers are on by default; relative numbers are off. Keep using

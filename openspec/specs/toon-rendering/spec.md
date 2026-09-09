@@ -62,7 +62,7 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 
 ### Requirement: Syntax styling
 
-Keys and table field names SHALL share a syntax category. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. TOON array counts SHALL use structural styling. Expanded data SHALL retain its data styling. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling. These annotations SHALL remain subdued without focus highlighting or bold when their owning container is selected.
+Keys and table field names SHALL share a syntax category. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. TOON array counts SHALL use structural styling. Expanded data and complete inline primitive arrays of at most five elements that fit the terminal SHALL retain their data styling, including when collapsed. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling. These annotations SHALL remain subdued without focus highlighting or bold when their owning container is selected.
 
 #### Scenario: Expanded primitive array
 
@@ -72,14 +72,14 @@ Keys and table field names SHALL share a syntax category. Strings, numbers, bool
 
 ### Requirement: Collapse presentation
 
-Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Collapsing SHALL retain the container's header, hide its contents, and append a subdued preview in document order. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object SHALL show its immediate-entry count as `{N}`, such as `{1}` or `{7}`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
+Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Collapsing SHALL retain the container's header and replace multiline contents with a preview in document order. Complete inline primitive arrays with at most five elements that fit the terminal SHALL retain value syntax styling; other previews SHALL be subdued. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object SHALL show its immediate-entry count as `{N}`, such as `{1}` or `{7}`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
 
 #### Scenario: Object and array collapse
 
 - **WHEN** `owner` has 2 immediate fields and `tags` has 3 items, and both are collapsed
 - **THEN** their lines SHALL retain `owner:` and `tags[3]:`
 - **AND** only `owner` SHALL receive `{2}`
-- **AND** both previews SHALL use subdued TOON-style spelling and escaping
+- **AND** object previews SHALL be subdued; a complete fitting inline primitive array SHALL retain value syntax styling
 
 #### Scenario: Tabular row collapse
 
@@ -91,7 +91,9 @@ Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when co
 #### Scenario: Inline array collapse
 
 - **WHEN** a user collapses an inline primitive array
-- **THEN** the header SHALL remain and its values SHALL become a subdued preview
+- **THEN** the header SHALL remain and its complete values SHALL keep their syntax colors if there are at most five elements and the inline line fits the terminal
+- **AND** this SHALL also apply after explicitly expanding the array to multiline
+- **AND** larger or overflowing previews SHALL remain subdued
 - **AND** expanding it SHALL restore syntax-colored values in its chosen layout, with `l` or Right Arrow selecting multiline presentation
 
 #### Scenario: Collapse restoration
