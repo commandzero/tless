@@ -42,3 +42,11 @@ Full `scripts/preflight.sh` passed on committed archive 73648ee with the synchro
 Repeated the redraw workload on the fixed build: 5,000 rows / 147,781 bytes and 20,000 rows / 617,781 bytes each produced all 100 requested frames in 0.095 seconds. Both sessions exited normally. The direct 1 MB parsed scalar test verifies coalesced source mapping independently of the pre-existing tokenizer's large-scalar throughput issue.
 
 All implementation and completion tasks are verified. Native active validation passed before archival; native archived and main-spec validation passed after archival. All three archived deltas were explicitly compared with the main specs and have no remaining changes to apply.
+
+## Hosted review follow-up
+
+Hosted compatibility passed on macOS and Linux. The first hosted preflight exposed a test-only BrokenPipe race in obsolete-option rejection: the child correctly exited before unused input was written. Commit af7d174 removes that unnecessary input while retaining all exit-code assertions; ten repeated focused invocations passed.
+
+The hosted review also identified indentation reduction incorrectly acting as global horizontal scrolling. Commit af7d174 adds one capped leading-space conversion shared by painting, mouse, search, and scrolling. Commit 54e40c9 aligns offsets with grapheme boundaries so clicking a value after a partially clipped wide character selects the painted value. Cached layout remains unchanged, and left-edge redraws avoid alignment scans.
+
+Independent standards/spec follow-ups are clear. All five terminal indentation assertions passed on the rebuilt normal executable. The exact wide-character reproduction now selects `input.nested[1]` when clicking the visible `2` after `l12.`. General wide/narrow acceptance also passed after the indentation change. Final full preflight and hosted CI results follow below after completion.
