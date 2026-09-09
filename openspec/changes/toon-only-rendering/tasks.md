@@ -2,7 +2,7 @@
 
 - [x] 1.1 Inspect and pin the OpenSpec CLI used locally and in CI; verify native active, main-spec, and archived validation with telemetry disabled.
 - [x] 1.2 Add one PR-scoped completion entry point shared by preflight and CI; verify added, edited, deleted, renamed, and explicitly associated changes, plus unrelated active changes.
-- [x] 1.3 Require preserved archives, native validation, and delta-to-main-spec synchronization review before merge; verify deleted-only changes, skipped synchronization, already-synced specs, and multiple associated changes without duplicating the native validator.
+- [ ] 1.3 Require preserved archives, native validation, and delta-to-main-spec synchronization review before merge; verify deleted-only changes, skipped synchronization, already-synced specs, and multiple associated changes without duplicating the native validator.
 
 ## 2. Parsed-node layout
 
@@ -14,9 +14,9 @@
 ## 3. Display extensions
 
 - [x] 3.1 Preserve and annotate duplicate entries using decoded key equality; verify all occurrences, escaped equivalent keys, order, identity, and immediate object counts.
-- [x] 3.2 Render non-finite values and typed compact non-string keys with warnings; verify infinities, NaN, numeric versus string keys, and recursive complex keys without type coercion.
+- [ ] 3.2 Render non-finite values and typed compact non-string keys with warnings; verify infinities, NaN, numeric versus string keys, and recursive complex keys without type coercion.
 - [x] 3.3 Render multiple roots with warning separators; verify root shape, order, empty roots, absolute addresses, and separator selection behavior.
-- [x] 3.4 Add deterministic warning records and shared-line comments with escaped locators; verify ordering, one final comment per line, source strings containing `# WARN`, and controls in field names.
+- [ ] 3.4 Add deterministic warning records and shared-line comments with escaped locators; verify ordering, one final comment per line, source strings containing `# WARN`, and controls in field names.
 - [x] 3.5 Cache descendant warning counts; verify collapsed ancestors retain their own warnings and count hidden semantic warnings without counting painted duplicates.
 
 ## 4. Collapse and viewport
@@ -29,8 +29,8 @@
 ## 5. Navigation and search
 
 - [x] 5.1 Separate logical focus from display-line anchors; verify selection and paths for headers, inline elements, table objects/cells, implicit roots, and duplicate occurrences.
-- [x] 5.2 Adapt vertical, counted, structural, page, and absolute-jump motions; verify table-column retention, same-line siblings, hidden targets, scrolloff, and boundaries.
-- [x] 5.3 Map existing search matches to node/token spans; verify hidden matches reveal ancestors, shared field headers retain row identity, and warnings/previews do not add matches.
+- [ ] 5.2 Adapt vertical, counted, structural, page, and absolute-jump motions; verify table-column retention, same-line siblings, hidden targets, scrolloff, and boundaries.
+- [ ] 5.3 Map existing search matches to node/token spans; verify hidden matches reveal ancestors, shared field headers retain row identity, and warnings/previews do not add matches.
 - [x] 5.4 Add row-and-column mouse hit testing and focus recovery; verify cell selection, arrow/warning ownership, resize behavior, and nearest-visible-ancestor fallback.
 
 ## 6. Switch the document view
