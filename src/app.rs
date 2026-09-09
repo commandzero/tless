@@ -21,7 +21,7 @@ use crate::options::{DataFormat, Opt};
 use crate::screenwriter::{MessageSeverity, ScreenWriter};
 use crate::search::{JumpDirection, SearchDirection, SearchState};
 use crate::types::TTYDimensions;
-use crate::viewer::{Action, JsonViewer, Mode};
+use crate::viewer::{Action, JsonViewer};
 
 pub struct App {
     viewer: JsonViewer,
@@ -129,7 +129,7 @@ impl App {
             Err(err) => return Err(format!("Unable to parse input: {err:?}")),
         };
 
-        let mut viewer = JsonViewer::new(flatjson, opt.mode);
+        let mut viewer = JsonViewer::new(flatjson);
         viewer.scrolloff_setting = opt.scrolloff;
 
         let screen_writer =
@@ -473,8 +473,6 @@ impl App {
                         Key::Char('$') => Some(Action::FocusLastSibling),
                         Key::Home => Some(Action::FocusTop),
                         Key::End => Some(Action::FocusBottom),
-                        Key::Char('%') => Some(Action::FocusMatchingPair),
-                        Key::Char('m') => Some(Action::ToggleMode),
                         Key::Char('<') => {
                             self.screen_writer
                                 .decrease_indentation_level(self.viewer.flatjson.2 as u16);
@@ -543,12 +541,12 @@ impl App {
                     self.input_buffer.clear();
 
                     match me {
-                        Press(Left, _, h) => {
+                        Press(Left, w, h) => {
                             // Ignore clicks on status bar or below.
                             if h > self.screen_writer.dimensions.without_status_bar().height {
                                 continue;
                             } else {
-                                Some(Action::Click(h))
+                                Some(self.screen_writer.mouse_action(&self.viewer, h, w))
                             }
                         }
                         Press(WheelUp, _, _) => Some(Action::ScrollUp(3)),
@@ -754,9 +752,9 @@ impl App {
             jump_direction,
             jumps,
         );
-        Some(Action::JumpTo {
-            line: destination,
-            make_visible: false,
+        Some(Action::FocusNode {
+            node: destination,
+            source: Some(self.search_state.current_match_range().start),
         })
     }
 
@@ -884,10 +882,8 @@ impl App {
 
                 let quoteless_range = (key_range.start + 1)..(key_range.end - 1);
 
-                // Don't copy quotes in Data mode.
-                if self.viewer.mode == Mode::Data
-                    && JS_IDENTIFIER.is_match(&json[quoteless_range.clone()])
-                {
+                // Preserve the existing key-copy contract independently of display syntax.
+                if JS_IDENTIFIER.is_match(&json[quoteless_range.clone()]) {
                     json[quoteless_range].to_string()
                 } else {
                     json[key_range.clone()].to_string()

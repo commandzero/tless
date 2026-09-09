@@ -42,7 +42,6 @@ pub enum ImmediateSearchState {
     MatchesVisible,
     ActivelySearching {
         last_match_jumped_to: usize,
-        last_search_into_collapsed_container: bool,
         just_wrapped: bool,
     },
 }
@@ -194,8 +193,8 @@ impl SearchState {
         let next_match_index = self.get_next_match(focused_row, flatjson, true_direction, jumps);
         let row_containing_match = self.compute_destination_row(flatjson, next_match_index);
 
-        // If search takes inside a collapsed object, we will show the first visible ancestor.
-        let next_focused_row = flatjson.first_visible_ancestor(row_containing_match);
+        // The viewer reveals ancestors after receiving this logical match owner.
+        let next_focused_row = row_containing_match;
 
         let wrapped = if focused_row == next_focused_row {
             // Usually, if we end up the same place we started, that means that we
@@ -221,9 +220,6 @@ impl SearchState {
 
         self.immediate_state = ImmediateSearchState::ActivelySearching {
             last_match_jumped_to: next_match_index,
-            // We keep track of whether we searched into an object, so that
-            // the next time we jump, we can jump past the collapsed container.
-            last_search_into_collapsed_container: row_containing_match != next_focused_row,
             just_wrapped: wrapped,
         };
 
@@ -329,7 +325,6 @@ impl SearchState {
             }
             ImmediateSearchState::ActivelySearching {
                 last_match_jumped_to,
-                last_search_into_collapsed_container,
                 ..
             } => {
                 let delta: isize = match true_direction {
@@ -337,31 +332,7 @@ impl SearchState {
                     SearchDirection::Reverse => -(jumps as isize),
                 };
 
-                if last_search_into_collapsed_container {
-                    let start_match = last_match_jumped_to;
-                    let mut next_match = self.cycle_match(start_match, delta);
-
-                    // Make sure we don't infinitely loop.
-                    while next_match != start_match {
-                        // Convert the next match to a destination row.
-                        let next_destination_row =
-                            self.compute_destination_row(flatjson, next_match);
-                        // Get the first visible ancestor of the next destination
-                        // row, and make sure it isn't the same as the row we're
-                        // currently viewing. If they're different, we've broken
-                        // out of the current collapsed container.
-                        let next_match_visible_ancestor =
-                            flatjson.first_visible_ancestor(next_destination_row);
-                        if next_match_visible_ancestor != focused_row {
-                            break;
-                        }
-                        next_match = self.cycle_match(next_match, delta);
-                    }
-
-                    next_match
-                } else {
-                    self.cycle_match(last_match_jumped_to, delta)
-                }
+                self.cycle_match(last_match_jumped_to, delta)
             }
         }
     }
@@ -499,55 +470,21 @@ mod tests {
     }
 
     #[test]
-    fn test_search_collapsed_forward() {
+    fn collapsed_matches_keep_each_logical_occurrence_in_both_directions() {
         let mut fj = parse_top_level_json(SEARCHABLE.to_owned()).unwrap();
-        let mut search = SearchState::initialize_search("aaa".to_owned(), &fj.1, Forward).unwrap();
         fj.collapse(6);
-        assert_eq!(search.jump_to_match(0, &fj, Next, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Next, 1), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Next, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Prev, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Prev, 1), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Prev, 1), 4);
-
-        let mut search = SearchState::initialize_search("aaa".to_owned(), &fj.1, Forward).unwrap();
-        fj.collapse(6);
-        assert_eq!(search.jump_to_match(0, &fj, Next, 4), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Next, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Next, 3), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Prev, 2), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Prev, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Prev, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Prev, 3), 4);
-    }
-
-    #[test]
-    fn test_search_collapsed_backwards() {
-        let mut fj = parse_top_level_json(SEARCHABLE.to_owned()).unwrap();
-        let mut search = SearchState::initialize_search("aaa".to_owned(), &fj.1, Reverse).unwrap();
-        fj.collapse(6);
-        assert_eq!(search.jump_to_match(0, &fj, Next, 1), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Next, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Next, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Prev, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Prev, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Prev, 1), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Prev, 1), 1);
-
-        let mut search = SearchState::initialize_search("aaa".to_owned(), &fj.1, Reverse).unwrap();
-        fj.collapse(6);
-        assert_eq!(search.jump_to_match(0, &fj, Prev, 4), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Prev, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Prev, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Prev, 3), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 2), 6);
-        assert_eq!(search.jump_to_match(6, &fj, Next, 1), 4);
-        assert_eq!(search.jump_to_match(4, &fj, Next, 1), 1);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 3), 4);
+        for (direction, expected) in [(Forward, [1, 4, 7, 7, 1]), (Reverse, [7, 7, 4, 1, 7])] {
+            let mut search =
+                SearchState::initialize_search("aaa".into(), &fj.1, direction).unwrap();
+            let mut focused = 0;
+            for node in expected {
+                focused = search.jump_to_match(focused, &fj, Next, 1);
+                assert_eq!(focused, node);
+            }
+            let current = focused;
+            assert_eq!(search.jump_to_match(current, &fj, Next, 4), current);
+            assert_eq!(search.jump_to_match(current, &fj, Prev, 4), current);
+        }
     }
 
     #[test]
@@ -563,9 +500,9 @@ mod tests {
         fj.collapse(1);
         assert_eq!(search.jump_to_match(0, &fj, Next, 1), 1);
         assert_wrapped_state(&search, false);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 1);
+        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 2);
         assert_wrapped_state(&search, false);
-        assert_eq!(search.jump_to_match(1, &fj, Next, 1), 4);
+        assert_eq!(search.jump_to_match(2, &fj, Next, 1), 4);
         assert_wrapped_state(&search, false);
         assert_eq!(search.jump_to_match(4, &fj, Next, 1), 1);
         assert_wrapped_state(&search, true);

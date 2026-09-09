@@ -20,7 +20,6 @@ use termion::screen::AlternateScreen;
 
 mod app;
 mod flatjson;
-mod highlighting;
 mod input;
 mod jsonparser;
 mod jsonstringunescaper;

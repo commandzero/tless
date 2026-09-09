@@ -20,7 +20,6 @@ pub const LIGHT_BLACK: Color = Color::C16(8);
 // pub const LIGHT_RED: Color = Color::C16(9);
 // pub const LIGHT_GREEN: Color = Color::C16(10);
 // pub const LIGHT_YELLOW: Color = Color::C16(11);
-pub const LIGHT_BLUE: Color = Color::C16(12);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
 // pub const LIGHT_CYAN: Color = Color::C16(14);
 // pub const LIGHT_WHITE: Color = Color::C16(15);

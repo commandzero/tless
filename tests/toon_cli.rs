@@ -13,7 +13,6 @@ fn run(args: &[&str], input: &[u8]) -> Output {
     child.wait_with_output().unwrap()
 }
 
-#[cfg(feature = "toon")]
 mod terminal_commands {
     use super::*;
     use std::fs::File;
@@ -48,6 +47,10 @@ mod terminal_commands {
     }
 
     fn session_with_format(input: &str, commands: &str, format: Option<&str>) -> String {
+        session_with_width(input, commands, format, 120)
+    }
+
+    fn session_with_width(input: &str, commands: &str, format: Option<&str>, width: u16) -> String {
         let path = std::env::temp_dir().join(format!(
             "tless-pty-{}-{}.json",
             std::process::id(),
@@ -63,7 +66,7 @@ mod terminal_commands {
         let mut slave = -1;
         let mut size = libc::winsize {
             ws_row: 24,
-            ws_col: 120,
+            ws_col: width,
             ws_xpixel: 0,
             ws_ypixel: 0,
         };
@@ -116,6 +119,7 @@ mod terminal_commands {
         let mut keys = commands.bytes();
         let mut next_key_at = Instant::now();
         let mut waiting_for_prompt = None;
+        let mut entering_command = false;
         let mut waiting_for_redraw = None;
         let mut scanned_cursor_requests = 0;
         loop {
@@ -155,10 +159,22 @@ mod terminal_commands {
                 && Instant::now() >= next_key_at
             {
                 if let Some(key) = keys.next() {
-                    if key == b':' {
+                    if key == 0x12 {
+                        size.ws_col = 16;
+                        size.ws_row = 8;
+                        assert_ne!(
+                            unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCSWINSZ, &size) },
+                            -1
+                        );
+                        next_key_at = Instant::now() + Duration::from_millis(100);
+                        continue;
+                    }
+                    if !entering_command && matches!(key, b':' | b'/' | b'?') {
+                        entering_command = true;
                         waiting_for_prompt = Some(output.len());
                     }
                     if key == b'\n' {
+                        entering_command = false;
                         waiting_for_redraw = Some(output.len());
                     }
                     master.write_all(&[key]).unwrap();
@@ -180,6 +196,75 @@ mod terminal_commands {
         String::from_utf8(output).unwrap()
     }
 
+    fn strip_styles(output: &str) -> String {
+        regex::Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]")
+            .unwrap()
+            .replace_all(output, "")
+            .into_owned()
+    }
+
+    #[test]
+    fn every_input_uses_the_same_toon_document_lines() {
+        let json =
+            r#"{"tags":["rust","cli"],"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#;
+        let yaml = "tags: [rust, cli]\nusers:\n  - {id: 1, name: Ada}\n  - {id: 2, name: Lin}\n";
+        let mut cases = vec![(json, None), (yaml, Some("--yaml"))];
+        if cfg!(feature = "toon") {
+            cases.push((
+                "tags[2]: rust,cli\nusers[2]{id,name}:\n  1,Ada\n  2,Lin",
+                Some("--toon"),
+            ));
+        }
+        for (input, format) in cases {
+            let output = strip_styles(&session_with_format(input, "q", format));
+            for expected in ["tags[2]: rust,cli", "users[2]{id,name}:", "1,Ada", "2,Lin"] {
+                assert!(
+                    output.contains(expected),
+                    "missing {}: {}",
+                    expected,
+                    output
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_search_reveals_and_prints_the_cell_without_annotations() {
+        let output = session(
+            r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,
+            "l /Lin\npp q",
+        );
+        assert!(
+            output.contains("\"Lin\"\r\n\r\nPress any key to continue."),
+            "{}",
+            output
+        );
+        assert!(strip_styles(&output).contains("users[1].name"));
+    }
+
+    #[test]
+    fn resize_and_column_motion_preserve_the_parsed_selection() {
+        let output = session(
+            r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,
+            "lllJj\x12pp q",
+        );
+        assert!(
+            output.contains("\"Lin\"\r\n\r\nPress any key to continue."),
+            "{}",
+            output
+        );
+    }
+
+    #[test]
+    fn duplicate_warnings_and_occurrence_status_preserve_copy_identity() {
+        let output = session(r#"{"status":"queued","status":"done"}"#, "lJpp q");
+        let clean = strip_styles(&output);
+        assert!(clean.contains("# WARN Duplicate key"));
+        assert!(clean.contains("occurrence 2 of 2"));
+        assert!(output.contains("\"done\"\r\n\r\nPress any key to continue."));
+    }
+
+    #[cfg(feature = "toon")]
     #[test]
     fn write_open_failure_reports_an_error_and_keeps_the_viewer_usable() {
         let target = std::env::temp_dir()
@@ -192,6 +277,7 @@ mod terminal_commands {
         assert!(!target.exists());
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn writes_canonical_toon_through_the_viewer_command() {
         let target = std::env::temp_dir().join(format!("tless-write-{}.toon", std::process::id()));
@@ -201,6 +287,7 @@ mod terminal_commands {
         std::fs::remove_file(target).unwrap();
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn writes_toon_from_yaml_and_toon_inputs_without_changing_json_commands() {
         let target = std::env::temp_dir().join(format!("tless-formats-{}.out", std::process::id()));
@@ -226,9 +313,10 @@ mod terminal_commands {
         }
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn prints_focused_canonical_toon_on_the_persistent_screen() {
-        let output = session(r#"{"items":[1,2]}"#, "jpt q");
+        let output = session(r#"{"items":[1,2]}"#, "lpt q");
         assert!(
             output.contains("[2]: 1,2\r\n\r\nPress any key to continue."),
             "{}",
@@ -236,6 +324,7 @@ mod terminal_commands {
         );
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn bang_writes_replace_the_entire_file_after_successful_encoding() {
         let target =
@@ -383,4 +472,19 @@ fn version_help_and_usage_error_follow_cli_contract() {
     assert_eq!(invalid.status.code(), Some(2));
     assert!(invalid.stdout.is_empty());
     assert!(!invalid.stderr.is_empty());
+}
+
+#[test]
+fn removed_modes_are_usage_errors_and_help_describes_toon_addresses() {
+    for args in [
+        &["--mode", "line"][..],
+        &["--mode", "data"][..],
+        &["-m", "data"][..],
+    ] {
+        let output = run(args, b"{}");
+        assert_eq!(output.status.code(), Some(2));
+    }
+    let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
+    assert!(!help.contains("--mode"));
+    assert!(help.contains("TOON line addresses"));
 }
