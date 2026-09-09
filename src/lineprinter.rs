@@ -161,7 +161,9 @@ pub fn paint(
                 span.role,
                 TokenRole::Preview | TokenRole::Count | TokenRole::Warning
             );
-            style.bold = focused.contains(&span.node);
+            if focused.contains(&span.node) {
+                style.fg = style.fg.bright();
+            }
             let overlaps = |query: &Range<usize>| {
                 span.matching_ranges(query)
                     .iter()
@@ -173,7 +175,6 @@ pub fn paint(
             if overlaps(current) {
                 style.bg = terminal::YELLOW;
                 style.fg = terminal::DEFAULT;
-                style.bold = true;
             }
         }
         terminal.set_style(&style)?;
@@ -381,7 +382,7 @@ mod tests {
         assert!(text(line, 200, 0).ends_with("# WARN Non-finite number"));
     }
     #[test]
-    fn container_focus_bolds_row_values_and_implicit_root_fields() {
+    fn container_focus_brightens_row_values_and_implicit_root_fields() {
         for (input, focus) in [(r#"[{"a":1}]"#, 1), (r#"{"a":1}"#, 0)] {
             let flat = parse_top_level_json(input.into()).unwrap();
             let layout = Layout::new(&flat);
@@ -399,8 +400,8 @@ mod tests {
             )
             .unwrap();
             let output = terminal.output();
-            assert!(output.contains("_B_"), "{}", output);
-            assert!(!output.contains("_!B_"), "{}", output);
+            assert!(output.contains("_FG(LightMagenta)_1"), "{}", output);
+            assert!(!output.contains("_B_"), "{}", output);
         }
     }
 
@@ -425,6 +426,7 @@ mod tests {
         let before = output.find("aaaa").unwrap();
         assert!(!output[..before].contains("_BG(Yellow)_"), "{}", output);
         assert!(output[before..].contains("_BG(Yellow)_"), "{}", output);
+        assert!(!output.contains("_B_"), "{}", output);
     }
     fn reduced_text(line: &DisplayLine, viewport: LineViewport, width: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();

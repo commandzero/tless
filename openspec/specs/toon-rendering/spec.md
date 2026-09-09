@@ -116,3 +116,5 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 - **WHEN** focus, search, status, or command entry is active
 - **THEN** status and commands SHALL remain outside document text
 - **AND** focus and search SHALL highlight existing spans without inserting text
+- **AND** focus SHALL use bright foreground colors instead of bold and SHALL apply only on the selected display line
+- **AND** the current line-number gutter SHALL use a lighter shade than other line numbers

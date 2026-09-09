@@ -209,7 +209,11 @@ impl ScreenWriter {
                 } else {
                     visible.absolute + 1
                 };
-                self.terminal.set_fg(terminal::LIGHT_BLACK)?;
+                self.terminal.set_fg(if index == focused {
+                    terminal::LIGHT_WHITE
+                } else {
+                    terminal::LIGHT_BLACK
+                })?;
                 let label = format!("{:>width$} ", number, width = number_width - 1);
                 self.terminal
                     .write_str(&label[..label.len().min(usize::from(self.dimensions.width))])?;
@@ -219,7 +223,11 @@ impl ScreenWriter {
                 continue;
             }
             self.terminal.reset_style()?;
-            self.terminal.set_bold(index == focused)?;
+            self.terminal.set_fg(if index == focused {
+                terminal::LIGHT_WHITE
+            } else {
+                terminal::DEFAULT
+            })?;
             let arrow = if viewer.layout.nodes[line.owner].collapsible && !line.separator {
                 if viewer.flatjson[line.owner].is_collapsed() {
                     '▸'
@@ -243,9 +251,13 @@ impl ScreenWriter {
             lp::paint(
                 &mut self.terminal,
                 &fitted,
-                viewer.focused_node..match viewer.flatjson[viewer.focused_node].pair_index() {
-                    crate::flatjson::OptionIndex::Index(end) => end + 1,
-                    _ => viewer.focused_node + 1,
+                if index == focused {
+                    viewer.focused_node..match viewer.flatjson[viewer.focused_node].pair_index() {
+                        crate::flatjson::OptionIndex::Index(end) => end + 1,
+                        _ => viewer.focused_node + 1,
+                    }
+                } else {
+                    0..0
                 },
                 viewport,
                 available - 2,

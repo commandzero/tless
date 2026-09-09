@@ -6,6 +6,16 @@ pub enum Color {
     Default,
 }
 
+impl Color {
+    pub fn bright(self) -> Self {
+        match self {
+            Color::C16(index @ 0..=7) => Color::C16(index + 8),
+            Color::C16(8) | Color::Default => LIGHT_WHITE,
+            color => color,
+        }
+    }
+}
+
 // Commented out colors are unused.
 // #[cfg(test)]
 // pub const BLACK: Color = Color::C16(0);
@@ -22,7 +32,7 @@ pub const LIGHT_BLACK: Color = Color::C16(8);
 // pub const LIGHT_YELLOW: Color = Color::C16(11);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
 // pub const LIGHT_CYAN: Color = Color::C16(14);
-// pub const LIGHT_WHITE: Color = Color::C16(15);
+pub const LIGHT_WHITE: Color = Color::C16(15);
 pub const DEFAULT: Color = Color::Default;
 
 #[derive(Copy, Clone)]

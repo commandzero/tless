@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T07:10:52Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T21:17:20Z }
 ---
 
 # TOON document view
@@ -27,6 +27,10 @@ Empty object fields use `key:` and empty arrays use `key[0]:`. Arrays of empty
 objects use a counted list with a bare `-` for each object. Root objects have
 no synthetic header. An empty root has a blank selectable row and its type in
 status. Root objects remain expanded.
+
+The current line number uses a lighter shade. Focus uses bright syntax colors
+instead of bold text, and stays on the selected display line when a container
+has visible descendants. Inline elements and table cells keep individual focus.
 
 ## Selection and navigation
 
