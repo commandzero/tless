@@ -65,36 +65,7 @@ pub struct FlatJson(
 );
 
 impl FlatJson {
-    pub fn last_visible_index(&self) -> Index {
-        let last_index = self.0.len() - 1;
-
-        let row = &self.0[last_index];
-
-        if row.is_container() && row.is_collapsed() {
-            row.pair_index().unwrap()
-        } else {
-            last_index
-        }
-    }
-
-    pub fn last_visible_item(&self) -> Index {
-        let mut last_index = self.0.len() - 1;
-
-        loop {
-            let row = &self.0[last_index];
-
-            if row.is_primitive() {
-                return last_index;
-            }
-
-            if row.is_closing_of_container() && row.is_collapsed() {
-                return row.pair_index().unwrap();
-            }
-
-            last_index -= 1;
-        }
-    }
-
+    #[cfg(test)]
     pub fn prev_visible_row(&self, index: Index) -> OptionIndex {
         if index == 0 {
             return OptionIndex::Nil;
@@ -109,6 +80,7 @@ impl FlatJson {
         }
     }
 
+    #[cfg(test)]
     pub fn next_visible_row(&self, mut index: Index) -> OptionIndex {
         // If row is collapsed container, jump to closing char and move past there.
         if self.0[index].is_opening_of_container() && self.0[index].is_collapsed() {
@@ -123,6 +95,7 @@ impl FlatJson {
         OptionIndex::Index(index + 1)
     }
 
+    #[cfg(test)]
     pub fn prev_item(&self, mut index: Index) -> OptionIndex {
         while let OptionIndex::Index(i) = self.prev_visible_row(index) {
             if !self.0[i].is_closing_of_container() {
@@ -135,6 +108,7 @@ impl FlatJson {
         OptionIndex::Nil
     }
 
+    #[cfg(test)]
     pub fn next_item(&self, mut index: Index) -> OptionIndex {
         while let OptionIndex::Index(i) = self.next_visible_row(index) {
             if !self.0[i].is_closing_of_container() {
@@ -159,13 +133,6 @@ impl FlatJson {
             self.0[pair].collapse();
         }
         self.0[index].collapse();
-    }
-
-    pub fn toggle_collapsed(&mut self, index: Index) {
-        if let OptionIndex::Index(pair) = self.0[index].pair_index() {
-            self.0[pair].toggle_collapsed();
-        }
-        self.0[index].toggle_collapsed();
     }
 
     pub fn first_visible_ancestor(&self, mut index: Index) -> Index {
@@ -544,9 +511,6 @@ impl Row {
     fn collapse(&mut self) {
         self.value.collapse()
     }
-    fn toggle_collapsed(&mut self) {
-        self.value.toggle_collapsed()
-    }
 
     pub fn first_child(&self) -> OptionIndex {
         self.value.first_child()
@@ -598,13 +562,6 @@ impl ContainerType {
         match self {
             ContainerType::Object => "}",
             ContainerType::Array => "]",
-        }
-    }
-
-    pub fn collapsed_preview(&self) -> &'static str {
-        match self {
-            ContainerType::Object => "{…}",
-            ContainerType::Array => "[…]",
         }
     }
 }
@@ -686,10 +643,6 @@ impl Value {
                 ..
             }
         )
-    }
-
-    fn toggle_collapsed(&mut self) {
-        self.set_collapsed(!self.is_collapsed())
     }
 
     fn expand(&mut self) {

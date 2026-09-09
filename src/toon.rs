@@ -285,27 +285,22 @@ mod tests {
     #[test]
     fn decoded_navigation_search_and_paths_match_json_with_escaped_unicode() {
         use crate::search::{JumpDirection, SearchDirection, SearchState};
-        use crate::viewer::{Action, JsonViewer, Mode};
+        use crate::viewer::{Action, JsonViewer};
         let input = "\"é.key\":\n  rows[2]: \"line\\nAda\",雪";
         let json = r#"{"é.key":{"rows":["line\nAda","雪"]}}"#;
-        let mut toon = JsonViewer::new(super::parse(input).unwrap(), Mode::Data);
-        let mut reference = JsonViewer::new(
-            crate::flatjson::parse_top_level_json(json.to_owned()).unwrap(),
-            Mode::Data,
-        );
+        let mut toon = JsonViewer::new(super::parse(input).unwrap());
+        let mut reference =
+            JsonViewer::new(crate::flatjson::parse_top_level_json(json.to_owned()).unwrap());
         for action in [
             Action::MoveDown(1),
             Action::ToggleCollapsed,
             Action::ToggleCollapsed,
             Action::MoveDown(2),
-            Action::ToggleMode,
             Action::FocusParent,
-            Action::FocusMatchingPair,
         ] {
             toon.perform_action(action);
             reference.perform_action(action);
             assert_eq!(toon.focused_row, reference.focused_row);
-            assert_eq!(toon.mode, reference.mode);
             assert_eq!(
                 toon.flatjson.pretty_printed_value(toon.focused_row),
                 reference

@@ -53,7 +53,7 @@
 
   g         *  Focus the first line in the input if no count is given. If a
                  count is given, focus that line number. If the line isn't
-                 visible, focus the last visible line before it.
+                 visible, focus its visible collapsed ancestor.
   G         *  Focus the last  line in the input if no count is given. If a
                  count is given, focus that line number, expanding any of its
                  parent nodes if necessary.
@@ -80,9 +80,9 @@
   zt           Move the focused node to the top of the screen.
   zb           Move the focused node to the bottom of the screen.
 
-  .         *  Scroll a truncated value one char to the right (or [4mN[0m chars).
-  ,         *  Scroll a truncated value one char to the left  (or [4mN[0m chars).
-  ;            Scroll a truncated value all the way to the end, or, if
+  .         *  Scroll a truncated TOON line one cell to the right (or [4mN[0m cells).
+  ,         *  Scroll a truncated TOON line one cell to the left  (or [4mN[0m cells).
+  ;            Scroll a truncated TOON line all the way to the end, or, if
                  already at the end, back to the start.
 
   <            Decrease the indentation of every line by one (or [4mN[0m) tabs.
@@ -107,9 +107,8 @@
             of the string, with all escape sequences, except control characters,
             unescaped.
 
-  yk pk   Copy/print the object key on the currently focused line. When in data
-            mode this will not include quotes around the key if the key is a
-            valid JavaScript identifier.
+  yk pk   Copy/print the selected object key. Quotes are omitted when the key
+            is a valid JavaScript identifier.
 
   yp pP   Copy/print the path from the top level JSON root to the currently
             focused value. Object keys will be accessed using ".key" unless they
@@ -207,32 +206,35 @@
       When the input is newline-delimited JSON, an actual newline will
       separate each top-level JSON element in the internal representation.
 
-                             [1mDATA MODE VS LINE MODE[0m
+                                 [1mTOON DISPLAY[0m
 
-      tless starts in "data" mode, which displays the JSON data in a more
-      streamlined fashion: no closing delimiters for objects or arrays,
-      no trailing commas, no quotes around object keys that are valid
-      identifiers in JavaScript. It also shows single-line previews of
-      objects and arrays, and array indexes before array elements. Note
-      that when using full-text search, object keys will still be
-      surrounded by quotes.
+      Every input format uses TOON layout. Arrays use inline values, tables,
+      or counted lists. Child/parent/sibling commands select individual values
+      even when they share a line. Vertical cell motion retains the column.
+      Click a value to select it, or a gutter arrow to collapse its container.
 
-      By pressing 'm', you can switch tless to "line" mode, which displays
-      the input as pretty-printed JSON.
+      Collapsed containers retain their header, counts, and warnings; previews
+      are shown only while collapsed. # WARN annotations preserve exceptional
+      parsed data such as duplicate keys, non-finite numbers, and non-string
+      keys. Multiple roots have warning separators. This extended display is
+      not an interchange format. Copy and export operate on parsed selections,
+      without generated annotations; TOON export may normalize data or fail.
 
-      In line mode you can press '%' when focused on an open or close
-      delimiter of an object or array to jump to its matching pair.
+      Search matches parsed keys and values, reveals hidden ancestors, and
+      highlights table field keys in their shared header. Warnings and previews
+      never introduce searchable occurrences.
 
                                   [1mLINE NUMBERS[0m
 
       tless supports displaying line numbers, and does so by default. The line
       numbers do not reflect the position of a node in the original input, but
-      rather what line the node would appear on if the original input were
-      pretty printed.
+      rather its address in the fully expanded TOON layout. Shared-line values
+      have the same address; collapsed contents leave gaps. Root separators
+      carry addresses but vertical motions skip them.
 
       tless also supports relative line numbers. When this is enabled, the
-      number displayed next to each line will indicate how many lines away it
-      is from the currently focused line. This makes it easier to use the j
+      number displayed next to each value line counts visible vertical motions
+      from the currently focused line, skipping root separators. This makes it easier to use the j
       and k commands with specified counts.
 
       The appearance of line numbers can be configured via command line flags:

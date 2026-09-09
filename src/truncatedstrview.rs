@@ -1,5 +1,5 @@
-use std::cmp::Ordering;
 use std::fmt;
+#[cfg(test)]
 use std::ops::Range;
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -24,6 +24,7 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Debug, Copy, Clone)]
 pub struct TruncatedStrView {
     pub range: Option<TruncatedRange>,
+    #[cfg(test)]
     available_space: isize,
 }
 
@@ -96,6 +97,7 @@ struct RangeAdjuster<'a> {
 impl TruncatedRange {
     // Create a RangeAdjuster representing the current state of the
     // TruncatedRange.
+    #[cfg(test)]
     fn adjuster<'a>(&self, s: &'a str, available_space: isize) -> RangeAdjuster<'a> {
         let mut used_space = self.used_space;
         // The adjuster doesn't keep track of the replacement character.
@@ -118,18 +120,7 @@ impl TruncatedRange {
         self.used_space == 1 && self.start == self.end
     }
 
-    /// Check whether this is a truncated view of a string.
-    pub fn is_truncated(&self, s: &str) -> bool {
-        self.start != 0 || self.end != s.len() || self.showing_replacement_character
-    }
-
-    pub fn print_leading_ellipsis(&self) -> bool {
-        self.start != 0
-    }
-
-    pub fn print_trailing_ellipsis(&self, s: &str) -> bool {
-        self.end != s.len()
-    }
+    // Status clipping uses the retained range directly.
 }
 
 impl TruncatedStrView {
@@ -174,10 +165,11 @@ impl TruncatedStrView {
 
     // Create a TruncatedStrView that indicates that the string cannot
     // be represented in the available space.
-    fn init_no_view(available_space: isize) -> TruncatedStrView {
+    fn init_no_view(_available_space: isize) -> TruncatedStrView {
         TruncatedStrView {
             range: None,
-            available_space,
+            #[cfg(test)]
+            available_space: _available_space,
         }
     }
 
@@ -186,12 +178,6 @@ impl TruncatedStrView {
     pub fn used_space(&self) -> Option<isize> {
         self.range
             .map(|TruncatedRange { used_space, .. }| used_space)
-    }
-
-    /// Check whether this is a view of a string that is totally elided,
-    /// that is, it is represented by a single ellipsis.
-    pub fn is_completely_elided(&self) -> bool {
-        self.range.is_some_and(|r| r.is_completely_elided())
     }
 
     /// Check whether this is a view of a string that fits in the available
@@ -203,6 +189,7 @@ impl TruncatedStrView {
     // Creates a RangeAdjuster that represents the current state of
     // the TruncatedStrView. This should only be called when the string
     // is representable and we have a view.
+    #[cfg(test)]
     fn range_adjuster<'a>(&self, s: &'a str) -> RangeAdjuster<'a> {
         debug_assert!(self.range.is_some());
         self.range.unwrap().adjuster(s, self.available_space)
@@ -210,6 +197,7 @@ impl TruncatedStrView {
 
     /// Scrolls a string view to the right by at least the specified
     /// number of characters (unless the end of the string is reached).
+    #[cfg(test)]
     pub fn scroll_right(&self, s: &str, count: usize) -> TruncatedStrView {
         if self.range.is_none() {
             return *self;
@@ -244,6 +232,7 @@ impl TruncatedStrView {
 
     /// Scrolls a string view to the left by at least the specified
     /// number of characters (unless the start of the string is reached).
+    #[cfg(test)]
     pub fn scroll_left(&self, s: &str, count: usize) -> TruncatedStrView {
         if self.range.is_none() {
             return *self;
@@ -276,45 +265,17 @@ impl TruncatedStrView {
         adjuster.to_view()
     }
 
-    /// Jump from whatever portion of the string is currently represented
-    /// to showing either the start or the end of the string.
-    ///
-    /// Normally we will always jump to the back of the string, unless
-    /// we are already showing the back of the string, in which case we
-    /// will jump to the front.
-    pub fn jump_to_an_end(&self, s: &str) -> TruncatedStrView {
-        match self.range {
-            None => *self,
-            Some(range) => {
-                if range.end < s.len() {
-                    TruncatedStrView::init_back(s, self.available_space)
-                } else {
-                    TruncatedStrView::init_start(s, self.available_space)
-                }
-            }
-        }
-    }
+    // Jump from whatever portion of the string is currently represented
+    // to showing either the start or the end of the string.
+    //
+    // Normally we will always jump to the back of the string, unless
+    // we are already showing the back of the string, in which case we
+    // will jump to the front.
 
-    /// Update the string view with a new amount of available space.
-    pub fn resize(&self, s: &str, available_space: isize) -> TruncatedStrView {
-        if self.range.is_none() {
-            return TruncatedStrView::init_start(s, available_space);
-        }
+    // Update the string view with a new amount of available space.
 
-        match available_space.cmp(&self.available_space) {
-            Ordering::Less => {
-                if !Self::can_str_fit_at_all(s, available_space) {
-                    Self::init_no_view(available_space)
-                } else {
-                    self.shrink(s, available_space)
-                }
-            }
-            Ordering::Greater => self.expand(s, available_space),
-            Ordering::Equal => *self,
-        }
-    }
-
-    /// Expand a view to fit into more available space.
+    // Expand a view to fit into more available space.
+    #[cfg(test)]
     fn expand(&self, s: &str, available_space: isize) -> TruncatedStrView {
         debug_assert!(available_space > self.available_space);
         let mut adjuster = self.range_adjuster(s);
@@ -350,6 +311,7 @@ impl TruncatedStrView {
     }
 
     /// Shrink a view to fit into less available space.
+    #[cfg(test)]
     fn shrink(&self, s: &str, available_space: isize) -> TruncatedStrView {
         debug_assert!(available_space < self.available_space);
         debug_assert!(self.range.is_some());
@@ -380,6 +342,7 @@ impl TruncatedStrView {
     }
 
     /// Scroll a view so that a particular subrange is shown.
+    #[cfg(test)]
     pub fn focus(&self, s: &str, range: &Range<usize>) -> TruncatedStrView {
         if self.range.is_none() {
             return *self;
@@ -451,6 +414,7 @@ impl<'a> RangeAdjuster<'a> {
     }
 
     /// Update the range to show another character on the right side.
+    #[cfg(test)]
     pub fn expand_right(&mut self, count: usize) {
         let mut right_graphemes = self.s[self.end..].graphemes(true);
         for _ in 0..count {
@@ -468,6 +432,7 @@ impl<'a> RangeAdjuster<'a> {
     }
 
     /// Update the range to show another character on the left side.
+    #[cfg(test)]
     pub fn expand_left(&mut self, count: usize) {
         let mut left_graphemes = self.s[..self.start].graphemes(true);
         for _ in 0..count {
@@ -560,6 +525,7 @@ impl<'a> RangeAdjuster<'a> {
 
     /// Add as many characters to each side of the string, so that
     /// the initial visible portion remains centered.
+    #[cfg(test)]
     pub fn fill_from_both_sides(&mut self) {
         let mut left_graphemes = self.s[..self.start].graphemes(true);
         let mut right_graphemes = self.s[self.end..].graphemes(true);
@@ -615,6 +581,7 @@ impl<'a> RangeAdjuster<'a> {
 
     /// Remove characters from the right side of the range until the
     /// amount of used space is within the available space.
+    #[cfg(test)]
     pub fn shrink_right_to_fit(&mut self) {
         let mut visible_graphemes = self.s[self.start..self.end].graphemes(true);
         while self.used_space > self.available_space {
@@ -631,6 +598,7 @@ impl<'a> RangeAdjuster<'a> {
 
     /// Remove characters from the left side of the range until the
     /// amount of used space is within the available space.
+    #[cfg(test)]
     pub fn shrink_left_to_fit(&mut self) {
         let mut visible_graphemes = self.s[self.start..self.end].graphemes(true);
         while self.used_space > self.available_space {
@@ -678,6 +646,7 @@ impl<'a> RangeAdjuster<'a> {
                 showing_replacement_character,
                 used_space,
             }),
+            #[cfg(test)]
             available_space: self.available_space,
         }
     }

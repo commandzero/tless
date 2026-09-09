@@ -2,8 +2,6 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
 
-use crate::viewer::Mode;
-
 #[derive(PartialEq, Eq, Copy, Clone, Debug, ValueEnum)]
 pub enum DataFormat {
     Json,
@@ -27,14 +25,6 @@ pub struct Opt {
     #[arg(long, default_value_t = 536_870_912)]
     pub max_input_bytes: u64,
 
-    /// Initial viewing mode. In line mode (--mode line), opening
-    /// and closing curly and square brackets are shown and all
-    /// Object keys are quoted. In data mode (--mode data; the default),
-    /// closing braces, commas, and quotes around Object keys are elided.
-    /// The active mode can be toggled by pressing 'm'.
-    #[arg(short, long, value_enum, hide_possible_values = true, default_value_t = Mode::Data)]
-    pub mode: Mode,
-
     // This godforsaken configuration to get both --line-numbers and --no-line-numbers to
     // work (with --line-numbers as the default) and --relative-line-numbers and
     // --no-relative-line-numbers to work (with --no-relative-line-numbers as the default)
@@ -45,10 +35,8 @@ pub struct Opt {
     #[arg(short = 'N', long = "no-line-numbers", action = ArgAction::SetFalse)]
     pub show_line_numbers: bool,
 
-    /// Show "line" numbers (default). Line numbers are determined by
-    /// the line number of a given line if the document were pretty printed.
-    /// These means there are discontinuities when viewing in data mode
-    /// because the lines containing closing brackets and braces aren't displayed.
+    /// Show absolute expanded TOON line addresses (default). Collapsed contents
+    /// leave gaps; inline values and table cells share their line's address.
     #[arg(
         short = 'n',
         long = "line-numbers",
