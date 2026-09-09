@@ -119,24 +119,41 @@ fn get_input_and_filename(opt: &Opt) -> io::Result<(String, String)> {
     match &opt.input {
         None => {
             if isatty::stdin_isatty() {
-                println!("Missing filename (\"jless --help\" for help)");
+                eprintln!("Missing filename (\"tless --help\" for help)");
                 std::process::exit(1);
             }
             filename = "STDIN".to_string();
-            io::stdin().read_to_string(&mut input_string)?;
+            read_input(io::stdin().lock(), &mut input_string, opt.max_input_bytes)?;
         }
         Some(path) => {
             if path.as_os_str() == "-" {
                 filename = "STDIN".to_string();
-                io::stdin().read_to_string(&mut input_string)?;
+                read_input(io::stdin().lock(), &mut input_string, opt.max_input_bytes)?;
             } else {
-                File::open(path)?.read_to_string(&mut input_string)?;
+                read_input(File::open(path)?, &mut input_string, opt.max_input_bytes)?;
                 filename = String::from(path.file_name().unwrap().to_string_lossy());
             }
         }
     }
 
     Ok((input_string, filename))
+}
+
+fn read_input(reader: impl Read, output: &mut String, limit: u64) -> io::Result<()> {
+    if limit == 0 {
+        reader.take(u64::MAX).read_to_string(output)?;
+    } else {
+        reader
+            .take(limit.saturating_add(1))
+            .read_to_string(output)?;
+        if output.len() as u64 > limit {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("input exceeds --max-input-bytes {limit}; raise the limit or use 0 for unlimited input"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn determine_data_format(

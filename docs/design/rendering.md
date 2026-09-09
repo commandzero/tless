@@ -1,3 +1,11 @@
+---
+type: Reference
+title: Rendering design notes
+description: Preserved upstream rendering design notes; not a current behavior contract.
+status: draft
+generated: { by: codex/gpt-6, at: 2026-09-07T05:17:13Z }
+---
+
 # Notes:
 
 - Want to enable "scroll off", which means selection will

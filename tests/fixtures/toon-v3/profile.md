@@ -3,7 +3,7 @@
 Source: https://github.com/toon-format/spec/tree/c09f73b267323190f61de5b91563fa579b3b7c5e
 
 Revision: `c09f73b267323190f61de5b91563fa579b3b7c5e`, tag `v3.0.0`.
-`SPEC.md`, `LICENSE`, and `tests/fixtures` are copied from that revision.
+`spec.md`, `LICENSE`, and `tests/fixtures` are copied from that revision.
 Some fixture files retain older internal version labels; the pinned commit
 defines the compatibility target.
 
@@ -12,22 +12,17 @@ Decoding is strict, with two-space indentation and path expansion off.
 Encoding uses two spaces, commas, and no folding. Object comparison preserves
 encounter order, and numeric comparison uses normalized decimal values.
 
-## Order-preserving output exception
+## Published codec profile
 
-Of the 114 encode cases, 113 retain their upstream expected payload. The case
-`encode/arrays-objects.json` / `uses field order from first object for tabular headers`
-instead requires list form, preserving both rows' original key orders. The
-upstream fixture is unchanged; the runner supplies this explicit expectation
-and round-trips all 114 encode cases using ordered-object comparison.
+The source fixtures are unchanged. All 114 encode cases now use their upstream
+expected output, including the table case with different object key orders.
+Semantic comparison ignores object order. The large-number encode fixture has
+an explicit known limitation: decoding its output returns a string, not a number.
+All 180 selected decode cases retain their upstream expectations.
 
-This is an intentional exception to v3 section 9.3 canonical form selection,
-not a decode exception or an excluded case. Tables require the same non-empty
-ordered key sequence in every row. Empty objects also use list form.
-
-No applicable pinned fixture currently needs a jless-specific expected
-rejection. Dedicated adapter tests cover duplicate names, lossy numbers,
-numeric size limits, BOM rejection, unsafe depth, and non-JSON YAML exports.
-The fixture runner prints each excluded case and fails on unexpected results.
+See [published codec behavior](../../../docs/toon-codec.md) for numeric conversion,
+duplicate-key handling, empty-object array output, and nesting boundaries.
+Tests no longer require private codec instrumentation or the removed patch's guarantees.
 
 ## Excluded option profiles
 

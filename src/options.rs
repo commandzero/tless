@@ -14,14 +14,18 @@ pub enum DataFormat {
 
 /// A pager for JSON (or YAML) data
 #[derive(Debug, Parser)]
-#[command(name = "jless", version)]
+#[command(name = "tless", version)]
 pub struct Opt {
-    /// Input file. jless will read from stdin if no input file is
-    /// provided, or '-' is specified. If a filename is provided, jless
+    /// Input file. tless will read from stdin if no input file is
+    /// provided, or '-' is specified. If a filename is provided, tless
     /// will check the extension to determine what the input format is,
     /// and by default will assume JSON. Can specify input format
     /// explicitly using --json or --yaml.
     pub input: Option<PathBuf>,
+
+    /// Maximum input bytes. Use 0 for unlimited input. The complete input stays in memory.
+    #[arg(long, default_value_t = 536_870_912)]
+    pub max_input_bytes: u64,
 
     /// Initial viewing mode. In line mode (--mode line), opening
     /// and closing curly and square brackets are shown and all

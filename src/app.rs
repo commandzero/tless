@@ -89,7 +89,7 @@ enum Command {
 }
 
 // Help contents that we pipe to less.
-const HELP: &str = std::include_str!("./jless.help");
+const HELP: &str = std::include_str!("./tless.help");
 #[cfg(feature = "toon")]
 const TOON_HELP: &str = std::include_str!("./toon.help");
 
