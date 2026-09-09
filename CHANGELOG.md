@@ -7,7 +7,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- Show collapsed object counts as subdued `{N}` hints and keep collapsed annotations out of selection highlighting. [#4](https://github.com/commandzero/tless/pull/4)
+- Show collapsed object counts as subdued `{N}` hints, separate preview fields with `; `, and keep collapsed annotations out of selection highlighting. [#4](https://github.com/commandzero/tless/pull/4)
 
 - Use bright colors instead of bold for selection, show line numbers and collapse arrows in dark gray with light gray on the selected line, and limit focus highlighting to the selected display line. [#4](https://github.com/commandzero/tless/pull/4)
 

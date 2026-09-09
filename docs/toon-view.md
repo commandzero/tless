@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T21:37:25Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T21:40:48Z }
 ---
 
 # TOON document view
@@ -47,7 +47,8 @@ Table-key matches highlight the shared header while retaining the selected
 row's field identity. Generated warnings, counts, and previews add no matches.
 
 The `▾` and `▸` arrows occupy a separate gutter. Collapsing retains a container
-header and shows a subdued preview. Objects also show their immediate-entry
+header and shows a subdued preview. Object fields use `; ` separators, such as
+`name: Ada; active: true`. Objects also show their immediate-entry
 count as `{N}`, such as `{7}` for seven entries. Counts, previews, and warnings
 remain subdued even on the selected line. Arrays keep the count already in their
 TOON header. Expanding an ancestor

@@ -574,7 +574,7 @@ impl Layout {
         let mut preview = String::new();
         for child in children(flat, node) {
             if !preview.is_empty() {
-                preview.push(',');
+                preview.push_str(if flat[node].is_array() { "," } else { "; " });
             }
             if !flat[node].is_array() {
                 // The key is already cached; truncate before copying into the preview.
@@ -1205,7 +1205,7 @@ mod tests {
         flat.collapse(rows[1]);
         let collapsed = layout.project(&flat);
         assert_eq!(collapsed[2].absolute, 2);
-        assert!(collapsed[2].line.text.starts_with("   {2} a: .nan,b: 4"));
+        assert!(collapsed[2].line.text.starts_with("   {2} a: .nan; b: 4"));
         assert!(collapsed[2]
             .line
             .text

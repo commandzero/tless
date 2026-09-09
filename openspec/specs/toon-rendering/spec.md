@@ -65,7 +65,7 @@ Keys and table field names SHALL share a syntax category. Strings, numbers, bool
 
 ### Requirement: Collapse presentation
 
-Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Collapsing SHALL retain the container's header, hide its contents, and append a subdued preview in document order. A collapsed object SHALL show its immediate-entry count as `{N}`, such as `{1}` or `{7}`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
+Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Collapsing SHALL retain the container's header, hide its contents, and append a subdued preview in document order. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object SHALL show its immediate-entry count as `{N}`, such as `{1}` or `{7}`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
 
 #### Scenario: Object and array collapse
 
