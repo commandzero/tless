@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T21:22:03Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T21:37:25Z }
 ---
 
 # TOON document view
@@ -28,7 +28,8 @@ objects use a counted list with a bare `-` for each object. Root objects have
 no synthetic header. An empty root has a blank selectable row and its type in
 status. Root objects remain expanded.
 
-The current line number uses a lighter shade. Focus uses bright syntax colors
+Line numbers and collapse arrows use dark gray, changing to light gray on the
+selected line. Focus uses bright syntax colors
 instead of bold text, and stays on the selected display line when a container
 has visible descendants. Inline elements and table cells keep individual focus.
 

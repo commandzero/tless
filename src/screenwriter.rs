@@ -210,7 +210,7 @@ impl ScreenWriter {
                     visible.absolute + 1
                 };
                 self.terminal.set_fg(if index == focused {
-                    terminal::LIGHT_WHITE
+                    terminal::WHITE
                 } else {
                     terminal::LIGHT_BLACK
                 })?;
@@ -224,9 +224,9 @@ impl ScreenWriter {
             }
             self.terminal.reset_style()?;
             self.terminal.set_fg(if index == focused {
-                terminal::LIGHT_WHITE
+                terminal::WHITE
             } else {
-                terminal::DEFAULT
+                terminal::LIGHT_BLACK
             })?;
             let arrow = if viewer.layout.nodes[line.owner].collapsible && !line.separator {
                 if viewer.flatjson[line.owner].is_collapsed() {

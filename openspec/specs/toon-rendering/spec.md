@@ -117,4 +117,4 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 - **THEN** status and commands SHALL remain outside document text
 - **AND** focus and search SHALL highlight existing spans without inserting text
 - **AND** focus SHALL use bright foreground colors instead of bold and SHALL apply only on the selected display line
-- **AND** the current line-number gutter SHALL use a lighter shade than other line numbers
+- **AND** line numbers and collapse arrows SHALL use dark gray by default and light gray on the selected display line
