@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T06:56:37Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T07:10:52Z }
 ---
 
 # TOON document view
@@ -86,9 +86,11 @@ its value, the original parsed token stays visible with a warning.
 TOON 3.0 supports escapes for LF, CR, TAB, quotes, and backslashes. Other
 control characters use terminal-safe JSON-style `\uXXXX` spellings with
 `Non-standard string escape` warnings. These spellings are display extensions;
-a literal backslash-u string does not receive a warning. Within each node,
+a literal backslash-u string does not receive a warning. Shared-line warnings
+follow parsed-node encounter order. Within each node,
 warning order is duplicate key, non-finite number, non-canonical number,
-non-string key, multiple roots, non-standard string escape, then hidden counts.
+non-string key, multiple roots, then non-standard string escape. A collapsed
+container's hidden-warning count follows its own messages and appears last.
 
 Non-string keys use `? ` followed by compact typed notation. Strings remain
 JSON-style quoted strings; arrays and ordered object pairs preserve key types

@@ -83,7 +83,7 @@ String values and string keys containing control characters other than LF, CR, a
 
 ### Requirement: Warning placement and collapse
 
-Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages in this order: duplicate key, non-finite number, non-canonical number, non-string key, multiple roots, non-standard string escape, hidden warnings. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
+Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages ordered first by parsed-node encounter order. Within each node, messages SHALL follow this kind order: duplicate key, non-finite number, non-canonical number, non-string key, multiple roots, non-standard string escape. Any `Contains N hidden warnings` summary SHALL follow the container's own messages and appear last. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
 
 #### Scenario: Hidden duplicate
 
@@ -96,6 +96,12 @@ Warnings SHALL be generated annotation spans, separated from preceding content b
 - **WHEN** the second inline-array element is infinity
 - **THEN** the line SHALL end with `# WARN Non-finite number at [1]`
 - **AND** every value on the line SHALL remain visible before the comment
+
+#### Scenario: Mixed warning kinds on different nodes
+
+- **WHEN** an inline array contains an unsupported-control string, infinity, and a non-canonical number in that order
+- **THEN** its final comment SHALL list `Non-standard string escape at [0]`, `Non-finite number at [1]`, and `Non-canonical number at [2]` in that parsed-node order
+- **AND** kind priority SHALL NOT move another node's warning ahead of an earlier node
 
 #### Scenario: Source text resembles a warning
 
