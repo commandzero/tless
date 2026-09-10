@@ -211,4 +211,3 @@ The upstream viewer, its mascot Jules, and its historical release notes remain a
 Jules artwork is by [annatgraphics](https://www.fiverr.com/annatgraphics).
 The code retains the [MIT license](LICENSE.md).
 See [third-party notices](NOTICES.md) for the codec and specification fixtures.
-The derived Vim palette data retains the [Vim license](src/theme/VIM-LICENSE).

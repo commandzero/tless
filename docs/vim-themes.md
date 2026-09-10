@@ -1,13 +1,11 @@
 ---
 type: Reference
 title: Vim companion palettes
-description: Audit of 28 bundled Vim colorschemes and their tless role mappings.
+description: 28 bundled Vim companion palettes and their tless role mappings.
 generated: { by: codex, at: 2026-09-07T06:15:02Z }
 sources:
   - id: vim-colors
     resource: https://github.com/vim/vim/tree/a96c3bc1f7f5ebb62643ae54ea8a1d2fa732aaf8/runtime/colors
-  - id: audit
-    resource: ../src/theme/vim-audit.json
 ---
 
 # Vim companion palettes
@@ -26,30 +24,12 @@ theme is a separate palette.
 
 ![Preview of all 28 Vim companion palettes](vim-themes.svg)
 
-## Audit method
+## Palette source
 
-The source revision is `a96c3bc1f7f5ebb62643ae54ea8a1d2fa732aaf8` in
-[vim/vim](https://github.com/vim/vim/tree/a96c3bc1f7f5ebb62643ae54ea8a1d2fa732aaf8/runtime/colors).
-The import covers every top-level `runtime/colors/*.vim` file. Helper scripts,
-color-name lists, third-party plugins, and the separate legacy colors are excluded.
-
-A fresh Vim process loads each scheme with user configuration and viminfo
-disabled, syntax enabled, `t_Co=256`, and `notermguicolors`. The initial
-background is dark. Schemes that select light keep that choice. `default`
-resets the background based on the host, so its companion explicitly selects
-dark after loading. Dual-background schemes use their dark variant.
-Catppuccin therefore uses Mocha. Alternate light variants are not separate themes.
-
-The extractor resolves highlight links with `synIDtrans` and reads the final
-cterm foreground, background, bold, reverse, and underline attributes. It does
-not approximate colors from screenshots or parse only the first highlight command.
-The audit records the source SHA-256, original attribution, and resolved groups
-for each file. Empty attributes are omitted and mean unset or false.
-
-Extraction uses Vim 9.1 with patches 1–1752 and the pinned runtime. Vim's
-compiled-in default highlight definitions therefore come from that executable;
-they are not claimed to come from the newer runtime revision. The exact host
-version is recorded in the audit. Regeneration from the snapshot needs no Vim.
+The palettes follow the terminal color assignments in Vim's `runtime/colors`
+directory at revision `a96c3bc1f7f5ebb62643ae54ea8a1d2fa732aaf8`. The resolved
+terminal values are bundled in `src/theme/vim_palettes.rs`; tless does not need
+Vim or a runtime checkout when building or running.
 
 ## Palette inventory
 
@@ -124,28 +104,10 @@ a 256-color terminal with background-color erase support.
 These are terminal companions. GUI RGB palettes, automatic background detection,
 8/16-color fallback palettes, Vim plugins, and filetype-specific syntax overrides
 are outside this mapping. None of the selected cterm groups requires italic,
-undercurl, standout, or strikethrough; the importer rejects those attributes
-instead of silently discarding them.
+undercurl, standout, or strikethrough; these attributes are omitted from the
+terminal companion mappings.
 
-## Regeneration and checks
-
-From the repository root, regenerate Rust from the committed snapshot:
-
-```sh
-python3 scripts/import-vim-themes.py
-python3 scripts/import-vim-themes.py --check
-```
-
-To repeat extraction, check out the pinned Vim revision and pass its runtime:
-
-```sh
-python3 scripts/import-vim-themes.py --runtime /path/to/vim/runtime
-```
-
-Use the recorded Vim executable version when comparing compiled-in defaults.
-The runtime path must contain the full runtime, including syntax defaults.
-The importer does not download or verify a Git checkout; confirm its revision
-before extraction. Per-file hashes make subsequent source comparison possible.
+## Validation
 
 Validation commands:
 
@@ -154,7 +116,6 @@ cargo fmt --all -- --check
 cargo clippy --locked --all-features -- -D warnings
 cargo test --locked
 cargo test --locked --all-features
-python3 scripts/import-vim-themes.py --check
 okf validate docs/
 ```
 
@@ -164,6 +125,7 @@ rendering tests remain in place.
 
 ## Attribution
 
-[Vim license](../src/theme/VIM-LICENSE),
-[source attributions and palette data](../src/theme/vim-audit.json), and
-[adaptation notice](../NOTICES.md).
+The palette names and source assignments follow the
+[Vim runtime color schemes](https://github.com/vim/vim/tree/a96c3bc1f7f5ebb62643ae54ea8a1d2fa732aaf8/runtime/colors).
+The tless implementation stores only terminal palette values and its own role
+mappings; it does not include Vim source code.
