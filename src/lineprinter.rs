@@ -157,11 +157,12 @@ pub fn paint(
                 TokenRole::Count | TokenRole::Preview => terminal::LIGHT_BLACK,
                 TokenRole::Structure => terminal::DEFAULT,
             };
-            style.dimmed = matches!(
+            let annotation = matches!(
                 span.role,
                 TokenRole::Preview | TokenRole::Count | TokenRole::Warning
             );
-            if focused.contains(&span.node) && !style.dimmed {
+            style.dimmed = span.role == TokenRole::Warning;
+            if focused.contains(&span.node) && !annotation {
                 style.fg = style.fg.bright();
             }
             let overlaps = |query: &Range<usize>| {
@@ -339,6 +340,10 @@ mod tests {
         };
         let selected = render(1..flat[1].pair_index().unwrap() + 1);
         let unselected = render(0..0);
+        let preview = selected.split("_FG(Yellow)_").next().unwrap();
+        assert!(preview.contains("_FG(LightBlack)_"));
+        assert!(!preview.contains("_D_"), "{}", selected);
+        assert!(!preview.contains("_B_"), "{}", selected);
         // Count, preview, and warning styles stay identical when their owner is focused.
         let hints = |text: String| text.split_once("_FG(LightBlack)_").unwrap().1.to_string();
         assert_eq!(hints(selected), hints(unselected));
