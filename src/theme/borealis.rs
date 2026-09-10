@@ -1,4 +1,4 @@
-// Borealis dark-mode CSS palette with TextMate string colors. See docs/borealis.md.
+// Borealis dark-mode CSS palette with TextMate string colors. See openspec/specs/color-themes/spec.md.
 use super::{FocusState, JsonValueKind, MessageSeverity, SearchState, StyleRole, StyleState};
 use crate::terminal::{Color, Style};
 

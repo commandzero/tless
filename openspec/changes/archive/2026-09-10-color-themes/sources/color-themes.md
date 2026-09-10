@@ -8,7 +8,7 @@ generated: { by: codex, at: 2026-09-10T21:13:08Z }
 # Color themes
 
 This document records the original default/Cyan design and the later
-configuration additions. The [Vim companion palettes](vim-themes.md) add
+configuration additions. The [Vim companion palettes](../../../../../docs/vim-themes.md) add
 256-color built-ins and document backgrounds.
 
 Status: implemented. Theme configuration is enabled by the `colorscheme`
@@ -37,7 +37,7 @@ retain their theme styles over the row background.
 - Let users switch themes during a session with `:colorscheme <name>`.
 - Let users define named themes and 256-color values in
   `$XDG_CONFIG_HOME/tless/config.yaml`, falling back to
-  `$HOME/.config/tless/config.yaml`. See the [configuration reference](../README.md#color-themes).
+  `$HOME/.config/tless/config.yaml`. See the [configuration reference](../../../../../README.md#color-themes).
 - Keep all mappings from semantic display roles to terminal styles in one
   module.
 - Keep rendering logic independent of named colors.

@@ -52,7 +52,7 @@ The former `classic` name remains accepted as a compatibility alias for
 
 The `borealis` theme uses the Borealis dark-mode CSS palette with RGB colors.
 It requires a true-color terminal. Use `tless --theme borealis data.json` or
-`:colorscheme borealis`. See [the palette mapping](docs/borealis.md).
+`:colorscheme borealis`. See [the palette mapping](openspec/specs/color-themes/spec.md#requirement-borealis-palette-and-source-fidelity).
 
 Vim companions use the original Vim scheme name, with Vim's `default` scheme
 exposed as `vim`:

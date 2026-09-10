@@ -5,9 +5,9 @@ description: Borealis RGB palette, source attribution, and tless role mappings.
 generated: { by: codex, at: 2026-09-10T20:59:37Z }
 sources:
   - id: borealis
-    resource: ../examples/themes/borealis.tmTheme
+    resource: ../../../../../examples/themes/borealis.tmTheme
   - id: borealis-css
-    resource: ../examples/themes/borealis.css
+    resource: ../../../../../examples/themes/borealis.css
 ---
 
 # Borealis
@@ -18,9 +18,9 @@ use it at startup. Theme support requires the `colorscheme` feature, enabled
 by default.
 
 Borealis follows the `html:has(#dark-mode:checked)` palette in the
-[Borealis CSS source](../examples/themes/borealis.css), supplied from
+[Borealis CSS source](../../../../../examples/themes/borealis.css), supplied from
 `~/Development/starlift/src/server/assets/theme/borealis.css`.
-The [original TextMate source](../examples/themes/borealis.tmTheme) supplies
+The [original TextMate source](../../../../../examples/themes/borealis.tmTheme) supplies
 the teal string color, which the CSS does not define. Both source files are
 preserved unchanged.
 
