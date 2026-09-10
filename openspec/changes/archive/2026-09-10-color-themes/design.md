@@ -4,7 +4,7 @@ This is a retrospective migration of the implemented theme system. See proposal.
 
 ## Goals / Non-Goals
 
-Capture observable contracts and retain source attribution without promoting obsolete proposals to requirements. Do not change runtime behavior, navigation, codecs, palette source files, or licenses.
+Capture the already-implemented observable contracts and retain source attribution without promoting obsolete proposals to requirements. The archival edits do not change runtime behavior, navigation, codecs, palette source files, or licenses.
 
 ## Decisions
 

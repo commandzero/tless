@@ -24,9 +24,7 @@ pub(super) fn style(role: StyleRole, state: StyleState, search: SearchState) -> 
         StyleRole::JsonValue(JsonValueKind::Number) => NUMBER,
         StyleRole::JsonValue(JsonValueKind::String) => STRING,
         StyleRole::ObjectKey => KEY,
-        StyleRole::ArrayIndex
-        | StyleRole::LineNumber
-        | StyleRole::ContainerDelimiter
+        StyleRole::LineNumber
         | StyleRole::Ellipsis
         | StyleRole::PreviewText
         | StyleRole::EmptyRowMarker
@@ -99,6 +97,8 @@ mod tests {
             for role in [
                 StyleRole::Punctuation,
                 StyleRole::PrimitiveTrailingComma,
+                StyleRole::ArrayIndex,
+                StyleRole::ContainerDelimiter,
                 StyleRole::PreviewCount,
                 StyleRole::FieldDefinition,
             ] {
@@ -107,10 +107,6 @@ mod tests {
                 assert!(!style.bold);
                 assert!(!style.dimmed);
             }
-            assert_eq!(
-                theme.style(StyleRole::ContainerDelimiter, state).fg,
-                theme.style(StyleRole::LineNumber, state).fg
-            );
             assert_eq!(
                 theme
                     .style(StyleRole::Message(MessageSeverity::Error), state)

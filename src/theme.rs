@@ -339,7 +339,7 @@ impl Theme {
         };
 
         #[cfg(feature = "colorscheme")]
-        let mut style = if self.name == ThemeName::Borealis {
+        let style = if self.name == ThemeName::Borealis {
             borealis::style(role, state, search)
         } else if let Some(palette) = self.name.vim_palette() {
             match search {
@@ -367,42 +367,37 @@ impl Theme {
         };
 
         #[cfg(feature = "colorscheme")]
-        if let Some(color) = self.colors[Self::color_key(role, state, search) as usize] {
-            if style.inverted
-                && matches!(
-                    Self::color_key(role, state, search),
-                    ThemeColor::FocusedObjectKey
-                        | ThemeColor::ArrayIndex
-                        | ThemeColor::SearchMatchCurrent
-                )
-            {
-                std::mem::swap(&mut style.fg, &mut style.bg);
-                style.inverted = false;
-            }
-            style.fg = color;
-        }
-
-        #[cfg(feature = "colorscheme")]
         match role {
-            StyleRole::StatusBar | StyleRole::StatusPathBase => self.apply_row_colors(
-                style,
-                ThemeColor::StatusBarForeground,
-                ThemeColor::StatusBarBackground,
-            ),
-            StyleRole::StatusText | StyleRole::Message(_) => {
-                // Severity colors take precedence over the command row's text color.
-                if role == StyleRole::StatusText {
-                    style = self.apply_row_colors(
-                        style,
-                        ThemeColor::CommandLineForeground,
-                        ThemeColor::CommandLineBackground,
-                    );
-                } else if let Some(bg) = self.colors[ThemeColor::CommandLineBackground as usize] {
-                    style.bg = bg;
-                }
-                style
+            StyleRole::StatusBar | StyleRole::StatusPathBase => {
+                let style =
+                    self.apply_foreground_override(style, Self::color_key(role, state, search));
+                self.apply_row_colors(
+                    style,
+                    ThemeColor::StatusBarForeground,
+                    ThemeColor::StatusBarBackground,
+                )
             }
+            StyleRole::StatusText => {
+                let style =
+                    self.apply_foreground_override(style, Self::color_key(role, state, search));
+                self.apply_row_colors(
+                    style,
+                    ThemeColor::CommandLineForeground,
+                    ThemeColor::CommandLineBackground,
+                )
+            }
+            StyleRole::Message(severity) => self.apply_row_colors(
+                style,
+                match severity {
+                    MessageSeverity::Info => ThemeColor::MessageInfo,
+                    MessageSeverity::Warn => ThemeColor::MessageWarning,
+                    MessageSeverity::Error => ThemeColor::MessageError,
+                },
+                ThemeColor::CommandLineBackground,
+            ),
             _ => {
+                let mut style =
+                    self.apply_foreground_override(style, Self::color_key(role, state, search));
                 if style.fg == Color::Default
                     && self.colors[Self::color_key(role, state, search) as usize].is_none()
                 {
@@ -420,6 +415,19 @@ impl Theme {
         {
             style
         }
+    }
+
+    #[cfg(feature = "colorscheme")]
+    fn apply_foreground_override(&self, mut style: Style, key: ThemeColor) -> Style {
+        if let Some(color) = self.colors[key as usize] {
+            // Configured colors describe what users see, independent of reverse video.
+            if style.inverted {
+                std::mem::swap(&mut style.fg, &mut style.bg);
+                style.inverted = false;
+            }
+            style.fg = color;
+        }
+        style
     }
 
     #[cfg(feature = "colorscheme")]
@@ -891,6 +899,36 @@ mod tests {
         assert_eq!(style.bg, Color::C256(231));
         assert!(!style.inverted);
         assert!(!style.bold);
+    }
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn configured_colors_normalize_reverse_video() {
+        let search = Theme::built_in(ThemeName::VimBlue)
+            .with_color(ThemeColor::SearchMatch, RED)
+            .style(
+                StyleRole::ObjectKey,
+                StyleState::main().search(SearchState::Match),
+            );
+        assert_eq!(search.fg, RED);
+        assert!(!search.inverted);
+
+        let delimiter = Theme::built_in(ThemeName::VimBlue)
+            .with_color(ThemeColor::FocusedContainerDelimiter, GREEN)
+            .style(StyleRole::ContainerDelimiter, StyleState::main().focused());
+        assert_eq!(delimiter.fg, GREEN);
+        assert!(!delimiter.inverted);
+
+        let message = Theme::built_in(ThemeName::VimDarkblue)
+            .with_color(ThemeColor::MessageError, RED)
+            .with_color(ThemeColor::CommandLineBackground, BLUE)
+            .style(
+                StyleRole::Message(MessageSeverity::Error),
+                StyleState::main(),
+            );
+        assert_eq!(message.fg, RED);
+        assert_eq!(message.bg, BLUE);
+        assert!(!message.inverted);
     }
 
     #[test]

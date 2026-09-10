@@ -1,6 +1,6 @@
 //! Cell-aware painting of mapped TOON tokens. Generated annotations have no search source.
 use crate::terminal::{Style, Terminal};
-use crate::theme::{JsonValueKind, SearchState, StyleRole, StyleState, Theme};
+use crate::theme::{DisplayContext, JsonValueKind, SearchState, StyleRole, StyleState, Theme};
 use crate::toon_display::{DisplayLine, TokenRole};
 use regex::Regex;
 use std::ops::Range;
@@ -165,9 +165,13 @@ fn paint_impl(
     if width == 0 {
         return Ok(());
     }
-    let row_style = theme.map_or_else(Style::default, |theme| theme.row_style(!focused.is_empty()));
+    let focused_row = !focused.is_empty();
+    let row_style = theme.map_or_else(Style::default, |theme| theme.row_style(focused_row));
+    let ellipsis_style = theme.map_or_else(Style::default, |theme| {
+        theme.style_on_row(StyleRole::Ellipsis, StyleState::main(), focused_row)
+    });
     if left > 0 {
-        terminal.set_style(&row_style)?;
+        terminal.set_style(&ellipsis_style)?;
         terminal.write_char('…')?;
     }
     let mut column = 0;
@@ -200,7 +204,11 @@ fn paint_impl(
                 TokenRole::Number => StyleRole::JsonValue(JsonValueKind::Number),
                 TokenRole::Boolean => StyleRole::JsonValue(JsonValueKind::Boolean),
                 TokenRole::Null => StyleRole::JsonValue(JsonValueKind::Null),
-                TokenRole::Structure => StyleRole::Punctuation,
+                TokenRole::ArrayIndex => StyleRole::ArrayIndex,
+                TokenRole::PrimitiveTrailingComma => StyleRole::PrimitiveTrailingComma,
+                TokenRole::ContainerDelimiter => StyleRole::ContainerDelimiter,
+                TokenRole::EmptyContainer => StyleRole::JsonValue(JsonValueKind::EmptyObject),
+                TokenRole::Punctuation => StyleRole::Punctuation,
                 TokenRole::Warning => StyleRole::Message(crate::theme::MessageSeverity::Warn),
                 TokenRole::Preview => StyleRole::PreviewText,
                 TokenRole::Count => StyleRole::PreviewCount,
@@ -228,7 +236,11 @@ fn paint_impl(
                     StyleState {
                         focus,
                         search,
-                        ..StyleState::main()
+                        context: if span.role == TokenRole::Preview {
+                            DisplayContext::Preview
+                        } else {
+                            DisplayContext::Main
+                        },
                     },
                     !focused.is_empty(),
                 )
@@ -242,7 +254,13 @@ fn paint_impl(
                     TokenRole::Null => crate::terminal::WHITE,
                     TokenRole::Warning => crate::terminal::YELLOW,
                     TokenRole::Count | TokenRole::Preview => crate::terminal::LIGHT_BLACK,
-                    TokenRole::Structure => crate::terminal::DEFAULT,
+                    TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
+                        crate::terminal::LIGHT_BLACK
+                    }
+                    TokenRole::PrimitiveTrailingComma | TokenRole::Punctuation => {
+                        crate::terminal::DEFAULT
+                    }
+                    TokenRole::EmptyContainer => crate::terminal::WHITE,
                 };
                 style.dimmed = span.role == TokenRole::Warning;
                 if focused.contains(&span.node) && !annotation {
@@ -267,7 +285,7 @@ fn paint_impl(
         used += cells;
     }
     if right > 0 && left + used < width {
-        terminal.set_style(&row_style)?;
+        terminal.set_style(&ellipsis_style)?;
         terminal.write_char('…')?;
     }
     terminal.reset_style()?;
@@ -308,6 +326,21 @@ pub fn fit_annotations(line: &DisplayLine, width: usize) -> std::borrow::Cow<'_,
     clipped.text.replace_range(range.clone(), &replacement);
     for span in &mut clipped.spans {
         if span.range == range {
+            for map in &mut span.source_map {
+                let start = map
+                    .display
+                    .start
+                    .saturating_sub(range.start)
+                    .min(replacement.len());
+                let end = map
+                    .display
+                    .end
+                    .saturating_sub(range.start)
+                    .min(replacement.len());
+                map.display = range.start + start..range.start + end;
+            }
+            span.source_map
+                .retain(|map| map.display.start < map.display.end);
             span.range.end = span.range.start + replacement.len();
         } else if span.range.start >= range.end {
             span.range.start = span.range.start - range.end + range.start + replacement.len();

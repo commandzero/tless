@@ -32,7 +32,7 @@ themes:
     number: 40
     boolean: 40
     null: 40
-    container-empty: 16
+    empty-container: 16
     punctuation: 16
     punctuation-comma-trailing: 16
     container-delimiter: 16
@@ -65,7 +65,7 @@ themes:
     number: 217
     boolean: 217
     null: 217
-    container-empty: 214
+    empty-container: 214
     punctuation: 214
     punctuation-comma-trailing: 214
     container-delimiter: 214

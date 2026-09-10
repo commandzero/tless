@@ -41,7 +41,7 @@ cargo install --path . --features colorscheme
 ```
 
 The `--no-default-features` build omits `--theme` and the theme configuration
-file. YAML and TOON viewing remain available in both builds.
+file. JSON and YAML viewing remain available in both builds.
 
 Use `--theme <name>` to select a built-in or configured theme. Without that
 option, `colorscheme` in the configuration selects the startup theme, otherwise
@@ -88,7 +88,7 @@ themes:
 
 Custom themes inherit the default styles for omitted keys. Theme keys include
 `document-foreground`, `document-background`, `null`, `boolean`, `number`,
-`string`, `container-empty`, `object-key`, `object-key-focused`, `array-index`,
+`string`, `empty-container`, `object-key`, `object-key-focused`, `array-index`,
 `punctuation`, `punctuation-comma-trailing`, `container-delimiter`,
 `container-delimiter-focused`, `ellipsis`, `preview-text`, `preview-count`,
 `line-number`, `line-number-focused`, `row-marker-empty`,

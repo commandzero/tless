@@ -1,6 +1,6 @@
 # Verification
 
-This change records the existing implementation and migrates documentation. The only Rust edit repairs a documentation path in a comment.
+This change records the implemented color-theme runtime and migrates its documentation. The implementation spans the theme, configuration, terminal, and rendering modules listed below.
 
 ## Implementation evidence
 

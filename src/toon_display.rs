@@ -12,7 +12,11 @@ pub enum TokenRole {
     Number,
     Boolean,
     Null,
-    Structure,
+    ArrayIndex,
+    PrimitiveTrailingComma,
+    ContainerDelimiter,
+    EmptyContainer,
+    Punctuation,
     Warning,
     Preview,
     Count,
@@ -29,6 +33,13 @@ pub struct Span {
 pub struct SourceMap {
     pub source: Range<usize>,
     pub display: Range<usize>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Preview {
+    text: String,
+    source: Option<Range<usize>>,
+    source_map: Vec<SourceMap>,
 }
 
 impl Span {
@@ -114,7 +125,7 @@ pub struct Layout {
     pub nodes: Vec<NodeLayout>,
     pub warnings: Vec<Warning>,
     own_warnings: Vec<Vec<WarningKind>>,
-    previews: Vec<String>,
+    previews: Vec<Preview>,
     keys: Vec<Option<String>>,
     scalars: Vec<String>,
     line_containers: Vec<Vec<usize>>,
@@ -200,7 +211,7 @@ impl Layout {
             nodes: vec![NodeLayout::default(); n],
             warnings: vec![],
             own_warnings: vec![vec![]; n],
-            previews: vec![String::new(); n],
+            previews: vec![Preview::default(); n],
             keys: vec![None; n],
             scalars: vec![String::new(); n],
             line_containers: vec![],
@@ -334,7 +345,7 @@ impl Layout {
             if result.nodes[i].collapsible && !flat[i].is_closing_of_container() {
                 result.line_containers[result.nodes[i].line].push(i);
             }
-            if result.previews[i].is_empty() && flat[i].is_opening_of_container() {
+            if result.previews[i].text.is_empty() && flat[i].is_opening_of_container() {
                 result.previews[i] = result.preview(flat, i);
             }
         }
@@ -473,7 +484,7 @@ impl Layout {
         let kids = children(flat, node);
         let mut line = DisplayLine::new(node, "  ".repeat(depth));
         if list {
-            line.token("-", node, TokenRole::Structure, None);
+            line.token("-", node, TokenRole::ContainerDelimiter, None);
         }
         let object = matches!(flat[node].value, Value::EmptyObject)
             || (flat[node].is_opening_of_container() && !flat[node].is_array());
@@ -493,7 +504,7 @@ impl Layout {
                         first.spans.push(Span {
                             range: position..position + 1,
                             node,
-                            role: TokenRole::Structure,
+                            role: TokenRole::ContainerDelimiter,
                             source: None,
                             source_map: vec![],
                         });
@@ -518,7 +529,7 @@ impl Layout {
                 line.token(
                     &format!("[{}]", kids.len()),
                     node,
-                    TokenRole::Structure,
+                    TokenRole::ArrayIndex,
                     None,
                 );
                 if table {
@@ -531,10 +542,10 @@ impl Layout {
                     }
                     let table_fields: Vec<_> =
                         kids.iter().map(|&row| children(flat, row)).collect();
-                    line.token("{", node, TokenRole::Structure, None);
+                    line.token("{", node, TokenRole::ContainerDelimiter, None);
                     for (column, &field) in table_fields[0].iter().enumerate() {
                         if column != 0 {
-                            line.token(",", node, TokenRole::Structure, None);
+                            line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
                         }
                         let begin = line.text.len();
                         line.token(
@@ -555,9 +566,18 @@ impl Layout {
                             });
                         }
                     }
-                    line.token("}", node, TokenRole::Structure, None);
+                    line.token("}", node, TokenRole::ContainerDelimiter, None);
                 }
-                line.token(":", node, TokenRole::Structure, None);
+                line.token(
+                    ":",
+                    node,
+                    if kids.is_empty() {
+                        TokenRole::EmptyContainer
+                    } else {
+                        TokenRole::Punctuation
+                    },
+                    None,
+                );
                 self.nodes[node].header_end = line.text.len();
                 let inline_width = UnicodeWidthStr::width(line.text.as_str())
                     + kids
@@ -577,7 +597,7 @@ impl Layout {
                     }
                     for (index, &child) in kids.iter().enumerate() {
                         if index != 0 {
-                            line.token(",", node, TokenRole::Structure, None);
+                            line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
                         }
                         self.nodes[child].line = start;
                         self.nodes[child].extent = start..start + 1;
@@ -595,7 +615,12 @@ impl Layout {
                             self.nodes[row].header_end = row_line.text.len();
                             for (column, child) in children(flat, row).into_iter().enumerate() {
                                 if column != 0 {
-                                    row_line.token(",", row, TokenRole::Structure, None);
+                                    row_line.token(
+                                        ",",
+                                        row,
+                                        TokenRole::PrimitiveTrailingComma,
+                                        None,
+                                    );
                                 }
                                 self.nodes[child].line = idx;
                                 self.nodes[child].extent = idx..idx + 1;
@@ -610,7 +635,7 @@ impl Layout {
                     }
                 }
             } else if object {
-                line.token(":", node, TokenRole::Structure, None);
+                line.token(":", node, TokenRole::Punctuation, None);
                 self.nodes[node].header_end = line.text.len();
                 self.lines.push(line);
                 for &child in &kids {
@@ -618,7 +643,7 @@ impl Layout {
                 }
             } else {
                 if flat[node].key_range.is_some() {
-                    line.token(": ", node, TokenRole::Structure, None);
+                    line.token(": ", node, TokenRole::Punctuation, None);
                 }
                 self.value_token(flat, &mut line, node);
                 self.nodes[node].header_end = line.text.len();
@@ -628,32 +653,48 @@ impl Layout {
         self.nodes[node].extent = start..self.lines.len();
         self.previews[node] = self.preview(flat, node);
     }
-    fn preview(&self, flat: &FlatJson, node: usize) -> String {
-        let mut preview = String::new();
+    fn preview(&self, flat: &FlatJson, node: usize) -> Preview {
+        let mut preview = Preview {
+            source: Some(flat[node].range.clone()),
+            ..Preview::default()
+        };
         for child in children(flat, node) {
-            if !preview.is_empty() {
-                preview.push_str(if flat[node].is_array() { "," } else { "; " });
+            if !preview.text.is_empty() {
+                preview_append(
+                    &mut preview,
+                    if flat[node].is_array() { "," } else { "; " },
+                    None,
+                );
             }
             if !flat[node].is_array() {
                 // The key is already cached; truncate before copying into the preview.
                 if let Some(key) = &self.keys[child] {
-                    append_preview(&mut preview, &quote_key(bounded_prefix(key, 256)));
+                    preview_append(
+                        &mut preview,
+                        &quote_key(bounded_prefix(key, 256)),
+                        flat[child].key_range.clone(),
+                    );
                 }
-                append_preview(&mut preview, ": ");
+                preview_append(&mut preview, ": ", None);
             }
             if scalar(flat, child) {
-                append_preview(&mut preview, &self.scalars[child]);
+                preview_append(
+                    &mut preview,
+                    &self.scalars[child],
+                    Some(flat[child].range.clone()),
+                );
             } else if flat[child].is_array() || matches!(flat[child].value, Value::EmptyArray) {
-                append_preview(
+                preview_append(
                     &mut preview,
                     &format!("[{}]: …", self.nodes[child].entry_count),
+                    Some(flat[child].range.clone()),
                 );
             } else {
-                append_preview(&mut preview, "…");
+                preview_append(&mut preview, "…", Some(flat[child].range.clone()));
             }
-            if preview.len() >= 256 {
-                if !preview.ends_with('…') {
-                    preview.push('…');
+            if preview.text.len() >= 256 {
+                if !preview.text.ends_with('…') {
+                    preview_append(&mut preview, "…", Some(flat[child].range.clone()));
                 }
                 break;
             }
@@ -726,7 +767,11 @@ impl Layout {
             line.token(
                 if index == 0 { " " } else { "," },
                 node,
-                TokenRole::Structure,
+                if index == 0 {
+                    TokenRole::Punctuation
+                } else {
+                    TokenRole::PrimitiveTrailingComma
+                },
                 None,
             );
             let original = &self.lines[self.nodes[child].line];
@@ -809,13 +854,28 @@ impl Layout {
                         UnicodeWidthStr::width(warning.as_str()),
                     ) {
                         line = inline;
-                    } else if !self.previews[node].is_empty() {
-                        line.token(
-                            &format!(" {}", self.previews[node]),
+                    } else if !self.previews[node].text.is_empty() {
+                        let preview = &self.previews[node];
+                        let start = line.text.len();
+                        let rendered = format!(" {}", preview.text);
+                        line.text.push_str(&rendered);
+                        let display_offset = start + 1;
+                        let source_map = preview
+                            .source_map
+                            .iter()
+                            .map(|map| SourceMap {
+                                source: map.source.clone(),
+                                display: display_offset + map.display.start
+                                    ..display_offset + map.display.end,
+                            })
+                            .collect();
+                        line.spans.push(Span {
+                            range: start..line.text.len(),
                             node,
-                            TokenRole::Preview,
-                            None,
-                        );
+                            role: TokenRole::Preview,
+                            source: preview.source.clone(),
+                            source_map,
+                        });
                     }
                     if !messages.is_empty() {
                         line.token(&warning, node, TokenRole::Warning, None);
@@ -1133,14 +1193,28 @@ fn bounded_prefix(text: &str, limit: usize) -> &str {
     }
     &text[..end]
 }
-fn append_preview(preview: &mut String, text: &str) {
-    let remaining = 256usize.saturating_sub(preview.len());
+
+fn preview_append(preview: &mut Preview, text: &str, source: Option<Range<usize>>) {
+    let remaining = 256usize.saturating_sub(preview.text.len());
     if remaining == 0 {
         return;
     }
-    preview.push_str(bounded_prefix(text, remaining));
-    if text.len() > remaining {
-        preview.push('…');
+    let start = preview.text.len();
+    let limit = if text.len() > remaining {
+        remaining.saturating_sub('…'.len_utf8())
+    } else {
+        remaining
+    };
+    let part = bounded_prefix(text, limit);
+    preview.text.push_str(part);
+    if part.len() < text.len() && remaining >= '…'.len_utf8() {
+        preview.text.push('…');
+    }
+    if let Some(source) = source {
+        preview.source_map.push(SourceMap {
+            source,
+            display: start..preview.text.len(),
+        });
     }
 }
 
@@ -1236,6 +1310,48 @@ mod tests {
             text(&json(r#"[{"rows":[{"id":1},{"id":2}],"x":true}]"#)),
             "[1]:\n  - rows[2]{id}:\n      1\n      2\n    x: true"
         );
+    }
+
+    #[test]
+    fn structural_tokens_keep_their_theme_roles() {
+        let flat = json(r#"{"values":[1,2],"rows":[{"a":1},{"a":2}],"empty":[]}"#);
+        let layout = Layout::canonical(&flat);
+        let roles: Vec<_> = layout
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(|span| span.role))
+            .collect();
+        assert!(roles.contains(&TokenRole::ArrayIndex));
+        assert!(roles.contains(&TokenRole::PrimitiveTrailingComma));
+        assert!(roles.contains(&TokenRole::ContainerDelimiter));
+        assert!(roles.contains(&TokenRole::EmptyContainer));
+        assert!(roles.contains(&TokenRole::Punctuation));
+    }
+
+    #[test]
+    fn collapsed_preview_maps_searches_to_generated_text() {
+        let mut flat = json(r#"{"obj":{"needle":"value","other":1}}"#);
+        let layout = Layout::canonical(&flat);
+        let object = children(&flat, 0)
+            .into_iter()
+            .find(|&node| flat[node].key_range.is_some())
+            .unwrap();
+        flat.collapse(object);
+        let line = layout
+            .project(&flat)
+            .into_iter()
+            .find(|line| line.line.owner == object)
+            .unwrap()
+            .line;
+        let preview = line
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::Preview)
+            .unwrap();
+        let source_start = flat.1.find("needle").unwrap();
+        assert!(!preview
+            .matching_ranges(&(source_start..source_start + 6))
+            .is_empty());
     }
     #[test]
     fn duplicate_decoded_keys_keep_identity() {
