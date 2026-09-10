@@ -290,6 +290,8 @@ impl JsonViewer {
                     }
                 }
                 self.focus(node);
+            } else if next {
+                break;
             } else {
                 self.parent();
             }
@@ -897,6 +899,19 @@ mod tests {
         assert_eq!(line, v.absolute_anchor_line);
         v.perform_action(Action::FocusParent);
         assert_eq!(path(&v), ".users");
+    }
+
+    #[test]
+    fn next_sibling_stops_at_the_last_entry() {
+        let mut v = viewer("[1,2]");
+        act(&mut v, &[Action::MoveRight, Action::MoveRight]);
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(path(&v), "[1]");
+        let last = v.focused_node;
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(v.focused_node, last);
+        v.perform_action(Action::FocusNextSibling(10));
+        assert_eq!(v.focused_node, last);
     }
 
     #[test]

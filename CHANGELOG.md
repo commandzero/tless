@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Stop `J` at the last sibling instead of jumping back to its parent.
+
 - Render collapsed previews and object counts in plain terminal color 8 without extra dimming.
 
 - Use black status-line text and a dark gray filename.

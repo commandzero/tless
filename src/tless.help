@@ -42,6 +42,7 @@
                  Stay put if neither target exists; preserve collapse state.
 
   J         *  Move to the focused node's next     sibling 1 or [4mN[0m times.
+                 Stop at the last sibling without moving to the parent.
   K         *  Move to the focused node's previous sibling 1 or [4mN[0m times.
 
   w         *  Move forward   until the next change in depth 1 or [4mN[0m times.

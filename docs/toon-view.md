@@ -46,6 +46,8 @@ dark gray (8) background with black (0) text and a dark gray (8) filename.
 
 Up/down moves through visible data lines. Parent, child, and sibling motions
 move through parsed values, including elements and cells sharing one line.
+`J` stops at the last sibling, including with a numeric count, without moving
+to the parent or wrapping.
 Press `l` or Right Arrow on an inline array to show one element per line while
 keeping the array selected. Press it again to select the first element. This
 explicit multiline choice survives resizing and collapsing/reopening the array.

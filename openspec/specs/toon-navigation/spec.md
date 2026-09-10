@@ -24,7 +24,7 @@ The viewer SHALL distinguish container focus from child-value focus even when th
 
 ### Requirement: Vertical and structural motion
 
-Up/down and counted vertical motions SHALL move over visible display lines, excluding root-separator annotation lines. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. Moving into an inline array with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. Closing-delimiter matching SHALL have no action or help entry.
+Up/down and counted vertical motions SHALL move over visible display lines, excluding root-separator annotation lines. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. `J` SHALL stop at the final sibling without moving to the parent or wrapping, including when a numeric count exceeds the remaining siblings. Moving into an inline array with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. Closing-delimiter matching SHALL have no action or help entry.
 
 #### Scenario: Parent and next entry at the parent level
 
