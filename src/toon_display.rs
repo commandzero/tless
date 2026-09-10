@@ -519,6 +519,7 @@ impl Layout {
                 if table {
                     for &row in &kids {
                         self.nodes[row].table_row = true;
+                        self.nodes[row].collapsible = false;
                         for field in children(flat, row) {
                             self.nodes[field].table_cell = true;
                         }
@@ -1303,7 +1304,7 @@ mod tests {
         );
     }
     #[test]
-    fn shared_header_mapping_and_table_row_collapse() {
+    fn shared_header_mapping_and_table_rows_remain_visible() {
         let mut flat = yaml("- a: .inf\n  b: 2\n- a: .nan\n  b: 4\n");
         let layout = Layout::canonical(&flat);
         let rows = children(&flat, 0);
@@ -1322,12 +1323,10 @@ mod tests {
         flat.collapse(rows[1]);
         let collapsed = layout.project(&flat);
         assert_eq!(collapsed[2].absolute, 2);
-        assert!(collapsed[2].line.text.starts_with("   {2} a: .nan; b: 4"));
+        assert!(!layout.nodes[rows[1]].collapsible);
+        assert!(layout.nodes[0].collapsible);
+        assert_eq!(collapsed[2].line.text, layout.lines[2].text);
         assert!(collapsed[2]
-            .line
-            .text
-            .ends_with("# WARN Contains 1 hidden warnings"));
-        assert!(!collapsed[2]
             .line
             .spans
             .iter()

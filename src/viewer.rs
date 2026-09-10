@@ -309,6 +309,17 @@ impl JsonViewer {
         }
     }
 
+    fn toggle_collapsed(&mut self, node: usize) {
+        if self.layout.nodes[node].inline_array {
+            self.flatjson.expand(node);
+            self.expanded_arrays.insert(node);
+            self.rebuild_layout();
+        } else {
+            self.collapse(node, !self.flatjson[node].is_collapsed());
+            self.refresh_projection();
+        }
+    }
+
     fn collapse_siblings(&mut self, collapsed: bool, deep: bool) {
         let mut node = match self.flatjson[self.focused_node].parent {
             OptionIndex::Index(parent) => self.flatjson[parent].first_child(),
@@ -521,15 +532,10 @@ impl JsonViewer {
                     .min(self.visible.len() - 1);
                 let node = self.visible[index].line.owner;
                 self.focus(node);
-                self.collapse(node, !self.flatjson[node].is_collapsed());
-                self.refresh_projection();
+                self.toggle_collapsed(node);
             }
             Action::ToggleCollapsed => {
-                self.collapse(
-                    self.focused_node,
-                    !self.flatjson[self.focused_node].is_collapsed(),
-                );
-                self.refresh_projection();
+                self.toggle_collapsed(self.focused_node);
             }
             Action::CollapseNodeAndSiblings => self.collapse_siblings(true, false),
             Action::DeepCollapseNodeAndSiblings => self.collapse_siblings(true, true),
@@ -679,6 +685,28 @@ mod tests {
         for &action in actions {
             v.perform_action(action);
         }
+    }
+
+    #[test]
+    fn inline_array_controls_expand_and_table_rows_do_not_collapse() {
+        for action in [Action::ToggleCollapsed, Action::ClickArrow(1)] {
+            let mut v = viewer("[1,2]");
+            assert!(v.layout.nodes[0].inline_array);
+            v.perform_action(action);
+            assert!(!v.layout.nodes[0].inline_array);
+            assert!(v.flatjson[0].is_expanded());
+        }
+        let mut v = viewer(r#"[{"a":1},{"a":2}]"#);
+        v.perform_action(Action::MoveRight);
+        let row = v.focused_node;
+        let original = v.visible[v.focused_line_index()].line.text.clone();
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(!v.layout.nodes[row].collapsible);
+        assert!(v.flatjson[row].is_expanded());
+        assert_eq!(v.visible[v.focused_line_index()].line.text, original);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[0].is_collapsed());
     }
 
     #[test]

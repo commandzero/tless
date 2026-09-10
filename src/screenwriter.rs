@@ -239,7 +239,9 @@ impl ScreenWriter {
                 terminal::LIGHT_BLACK
             })?;
             let arrow = if viewer.layout.nodes[line.owner].collapsible && !line.separator {
-                if viewer.flatjson[line.owner].is_collapsed() {
+                if viewer.flatjson[line.owner].is_collapsed()
+                    || viewer.layout.nodes[line.owner].inline_array
+                {
                     '▸'
                 } else {
                     '▾'

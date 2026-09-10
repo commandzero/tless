@@ -65,7 +65,10 @@ Search matches parsed keys and values. A hidden result expands its ancestors.
 Table-key matches highlight the shared header while retaining the selected
 row's field identity. Generated warnings, counts, and previews add no matches.
 
-The `▾` and `▸` arrows occupy a separate gutter. Collapsing retains a container
+The `▾` and `▸` arrows occupy a separate gutter. Inline primitive arrays show
+`▸` by default; clicking it or pressing Space expands the array to multiline.
+Tabular array rows have no collapse control and stay visible; only their array
+parent can be collapsed. Collapsing retains a container
 header and shows a subdued preview. Object fields use `; ` separators, such as
 `name: Ada; active: true`. Objects also show their immediate-entry
 count as `{N}`, such as `{7}` for seven entries. Counts, previews, and warnings
