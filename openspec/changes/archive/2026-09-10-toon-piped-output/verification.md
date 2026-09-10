@@ -2,7 +2,7 @@
 
 ## Completeness
 
-All 13 tasks are complete locally. The seven piped-output requirements have implementation and automated coverage. Both compiler matrices and full committed-head preflight passed. The implementation PR description is prepared in `pr-description.md`; publishing a PR and maintainer review remain separate actions.
+All 13 tasks are complete. The seven piped-output requirements have implementation and automated coverage. Both compiler matrices and full committed-head preflight passed. The implementation is published in [PR #11](https://github.com/commandzero/tless/pull/11). Maintainer review remains required before merge.
 
 ## Correctness
 
@@ -47,6 +47,8 @@ The final counts below apply to each compiler. Earlier runs had 504 tests; addin
 ## Synchronization review
 
 `piped-output` is a new capability. Reviewed all seven added requirements and their scenarios against the new main spec. Their bodies match exactly. The purpose is preserved; the main spec uses `## Requirements` rather than a delta-operation header. No existing capability is modified, removed, or renamed.
+
+Rechecked synchronization and archival on 2026-09-10 at commit `f593ee8b3f78668333a2381a7d917dc675f7763b`. The archived delta still matches the main spec, all tasks are complete, and the PR-scoped completion gate passed native change, archived-task, and main-spec validation. The existing archive required no further move or spec edits.
 
 ## Long-key verification follow-up
 
