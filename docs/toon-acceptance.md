@@ -3,12 +3,13 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T18:22:11Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T06:18:16Z }
 ---
 
 # TOON acceptance checks
 
 Use [published codec behavior](toon-codec.md) for the conversion contract.
+Use [the document view](toon-view.md) for the separate display contract.
 The former vendored codec's exact-number, duplicate-key rejection, key-order,
 and linear scanner-work guarantees no longer apply.
 
@@ -42,7 +43,7 @@ that the desktop clipboard, help pager, or Linux full-device checks passed.
 Record the actual host and results in the release PR.
 
 1. Copy a nested value using `yt`, paste it into a text editor, and compare it
-   with `pt`. Repeat on its closing row in Line mode and after collapsing it.
+   with `pt`. Repeat after collapsing it and with an individual table cell.
    Verify `yy`, string/key copy, and path copy with escaped and non-ASCII text.
 2. Open `0.123456789012345678901` as JSON and use `yt`. Confirm that it copies
    the published encoder's rounded value, matching `pt`. Numeric precision loss
@@ -58,6 +59,36 @@ Record the actual host and results in the release PR.
 5. Open malformed TOON interactively. Confirm a useful parse diagnostic and
    normal terminal restoration. Non-terminal TOON pass-through must preserve
    malformed input bytes without entering the decoder.
+
+## Document-view acceptance
+
+Run these checks at 120 columns, then at 30 columns, in an isolated terminal.
+Record results against the implementation commit. Clipboard and host-specific
+release checks above remain separate.
+
+1. Open equivalent JSON, YAML, and TOON containing a primitive array and a
+   uniform object table. Confirm identical expanded text and distinct key,
+   string, number, boolean, and null styles. Check a minimal build with JSON.
+2. Navigate into an inline element and a table cell. Move across siblings and
+   vertically between table rows. Confirm paths, focused print output, parent
+   motion, and selection after resize. Check absolute and relative gutters.
+3. Collapse a table row, an inline array, and a containing object. Confirm
+   subdued previews, immediate object counts, retained array counts, hidden
+   warning counts, and restoration of descendant collapse states.
+4. Search for a hidden table value and a table field key. Confirm ancestor
+   expansion, row identity, header highlighting, and horizontal visibility.
+   Source strings containing `# WARN` must remain ordinary searchable data;
+   generated warning comments must not create search matches.
+5. Open duplicate JSON keys, a precise decimal, `1e1000000`, and YAML with
+   non-finite numbers and non-string keys. Confirm each warning and preserved
+   parsed value. Open multiple roots and check that vertical motion skips
+   separators while absolute jumps select the following root.
+6. Scroll long values and warnings horizontally. Include wide and combining
+   Unicode and escaped controls. Confirm clipping does not split terminal cells
+   and narrowing the window does not change a table to a list.
+7. Confirm `--mode` and `-m` fail with argument errors, `m` does not switch
+   modes, and help has no closing-delimiter controls. Confirm JSON and standard
+   TOON exports contain no generated annotations and keep codec behavior.
 
 ## Release checks
 

@@ -2,7 +2,8 @@
 
 Read [docs/contributing.md](docs/contributing.md) before changing this repository.
 The shared standards bundle is [repo-man](../repo-man/index.md).
-If it is missing, obtain CommandZero/repo-man as a sibling checkout.
+If it is missing, use the workspace fallback documented in docs/contributing.md
+or obtain CommandZero/repo-man as a sibling checkout.
 
 This repository adopts the applicable Rust, Bash, CLI, preflight, updates,
 versioning, and release guidance in that bundle, including current draft
@@ -18,5 +19,5 @@ codec source or add a Cargo patch. Registry publication is a separate release de
 Keep only repository entry points, identity, and legal documents at the root.
 Use lowercase kebab-case filenames throughout `docs/` and for Markdown files in `tests/`.
 The complete `docs/` directory is an OKF bundle. Run `scripts/validate-docs.sh`
-for documentation changes; CI calls the same check. There is no active OpenSpec
-change tree. If one is introduced, add the applicable OpenSpec completion gate.
+for documentation changes; CI calls the same check. For OpenSpec work, follow
+the completion gate in docs/contributing.md before merging the associated PR.

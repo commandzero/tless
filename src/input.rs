@@ -7,8 +7,6 @@ use std::io::{stdin, Read, Stdin};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 
-const POLL_INFINITE_TIMEOUT: i32 = -1;
-const SIGWINCH_PIPE_INDEX: usize = 0;
 const BUFFER_SIZE: usize = 1024;
 
 const ESCAPE: u8 = 0o33;
@@ -151,31 +149,13 @@ impl<const N: usize> Iterator for BufferedInput<N> {
 }
 
 struct TuiInput {
-    poll_fds: [libc::pollfd; 2],
     sigwinch_pipe: UnixStream,
     buffered_input: BufferedInput<BUFFER_SIZE>,
 }
 
 impl TuiInput {
     fn new(input: Stdin, sigwinch_pipe: UnixStream) -> TuiInput {
-        let sigwinch_fd = sigwinch_pipe.as_raw_fd();
-        let stdin_fd = input.as_raw_fd();
-
-        let poll_fds: [libc::pollfd; 2] = [
-            libc::pollfd {
-                fd: sigwinch_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            },
-            libc::pollfd {
-                fd: stdin_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            },
-        ];
-
         TuiInput {
-            poll_fds,
             sigwinch_pipe,
             buffered_input: BufferedInput::new(input),
         }
@@ -213,30 +193,15 @@ impl Iterator for TuiInput {
             return self.get_event_from_buffered_input();
         }
 
-        let poll_res: Option<io::Error>;
+        let signal_ready = match wait_for_input(
+            self.buffered_input.input.as_raw_fd(),
+            self.sigwinch_pipe.as_raw_fd(),
+        ) {
+            Ok(ready) => ready,
+            Err(error) => return Some(Err(error)),
+        };
 
-        loop {
-            match unsafe { libc::poll(self.poll_fds.as_mut_ptr(), 2, POLL_INFINITE_TIMEOUT) } {
-                -1 => {
-                    let err = io::Error::last_os_error();
-                    if err.kind() != io::ErrorKind::Interrupted {
-                        poll_res = Some(err);
-                        break;
-                    }
-                    // Try poll again.
-                }
-                _ => {
-                    poll_res = None;
-                    break;
-                }
-            };
-        }
-
-        if let Some(poll_err) = poll_res {
-            return Some(Err(poll_err));
-        }
-
-        if self.poll_fds[SIGWINCH_PIPE_INDEX].revents & libc::POLLIN != 0 {
+        if signal_ready {
             // Just make this big enough to absorb a bunch of unacknowledged SIGWINCHes.
             let mut buf = [0; 32];
             let _ = self.sigwinch_pipe.read(&mut buf);
@@ -253,4 +218,190 @@ pub enum TuiEvent {
     KeyEvent(Key),
     MouseEvent(MouseEvent),
     Unknown(Vec<u8>),
+}
+
+/// Wait for input or a resize signal, prioritizing the signal if both are ready.
+fn wait_for_input(input_fd: libc::c_int, signal_fd: libc::c_int) -> io::Result<bool> {
+    if input_fd < 0 || signal_fd < 0 {
+        return Err(io::Error::from_raw_os_error(libc::EBADF));
+    }
+    if input_fd as usize >= libc::FD_SETSIZE || signal_fd as usize >= libc::FD_SETSIZE {
+        return wait_for_high_descriptors(input_fd, signal_fd);
+    }
+    loop {
+        // macOS poll reports POLLNVAL for /dev/tty even though it can be
+        // read. select supports it and lets resize signals interrupt an
+        // otherwise idle terminal without waiting for a keypress.
+        let mut readable: libc::fd_set = unsafe { std::mem::zeroed() };
+        let ready = unsafe {
+            libc::FD_ZERO(&mut readable);
+            libc::FD_SET(input_fd, &mut readable);
+            libc::FD_SET(signal_fd, &mut readable);
+            libc::select(
+                input_fd.max(signal_fd) + 1,
+                &mut readable,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if ready == -1 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        return Ok(unsafe { libc::FD_ISSET(signal_fd, &readable) });
+    }
+}
+
+// kqueue supports high descriptors and the macOS /dev/tty that poll rejects.
+#[cfg(target_os = "macos")]
+fn wait_for_high_descriptors(input_fd: libc::c_int, signal_fd: libc::c_int) -> io::Result<bool> {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    let queue = unsafe { libc::kqueue() };
+    if queue < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let queue = unsafe { OwnedFd::from_raw_fd(queue) };
+    let changes = [input_fd, signal_fd].map(|fd| libc::kevent {
+        ident: fd as libc::uintptr_t,
+        filter: libc::EVFILT_READ,
+        flags: libc::EV_ADD | libc::EV_ENABLE,
+        fflags: 0,
+        data: 0,
+        udata: std::ptr::null_mut(),
+    });
+    loop {
+        let mut events: [libc::kevent; 2] = unsafe { std::mem::zeroed() };
+        let ready = unsafe {
+            libc::kevent(
+                queue.as_raw_fd(),
+                changes.as_ptr(),
+                changes.len() as i32,
+                events.as_mut_ptr(),
+                events.len() as i32,
+                std::ptr::null(),
+            )
+        };
+        if ready < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        let events = &events[..ready as usize];
+        if let Some(error) = events
+            .iter()
+            .find(|event| event.flags & libc::EV_ERROR != 0)
+        {
+            return Err(io::Error::from_raw_os_error(error.data as i32));
+        }
+        return Ok(events
+            .iter()
+            .any(|event| event.ident == signal_fd as libc::uintptr_t));
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn wait_for_high_descriptors(input_fd: libc::c_int, signal_fd: libc::c_int) -> io::Result<bool> {
+    let mut descriptors = [input_fd, signal_fd].map(|fd| libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    });
+    loop {
+        let ready = unsafe {
+            libc::poll(
+                descriptors.as_mut_ptr(),
+                descriptors.len() as libc::nfds_t,
+                -1,
+            )
+        };
+        if ready < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        if descriptors
+            .iter()
+            .any(|fd| fd.revents & libc::POLLNVAL != 0)
+        {
+            return Err(io::Error::from_raw_os_error(libc::EBADF));
+        }
+        if descriptors.iter().any(|fd| fd.revents & libc::POLLERR != 0) {
+            return Err(io::Error::from_raw_os_error(libc::EIO));
+        }
+        if descriptors[1].revents & libc::POLLHUP != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "resize signal pipe closed",
+            ));
+        }
+        return Ok(descriptors[1].revents & libc::POLLIN != 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::os::fd::{FromRawFd, OwnedFd};
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn high_descriptor_fallback_rejects_a_closed_signal_pipe() {
+        let (input, _input_writer) = UnixStream::pair().unwrap();
+        let (signal, signal_writer) = UnixStream::pair().unwrap();
+        signal_writer.shutdown(std::net::Shutdown::Both).unwrap();
+        assert_eq!(
+            wait_for_high_descriptors(input.as_raw_fd(), signal.as_raw_fd())
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+    }
+
+    #[test]
+    fn descriptors_above_select_capacity_support_input_and_resize() {
+        // Some macOS runners start below FD_SETSIZE. Raise only this test
+        // process's soft limit, restoring it after the high descriptor closes.
+        struct RestoreLimit(libc::rlimit);
+        impl Drop for RestoreLimit {
+            fn drop(&mut self) {
+                unsafe {
+                    libc::setrlimit(libc::RLIMIT_NOFILE, &self.0);
+                }
+            }
+        }
+        let mut limit: libc::rlimit = unsafe { std::mem::zeroed() };
+        assert_eq!(
+            unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) },
+            0
+        );
+        let _restore = RestoreLimit(limit);
+        limit.rlim_cur = limit.rlim_cur.max((libc::FD_SETSIZE + 16) as libc::rlim_t);
+        assert!(limit.rlim_cur <= limit.rlim_max);
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) }, 0);
+        let (read, mut write) = UnixStream::pair().unwrap();
+        let high = unsafe {
+            libc::fcntl(
+                read.as_raw_fd(),
+                libc::F_DUPFD_CLOEXEC,
+                libc::FD_SETSIZE as i32,
+            )
+        };
+        assert!(high >= 0, "{}", io::Error::last_os_error());
+        let high = unsafe { OwnedFd::from_raw_fd(high) };
+        let (other_read, mut other_write) = UnixStream::pair().unwrap();
+        write.write_all(b"x").unwrap();
+        assert!(!wait_for_input(high.as_raw_fd(), other_read.as_raw_fd()).unwrap());
+        assert!(wait_for_input(other_read.as_raw_fd(), high.as_raw_fd()).unwrap());
+        other_write.write_all(b"x").unwrap();
+        assert!(wait_for_input(other_read.as_raw_fd(), high.as_raw_fd()).unwrap());
+    }
 }

@@ -1,0 +1,19 @@
+schema: spec-driven
+
+context: |
+  tless is a Rust terminal viewer forked from jless. Read AGENTS.md and
+  docs/contributing.md. Keep Rust 1.87 compatibility and the committed lockfile.
+  Use the published toon-format crate with default features disabled.
+  Do not vendor codec source or add a Cargo patch.
+  docs/ is an OKF bundle; OpenSpec planning artifacts are outside it.
+  Planning workflows edit planning and contributor documentation only.
+
+operations:
+  apply:
+    guidance:
+      - Run scripts/preflight.sh and required compatibility checks before completion.
+      - Add the PR-scoped OpenSpec completion check before the associated implementation PR merges.
+  archive:
+    guidance:
+      - Verify implementation, synchronize this change's deltas into main specs, and archive before merge.
+      - Run native OpenSpec validation with OPENSPEC_TELEMETRY=0; unrelated active changes do not block this change.

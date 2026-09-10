@@ -3,7 +3,7 @@ type: Guide
 title: Release checklist
 description: Release preparation, packaging, publication, and recovery.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-07T18:22:11Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
 ---
 
 # Release checklist
@@ -15,7 +15,7 @@ generated: { by: codex/gpt-6, at: 2026-09-07T18:22:11Z }
 2. Move notable Unreleased entries into `## [X.Y.Z] - YYYY-MM-DD` with the real
    release date. Leave an Unreleased section and update comparison links.
    Release notes come from that curated section, not generated commit summaries.
-3. Review compatibility and upgrade instructions. Version 0.10.0 migrates jless
+3. Review compatibility and upgrade instructions. Version 0.1.0 migrates jless
    to tless and enables TOON by default. Its input cap is 512 MiB and can be removed
    with `--max-input-bytes 0`. Its binary support floors are macOS 15 and Ubuntu 24.04.
 4. Recheck CommandZero/homebrew-tools and any installer consumers. Coordinate their
