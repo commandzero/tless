@@ -1,0 +1,89 @@
+# Requires tless built with --features colorscheme.
+# Copy to $XDG_CONFIG_HOME/tless/config.yaml, or ~/.config/tless/config.yaml
+# when XDG_CONFIG_HOME is unset. Select with --theme <name> or :colorscheme <name>.
+# Unlisted styles in custom themes use classic defaults.
+colorscheme: navy
+themes:
+  navy:
+    object-key: blue
+    object-key-focused: light-blue
+    array-index: light-blue
+    line-number-focused: white
+    string: cyan
+    null: magenta
+    number: green
+    search-match-current: light-yellow
+    status-bar-background: 18
+    status-bar-foreground: cyan
+  ocean:
+    object-key: cyan
+    object-key-focused: light-cyan
+    string: light-blue
+    status-bar-background: 17
+    status-bar-foreground: light-cyan
+  # Adapted from Vim's 256-color delek palette, including its light background.
+  delek:
+    document-foreground: 16
+    document-background: 231
+    object-key: 30
+    object-key-focused: 21
+    array-index: 30
+    string: 40
+    number: 40
+    boolean: 40
+    null: 40
+    container-empty: 16
+    punctuation: 16
+    punctuation-comma-trailing: 16
+    container-delimiter: 16
+    container-delimiter-focused: 198
+    ellipsis: 18
+    preview-text: 18
+    preview-count: 18
+    line-number: 124
+    line-number-focused: 124
+    row-marker-empty: 250
+    indicator-truncation: 250
+    search-match: 164
+    search-match-preview: 164
+    search-match-current: 164
+    status-bar-foreground: 226
+    status-bar-background: 18
+    command-line-foreground: 16
+    command-line-background: 231
+    message-info: 16
+    message-warning: 164
+    message-error: 196
+  # Adapted from Vim's 256-color darkblue palette, including its navy background.
+  darkblue:
+    document-foreground: 252
+    document-background: 17
+    object-key: 123
+    object-key-focused: 231
+    array-index: 123
+    string: 217
+    number: 217
+    boolean: 217
+    null: 217
+    container-empty: 214
+    punctuation: 214
+    punctuation-comma-trailing: 214
+    container-delimiter: 214
+    container-delimiter-focused: 227
+    ellipsis: 102
+    preview-text: 102
+    preview-count: 102
+    line-number: 118
+    line-number-focused: 227
+    row-marker-empty: 27
+    indicator-truncation: 30
+    search-match: 123
+    search-match-preview: 27
+    search-match-current: 123
+    status-bar-foreground: 17
+    status-bar-background: 252
+    command-line-foreground: 252
+    command-line-background: 17
+    message-info: 123
+    message-warning: 196
+    message-error: 217

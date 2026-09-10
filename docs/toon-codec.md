@@ -10,7 +10,7 @@ sources:
     resource: ../src/toon.rs
   - id: fixtures
     resource: ../src/toon_fixtures.rs
-generated: { by: codex/gpt-6, at: 2026-09-07T05:44:59Z }
+generated: { by: codex/gpt-6, at: 2026-09-09T06:18:16Z }
 ---
 
 # Published TOON codec behavior
@@ -31,6 +31,12 @@ with commas, 2 spaces, and no key folding. The wrapper still handles empty docum
 CRLF, and BOM rejection. Redirected TOON stdout passes through the input unchanged
 without syntax validation.
 
+The interactive [document view](toon-view.md) builds its layout directly from
+parsed nodes. It preserves their duplicate occurrences, decimal tokens, types,
+and order, with explicit display warnings where standard TOON cannot do so.
+The conversion behavior below applies to the codec's input and export paths.
+It also limits what data is available to the viewer after TOON input decoding.
+
 | Case | Published behavior used by tless |
 | --- | --- |
 | Duplicate object keys, such as `a: 1` followed by `a: 2` | The last value wins. Exporting duplicate JSON keys to TOON also keeps the last value. |
@@ -42,8 +48,9 @@ without syntax validation.
 | Object rows with different key orders | Table encoding follows the first row's field order. Later rows can lose their original order. |
 | Arrays of empty objects | Version 0.5.0 emits a zero-field table with blank rows. Its strict decoder rejects that output. This is a known codec limitation, preserved in a regression test. |
 
-The viewer does not promise exact decimal preservation or preservation of duplicate
-entries when converting through TOON. Use JSON output when those distinctions matter.
+Standard TOON conversion does not promise exact decimal preservation or preservation
+of duplicate entries. Use JSON output when those distinctions matter. Display
+warnings and previews never become exported data.
 These examples describe the pinned version; review and test changes before upgrading it.
 
 ## Bounds and failure behavior

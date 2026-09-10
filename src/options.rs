@@ -2,9 +2,6 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
 
-use crate::theme::ThemeName;
-use crate::viewer::Mode;
-
 #[derive(PartialEq, Eq, Copy, Clone, Debug, ValueEnum)]
 pub enum DataFormat {
     Json,
@@ -28,17 +25,10 @@ pub struct Opt {
     #[arg(long, default_value_t = 536_870_912)]
     pub max_input_bytes: u64,
 
-    /// Initial viewing mode. In line mode (--mode line), opening
-    /// and closing curly and square brackets are shown and all
-    /// Object keys are quoted. In data mode (--mode data; the default),
-    /// closing braces, commas, and quotes around Object keys are elided.
-    /// The active mode can be toggled by pressing 'm'.
-    #[arg(short, long, value_enum, hide_possible_values = true, default_value_t = Mode::Data)]
-    pub mode: Mode,
-
-    /// Color theme used for terminal rendering.
-    #[arg(long, value_enum, default_value_t = ThemeName::Classic)]
-    pub theme: ThemeName,
+    /// Built-in or configured theme name. Overrides colorscheme in config.yaml.
+    #[cfg(feature = "colorscheme")]
+    #[arg(long)]
+    pub theme: Option<String>,
 
     // This godforsaken configuration to get both --line-numbers and --no-line-numbers to
     // work (with --line-numbers as the default) and --relative-line-numbers and
@@ -50,10 +40,8 @@ pub struct Opt {
     #[arg(short = 'N', long = "no-line-numbers", action = ArgAction::SetFalse)]
     pub show_line_numbers: bool,
 
-    /// Show "line" numbers (default). Line numbers are determined by
-    /// the line number of a given line if the document were pretty printed.
-    /// These means there are discontinuities when viewing in data mode
-    /// because the lines containing closing brackets and braces aren't displayed.
+    /// Show absolute expanded TOON line addresses (default). Collapsed contents
+    /// leave gaps; inline values and table cells share their line's address.
     #[arg(
         short = 'n',
         long = "line-numbers",
@@ -96,6 +84,29 @@ pub struct Opt {
     pub toon: bool,
 }
 
+#[cfg(all(test, feature = "colorscheme"))]
+mod colorscheme_tests {
+    use clap::Parser;
+
+    use super::Opt;
+
+    #[test]
+    fn absent_theme_defers_to_configuration() {
+        assert_eq!(Opt::try_parse_from(["tless"]).unwrap().theme, None);
+    }
+
+    #[test]
+    fn accepts_named_theme() {
+        assert_eq!(
+            Opt::try_parse_from(["tless", "--theme", "delek"])
+                .unwrap()
+                .theme
+                .as_deref(),
+            Some("delek")
+        );
+    }
+}
+
 impl Opt {
     pub fn data_format(&self) -> Option<DataFormat> {
         #[cfg(feature = "toon")]
@@ -109,35 +120,5 @@ impl Opt {
         } else {
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use clap::Parser;
-
-    use super::*;
-
-    #[test]
-    fn theme_defaults_to_classic() {
-        let options = Opt::try_parse_from(["jless"]).unwrap();
-
-        assert_eq!(options.theme, ThemeName::Classic);
-    }
-
-    #[test]
-    fn accepts_built_in_theme_names() {
-        for (name, expected) in [("classic", ThemeName::Classic), ("cyan", ThemeName::Cyan)] {
-            let options = Opt::try_parse_from(["jless", "--theme", name]).unwrap();
-            assert_eq!(options.theme, expected);
-        }
-    }
-
-    #[test]
-    fn rejects_unknown_theme_name() {
-        let error = Opt::try_parse_from(["jless", "--theme", "unknown"]).unwrap_err();
-
-        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
-        assert!(error.to_string().contains("unknown"), "{}", error);
     }
 }

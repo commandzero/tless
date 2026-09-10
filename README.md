@@ -7,6 +7,8 @@ This is an independent fork of [jless](https://github.com/PaulJuliusMartinez/jle
 
 Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
 Press F1 or enter `:help` for in-app help.
+Every input uses one TOON document view, including JSON/YAML-only builds.
+See [the document view](docs/toon-view.md) for navigation and display warnings.
 
 ## Install
 
@@ -20,70 +22,76 @@ tless data.toon
 producer | tless --toon
 ```
 
-## Color themes
-
-Use `--theme classic` or `--theme cyan` to select a built-in color theme.
-`classic` is the default.
-
-You can override individual colors in
-`$XDG_CONFIG_HOME/jless/config.yaml`. If `XDG_CONFIG_HOME` is unset, jless
-uses `$HOME/.config/tless/config.yaml`.
-
-```yaml
-theme:
-  null: light-blue
-  string: green
-  object-key: light-cyan
-  search-match-current: light-yellow
-  status-bar-foreground: white
-  status-bar-background: blue
-  command-line-foreground: light-cyan
-  command-line-background: black
-  message-info: light-blue
-  message-warning: light-yellow
-  message-error: light-red
-```
-
-The file is optional. Each configured color replaces the matching color in
-the selected built-in theme. Unlisted colors and style attributes keep their
-built-in values.
-
-Theme keys are `null`, `boolean`, `number`, `string`, `empty-container`,
-`object-key`, `focused-object-key`, `array-index`, `punctuation`,
-`primitive-trailing-comma`, `container-delimiter`,
-`focused-container-delimiter`, `ellipsis`, `preview-text`, `preview-count`,
-`line-number`, `focused-line-number`, `empty-row-marker`,
-`truncation-indicator`, `status-bar`, `status-text`, `status-bar-foreground`,
-`status-bar-background`, `command-line-foreground`, `command-line-background`, `message-info`,
-`message-warning`, `message-error`, `search-match`, `search-match-preview`, and
-`search-match-current`.
-
-`search-match` colors ordinary matches, `search-match-current` colors the selected
-match, and `search-match-preview` colors matches inside collapsed previews.
-
-Use `status-bar-foreground` and `status-bar-background` for the path and filename
-row, and `command-line-foreground` and `command-line-background` for the bottom
-row, including command and search editing. These keys name the visible text and
-background colors, even when the built-in bar uses reverse video. Set
-`message-info`, `message-warning`, and `message-error` to customize severity text
-colors. These override `command-line-foreground` for messages and use the
-`command-line-background`. Omitted severity colors use the built-in defaults.
-The older `status-bar` and
-`status-text` keys remain supported; explicit foreground/background keys take
-precedence over them.
-
-Colors are `default`, `black`, `red`, `green`, `yellow`, `blue`, `magenta`,
-`cyan`, `white`, and the `light-` version of each named color.
-
-## Installation
-
-The first CommandZero release is planned as 0.10.0.
+The independent tless release history starts at 0.1.0.
 Binary downloads will appear on the [releases page](https://github.com/CommandZero/tless/releases) after validation and maintainer publication.
 No crates.io or Homebrew installation for this fork is advertised yet.
 The codec comes from crates.io. Registry publication of tless remains a separate release decision.
 
 The executable is `tless`. Update scripts and aliases that should use this fork.
 The upstream `jless` executable can remain installed alongside it.
+
+## Color themes
+
+Theme support is a compile-time opt-in. Build or install it with:
+
+```sh
+cargo build --release --features colorscheme
+cargo install --path . --features colorscheme
+```
+
+Default builds use the classic appearance, do not expose `--theme`, and do not
+read the theme configuration file. YAML and TOON viewing remain available in
+both builds.
+
+Use `--theme <name>` to select a built-in or configured theme. Without that
+option, `colorscheme` in the configuration selects the startup theme, otherwise
+`classic` is used. While viewing a document, enter `:colorscheme <name>` to
+switch themes without changing your position or search.
+
+Vim companions use the original Vim scheme name:
+
+```sh
+tless --theme desert data.json
+tless --theme peachpuff data.json
+tless --theme catppuccin data.json
+```
+
+These palettes require a 256-color terminal. See the
+[Vim palette audit and gallery](docs/vim-themes.md) for all 28 schemes.
+
+Define named themes in `$XDG_CONFIG_HOME/tless/config.yaml`. If
+`XDG_CONFIG_HOME` is unset, tless uses `$HOME/.config/tless/config.yaml`.
+See [examples/config.yaml](examples/config.yaml) for a complete example.
+
+```yaml
+colorscheme: navy
+themes:
+  navy:
+    object-key: blue
+    object-key-focused: light-blue
+    string: cyan
+    status-bar-background: 18
+    status-bar-foreground: cyan
+  ocean:
+    object-key: cyan
+    string: light-blue
+    status-bar-background: 17
+    status-bar-foreground: light-cyan
+```
+
+Custom themes inherit classic styles for omitted keys. Theme keys include
+`document-foreground`, `document-background`, `null`, `boolean`, `number`,
+`string`, `container-empty`, `object-key`, `object-key-focused`, `array-index`,
+`punctuation`, `punctuation-comma-trailing`, `container-delimiter`,
+`container-delimiter-focused`, `ellipsis`, `preview-text`, `preview-count`,
+`line-number`, `line-number-focused`, `row-marker-empty`,
+`indicator-truncation`, `status-bar`, `status-text`, `status-bar-foreground`,
+`status-bar-background`, `command-line-foreground`, `command-line-background`,
+`message-info`, `message-warning`, `message-error`, `search-match`,
+`search-match-preview`, and `search-match-current`.
+
+Colors may be named ANSI colors or integer values from `0` through `255` for
+the ANSI 256-color palette.
 
 ## Platform contract
 
@@ -146,7 +154,7 @@ how to enable support. `--json` and `--yaml` override filename detection.
 
 This implementation targets `toon-spec: 3.0`, not TOON 4.x. It uses strict
 two-space decoding with literal dotted keys and supports declared comma, tab,
-and pipe delimiters. The viewer still uses its existing JSON Line/Data views.
+and pipe delimiters. The viewer renders with commas and two-space indentation.
 Searches operate on normalized JSON text, not the original TOON spelling.
 
 Use `yt` to copy or `pt` to print the complete focused value as canonical TOON.
@@ -161,7 +169,10 @@ requires one root; focused export also works with multi-root JSON input.
 TOON behavior follows the published `toon-format` 0.5.0 crate.
 Duplicate object keys use the last value. Decimal conversion can round, and very
 large numeric literals can become strings or change value. Table encoding can
-reorder object keys. This viewer is not an exact TOON data-conversion tool.
+reorder object keys. These conversions apply to standard TOON exports. The
+document view preserves the entries, order, and numeric precision in the parsed
+model and marks display extensions with `# WARN` comments. Extended display
+text is not standard TOON or a new export format.
 See [codec behavior and known limitations](docs/toon-codec.md) for concrete examples.
 Export rejects non-string YAML keys, non-finite numbers, and more than 256 nested
 containers relative to the selected root. Input depth follows the codec's own bound.
@@ -193,3 +204,4 @@ The upstream viewer, its mascot Jules, and its historical release notes remain a
 Jules artwork is by [annatgraphics](https://www.fiverr.com/annatgraphics).
 The code retains the [MIT license](LICENSE.md).
 See [third-party notices](NOTICES.md) for the codec and specification fixtures.
+The derived Vim palette data retains the [Vim license](src/theme/VIM-LICENSE).

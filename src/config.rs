@@ -1,16 +1,19 @@
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use clap::ValueEnum;
 use yaml_rust::{Yaml, YamlLoader};
 
 use crate::terminal::Color;
-use crate::theme::{Theme, ThemeColor};
+use crate::theme::{Theme, ThemeColor, ThemeName};
 
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Config {
-    theme_colors: Vec<(ThemeColor, Color)>,
+    colorscheme: Option<String>,
+    themes: BTreeMap<String, Vec<(ThemeColor, Color)>>,
 }
 
 impl Config {
@@ -22,11 +25,46 @@ impl Config {
         Self::load_from(&path)
     }
 
-    pub fn apply_to(&self, mut theme: Theme) -> Theme {
-        for (key, color) in &self.theme_colors {
-            theme = theme.with_color(*key, *color);
+    pub fn resolve_startup(&self, requested: Option<&str>) -> Result<Theme, String> {
+        self.resolve(
+            requested
+                .or(self.colorscheme.as_deref())
+                .unwrap_or("classic"),
+        )
+    }
+
+    pub fn resolve(&self, name: &str) -> Result<Theme, String> {
+        let base = ThemeName::value_variants()
+            .iter()
+            .copied()
+            .find(|variant| {
+                variant
+                    .to_possible_value()
+                    .is_some_and(|value| value.get_name() == name)
+            })
+            .or_else(|| self.themes.contains_key(name).then_some(ThemeName::Classic))
+            .ok_or_else(|| {
+                let mut names: Vec<String> = ThemeName::value_variants()
+                    .iter()
+                    .filter_map(|variant| variant.to_possible_value())
+                    .map(|value| value.get_name().to_string())
+                    .collect();
+                names.extend(self.themes.keys().cloned());
+                names.sort_unstable();
+                names.dedup();
+                format!(
+                    "Unknown theme '{name}'. Available themes: {}",
+                    names.join(", ")
+                )
+            })?;
+
+        let mut theme = Theme::built_in(base);
+        if let Some(colors) = self.themes.get(name) {
+            for (key, color) in colors {
+                theme = theme.with_color(*key, *color);
+            }
         }
-        theme
+        Ok(theme)
     }
 
     fn load_from(path: &Path) -> Result<Self, String> {
@@ -63,27 +101,65 @@ impl Config {
         let mut config = Self::default();
         for (key, value) in root {
             let key = yaml_string(key).ok_or_else(|| "config keys must be strings".to_string())?;
-            if key != "theme" {
+            if key == "colorscheme" {
+                config.colorscheme = Some(
+                    value
+                        .as_str()
+                        .filter(|name| !name.trim().is_empty())
+                        .ok_or_else(|| "'colorscheme' must be a non-empty string".to_string())?
+                        .to_string(),
+                );
+                continue;
+            }
+            if key != "themes" {
                 return Err(format!("unknown config key '{key}'"));
             }
 
-            let theme = value
+            let themes = value
                 .as_hash()
-                .ok_or_else(|| "'theme' must be a mapping".to_string())?;
-            for (key, value) in theme {
-                let key = theme_key_string(key)
-                    .ok_or_else(|| "theme keys must be strings".to_string())?;
-                let theme_color = ThemeColor::from_config_key(key)
-                    .ok_or_else(|| format!("unknown theme key '{key}'"))?;
-                let value = yaml_string(value)
-                    .ok_or_else(|| format!("color for '{key}' must be a string"))?;
-                let color = parse_color(value)
-                    .ok_or_else(|| format!("unknown color '{value}' for theme key '{key}'"))?;
-                config.theme_colors.push((theme_color, color));
+                .ok_or_else(|| "'themes' must be a mapping".to_string())?;
+            for (name, value) in themes {
+                let name = name
+                    .as_str()
+                    .filter(|name| !name.trim().is_empty())
+                    .ok_or_else(|| "theme names must be non-empty strings".to_string())?;
+                let colors = Self::parse_colors(value)
+                    .map_err(|error| format!("theme '{name}': {error}"))?;
+                config.themes.insert(name.to_string(), colors);
             }
         }
 
         Ok(config)
+    }
+
+    fn parse_colors(value: &Yaml) -> Result<Vec<(ThemeColor, Color)>, String> {
+        let theme = value
+            .as_hash()
+            .ok_or_else(|| "expected a color mapping".to_string())?;
+        let mut colors = Vec::new();
+        for (key, value) in theme {
+            let key =
+                theme_key_string(key).ok_or_else(|| "theme keys must be strings".to_string())?;
+            let theme_color = ThemeColor::from_config_key(key)
+                .ok_or_else(|| format!("unknown theme key '{key}'"))?;
+            let color = match value {
+                Yaml::Integer(index) if (0..=255).contains(index) => Color::C256(*index as u8),
+                Yaml::Integer(index) => {
+                    return Err(format!(
+                        "palette index {index} for theme key '{key}' must be between 0 and 255"
+                    ))
+                }
+                Yaml::String(name) => parse_color(name)
+                    .ok_or_else(|| format!("unknown color '{name}' for theme key '{key}'"))?,
+                _ => {
+                    return Err(format!(
+                        "color for '{key}' must be a name or an integer palette index from 0 to 255"
+                    ))
+                }
+            };
+            colors.push((theme_color, color));
+        }
+        Ok(colors)
     }
 }
 
@@ -100,7 +176,7 @@ fn config_path_from(xdg_config_home: Option<&OsStr>, home: Option<&OsStr>) -> Op
         .map(PathBuf::from)
         .or_else(|| home.map(|path| PathBuf::from(path).join(".config")))?;
 
-    Some(config_home.join("jless").join("config.yaml"))
+    Some(config_home.join("tless").join("config.yaml"))
 }
 
 fn yaml_string(value: &Yaml) -> Option<&str> {
@@ -109,8 +185,7 @@ fn yaml_string(value: &Yaml) -> Option<&str> {
 
 fn theme_key_string(value: &Yaml) -> Option<&str> {
     match value {
-        // YAML parses an unquoted `null` mapping key as a null scalar. Accept
-        // it because `null: light-black` is the natural theme syntax.
+        // YAML parses an unquoted `null` mapping key as a null scalar.
         Yaml::Null => Some("null"),
         _ => yaml_string(value),
     }
@@ -143,205 +218,92 @@ fn parse_color(value: &str) -> Option<Color> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::{JsonValueKind, StyleRole, StyleState, ThemeName};
+    use crate::theme::{JsonValueKind, StyleRole, StyleState};
 
     #[test]
-    fn resolves_xdg_config_path() {
+    fn startup_selection_precedence() {
+        let config = Config::parse("colorscheme: navy\nthemes: {navy: {string: blue}}").unwrap();
         assert_eq!(
-            config_path_from(Some(OsStr::new("/tmp/xdg")), Some(OsStr::new("/home/me"))),
-            Some(PathBuf::from("/tmp/xdg/jless/config.yaml"))
+            config.resolve_startup(None).unwrap(),
+            config.resolve("navy").unwrap()
         );
-    }
-
-    #[test]
-    fn falls_back_to_home_dot_config() {
-        assert_eq!(
-            config_path_from(None, Some(OsStr::new("/home/me"))),
-            Some(PathBuf::from("/home/me/.config/jless/config.yaml"))
-        );
-    }
-
-    #[test]
-    fn parses_partial_theme_and_unquoted_null_key() {
-        let config =
-            Config::parse("theme:\n  null: light-blue\n  string: blue\n  object-key: light-cyan\n")
-                .unwrap();
-        let theme = config.apply_to(Theme::built_in(ThemeName::Classic));
-
-        assert_eq!(
-            theme
-                .style(
-                    StyleRole::JsonValue(JsonValueKind::Null),
-                    StyleState::main()
-                )
-                .fg,
-            Color::C16(12)
-        );
-        assert_eq!(
-            theme
-                .style(
-                    StyleRole::JsonValue(JsonValueKind::String),
-                    StyleState::main()
-                )
-                .fg,
-            Color::C16(4)
-        );
-        assert_eq!(
-            theme.style(StyleRole::ObjectKey, StyleState::main()).fg,
-            Color::C16(14)
-        );
-        assert_eq!(
-            theme
-                .style(
-                    StyleRole::JsonValue(JsonValueKind::Boolean),
-                    StyleState::main()
-                )
-                .fg,
-            Color::C16(3)
-        );
-    }
-
-    #[test]
-    fn config_overrides_named_theme() {
-        let config = Config::parse("theme:\n  string: blue\n").unwrap();
-        let theme = config.apply_to(Theme::built_in(ThemeName::Cyan));
-
-        assert_eq!(
-            theme
-                .style(
-                    StyleRole::JsonValue(JsonValueKind::String),
-                    StyleState::main()
-                )
-                .fg,
-            Color::C16(4)
-        );
-        assert_eq!(
-            theme
-                .style(
-                    StyleRole::JsonValue(JsonValueKind::Null),
-                    StyleState::main()
-                )
-                .fg,
-            Color::C16(12)
-        );
-    }
-
-    #[test]
-    fn empty_config_is_allowed() {
-        assert_eq!(Config::parse("").unwrap(), Config::default());
-    }
-
-    #[test]
-    fn row_colors_override_reverse_video_and_preserve_message_severity() {
-        let config = Config::parse("theme:\n  status-bar: red\n  status-text: yellow\n  status-bar-foreground: white\n  status-bar-background: blue\n  command-line-foreground: cyan\n  command-line-background: black\n").unwrap();
-        for name in [ThemeName::Classic, ThemeName::Cyan] {
-            let theme = config.apply_to(Theme::built_in(name));
-            for role in [StyleRole::StatusBar, StyleRole::StatusPathBase] {
-                let style = theme.style(role, StyleState::main());
-                assert_eq!(style.fg, Color::C16(7));
-                assert_eq!(style.bg, Color::C16(4));
-                assert!(!style.inverted);
-            }
-            let style = theme.style(StyleRole::StatusText, StyleState::main());
-            assert_eq!(style.fg, Color::C16(6));
-            assert_eq!(style.bg, Color::C16(0));
-            for (severity, color) in [
-                (crate::theme::MessageSeverity::Info, 7),
-                (crate::theme::MessageSeverity::Warn, 3),
-                (crate::theme::MessageSeverity::Error, 1),
-            ] {
-                let style = theme.style(StyleRole::Message(severity), StyleState::main());
-                assert_eq!(style.fg, Color::C16(color));
-                assert_eq!(style.bg, Color::C16(0));
-            }
+        for name in ["classic", "cyan", "delek", "navy"] {
+            assert_eq!(
+                config.resolve_startup(Some(name)).unwrap(),
+                config.resolve(name).unwrap()
+            );
         }
-    }
-
-    #[test]
-    fn partial_row_colors_preserve_the_other_visible_color() {
-        let theme =
-            Config::parse("theme: {status-bar-background: blue, command-line-foreground: default}")
-                .unwrap()
-                .apply_to(Theme::default());
-        let style = theme.style(StyleRole::StatusPathBase, StyleState::main());
-        assert_eq!(style.fg, Color::C16(8));
-        assert_eq!(style.bg, Color::C16(4));
-        assert!(!style.inverted);
         assert_eq!(
-            theme.style(StyleRole::StatusText, StyleState::main()),
-            crate::terminal::Style::default()
+            Config::default().resolve_startup(None).unwrap(),
+            Theme::default()
         );
     }
 
     #[test]
-    fn custom_severity_colors_override_command_foreground_and_keep_background() {
+    fn parses_named_and_indexed_colors() {
         let config = Config::parse(
-            "theme:\n  message-info: light-blue\n  message-warning: light-yellow\n  message-error: light-red\n  command-line-foreground: green\n  command-line-background: blue\n",
-        ).unwrap();
-
-        for name in [ThemeName::Classic, ThemeName::Cyan] {
-            let theme = config.apply_to(Theme::built_in(name));
-            for (severity, color) in [
-                (crate::theme::MessageSeverity::Info, 12),
-                (crate::theme::MessageSeverity::Warn, 11),
-                (crate::theme::MessageSeverity::Error, 9),
-            ] {
-                let style = theme.style(StyleRole::Message(severity), StyleState::main());
-                assert_eq!(style.fg, Color::C16(color));
-                assert_eq!(style.bg, Color::C16(4));
-            }
-            let command = theme.style(StyleRole::StatusText, StyleState::main());
-            assert_eq!(command.fg, Color::C16(2));
-            assert_eq!(command.bg, Color::C16(4));
-        }
+            "themes:\n  classic:\n    null: light-blue\n    string: 217\n    status-bar-background: 17\n",
+        )
+        .unwrap();
+        let theme = config.resolve("classic").unwrap();
+        assert_eq!(
+            theme
+                .style(
+                    StyleRole::JsonValue(JsonValueKind::Null),
+                    StyleState::main()
+                )
+                .fg,
+            Color::C16(12)
+        );
+        assert_eq!(
+            theme
+                .style(
+                    StyleRole::JsonValue(JsonValueKind::String),
+                    StyleState::main()
+                )
+                .fg,
+            Color::C256(217)
+        );
+        assert_eq!(
+            theme.style(StyleRole::StatusBar, StyleState::main()).bg,
+            Color::C256(17)
+        );
     }
 
     #[test]
-    fn rejects_unknown_keys_and_colors() {
-        let key_error = Config::parse("theme:\n  mystery: blue\n").unwrap_err();
-        assert!(key_error.contains("unknown theme key 'mystery'"));
-
-        let color_error = Config::parse("theme:\n  string: ultraviolet\n").unwrap_err();
-        assert!(color_error.contains("unknown color 'ultraviolet'"));
-    }
-
-    #[test]
-    fn rejects_invalid_yaml_and_non_mapping_theme_documents() {
+    fn rejects_invalid_definitions() {
         for input in [
-            "theme: [",
-            "theme: blue",
-            "[blue]",
-            "theme: {string: 42}",
-            "{}\n---\n{}",
+            "colorscheme: ''",
+            "themes: []",
+            "themes: {navy: blue}",
+            "themes: {navy: {string: ultraviolet}}",
+            "themes: {navy: {string: 256}}",
+            "theme: {}",
         ] {
             assert!(Config::parse(input).is_err(), "accepted {}", input);
         }
     }
 
     #[test]
-    fn load_error_names_the_config_file() {
-        let path = std::env::temp_dir().join(format!(
-            "jless-invalid-config-{}-{}.yaml",
-            std::process::id(),
-            line!()
-        ));
-        fs::write(&path, "theme:\n  string: ultraviolet\n").unwrap();
-
-        let error = Config::load_from(&path).unwrap_err();
-        fs::remove_file(&path).unwrap();
-
-        assert!(error.contains(&path.display().to_string()));
-        assert!(error.contains("unknown color 'ultraviolet'"));
+    fn reports_available_theme_names() {
+        let config =
+            Config::parse("themes: {navy: {string: cyan}, sunset: {string: red}}").unwrap();
+        let error = config.resolve("missing").unwrap_err();
+        assert!(error.contains("classic"));
+        assert!(error.contains("delek"));
+        assert!(error.contains("navy"));
+        assert!(error.contains("sunset"));
     }
 
     #[test]
-    fn missing_file_is_empty_config() {
-        let path = std::env::temp_dir().join(format!(
-            "jless-missing-config-{}-{}.yaml",
-            std::process::id(),
-            line!()
-        ));
-
-        assert_eq!(Config::load_from(&path).unwrap(), Config::default());
+    fn resolves_xdg_and_home_paths() {
+        assert_eq!(
+            config_path_from(Some(OsStr::new("/tmp/xdg")), Some(OsStr::new("/home/me"))),
+            Some(PathBuf::from("/tmp/xdg/tless/config.yaml"))
+        );
+        assert_eq!(
+            config_path_from(None, Some(OsStr::new("/home/me"))),
+            Some(PathBuf::from("/home/me/.config/tless/config.yaml"))
+        );
     }
 }

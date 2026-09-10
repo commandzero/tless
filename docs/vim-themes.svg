@@ -1,0 +1,343 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1520" viewBox="0 0 1280 1520">
+<title>28 Vim terminal palettes for tless</title>
+<rect width="1280" height="1520" fill="#17191f"/>
+<g font-family="monospace">
+<text x="24" y="40" fill="#ffffff" font-size="24">Vim companion palettes</text>
+<text x="24" y="66" fill="#bfc4cd" font-size="13">256-color terminal styles · Normal / Identifier / String / Constant / Search / StatusLine</text>
+<rect x="24" y="90" width="290" height="180" rx="5" fill="#000087" stroke="#777"/>
+<text x="36" y="116" fill="#ffd700" font-size="16">blue</text>
+<rect x="36" y="133" width="266" height="23" fill="#000087"/>
+<text x="40" y="149" fill="#bcbcbc" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="157" width="266" height="23" fill="#000087"/>
+<text x="40" y="173" fill="#5fffff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="181" width="266" height="23" fill="#000087"/>
+<text x="40" y="197" fill="#5fffff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="205" width="266" height="23" fill="#ffd700"/>
+<text x="40" y="221" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="240" width="288" height="29" fill="#5fffff"/>
+<text x="36" y="259" fill="#000087" font-size="13">input.name    sample.json</text>
+<rect x="338" y="90" width="290" height="180" rx="5" fill="#121212" stroke="#777"/>
+<text x="350" y="116" fill="#d7d7ff" font-size="16">catppuccin</text>
+<rect x="350" y="133" width="266" height="23" fill="#121212"/>
+<text x="354" y="149" fill="#d7afaf" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="157" width="266" height="23" fill="#121212"/>
+<text x="354" y="173" fill="#87d787" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="181" width="266" height="23" fill="#121212"/>
+<text x="354" y="197" fill="#ffaf87" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="205" width="266" height="23" fill="#005f87"/>
+<text x="354" y="221" fill="#d7d7ff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="240" width="288" height="29" fill="#000000"/>
+<text x="350" y="259" fill="#d7d7ff" font-size="13">input.name    sample.json</text>
+<rect x="652" y="90" width="290" height="180" rx="5" fill="#00005f" stroke="#777"/>
+<text x="664" y="116" fill="#d0d0d0" font-size="16">darkblue</text>
+<rect x="664" y="133" width="266" height="23" fill="#00005f"/>
+<text x="668" y="149" fill="#87ffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="157" width="266" height="23" fill="#00005f"/>
+<text x="668" y="173" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="181" width="266" height="23" fill="#00005f"/>
+<text x="668" y="197" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="205" width="266" height="23" fill="#005fff"/>
+<text x="668" y="221" fill="#87ffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="240" width="288" height="29" fill="#d0d0d0"/>
+<text x="664" y="259" fill="#00005f" font-size="13">input.name    sample.json</text>
+<rect x="966" y="90" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="978" y="116" fill="#c0c0c0" font-size="16">default</text>
+<rect x="978" y="133" width="266" height="23" fill="#000000"/>
+<text x="982" y="149" fill="#ffff00" font-size="13" font-weight="bold" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="157" width="266" height="23" fill="#000000"/>
+<text x="982" y="173" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="181" width="266" height="23" fill="#000000"/>
+<text x="982" y="197" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="205" width="266" height="23" fill="#00ffff"/>
+<text x="982" y="221" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="240" width="288" height="29" fill="#c0c0c0"/>
+<text x="978" y="259" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="24" y="292" width="290" height="180" rx="5" fill="#ffffff" stroke="#777"/>
+<text x="36" y="318" fill="#000000" font-size="16">delek</text>
+<rect x="36" y="335" width="266" height="23" fill="#ffffff"/>
+<text x="40" y="351" fill="#008787" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="359" width="266" height="23" fill="#ffffff"/>
+<text x="40" y="375" fill="#00d700" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="383" width="266" height="23" fill="#ffffff"/>
+<text x="40" y="399" fill="#00d700" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="407" width="266" height="23" fill="#d700d7"/>
+<text x="40" y="423" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="442" width="288" height="29" fill="#000087"/>
+<text x="36" y="461" fill="#ffff00" font-size="13">input.name    sample.json</text>
+<rect x="338" y="292" width="290" height="180" rx="5" fill="#303030" stroke="#777"/>
+<text x="350" y="318" fill="#ffffff" font-size="16">desert</text>
+<rect x="350" y="335" width="266" height="23" fill="#303030"/>
+<text x="354" y="351" fill="#87ff87" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="359" width="266" height="23" fill="#303030"/>
+<text x="354" y="375" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="383" width="266" height="23" fill="#303030"/>
+<text x="354" y="399" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="407" width="266" height="23" fill="#6c6c6c"/>
+<text x="354" y="423" fill="#d7d787" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="442" width="288" height="29" fill="#afaf87"/>
+<text x="350" y="461" fill="#303030" font-size="13">input.name    sample.json</text>
+<rect x="652" y="292" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="664" y="318" fill="#00ffff" font-size="16">elflord</text>
+<rect x="664" y="335" width="266" height="23" fill="#000000"/>
+<text x="668" y="351" fill="#5fffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="359" width="266" height="23" fill="#000000"/>
+<text x="668" y="375" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="383" width="266" height="23" fill="#000000"/>
+<text x="668" y="399" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="407" width="266" height="23" fill="#ffff00"/>
+<text x="668" y="423" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="442" width="288" height="29" fill="#00ffff"/>
+<text x="664" y="461" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="966" y="292" width="290" height="180" rx="5" fill="#303030" stroke="#777"/>
+<text x="978" y="318" fill="#ffffff" font-size="16">evening</text>
+<rect x="978" y="335" width="266" height="23" fill="#303030"/>
+<text x="982" y="351" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="359" width="266" height="23" fill="#303030"/>
+<text x="982" y="375" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="383" width="266" height="23" fill="#303030"/>
+<text x="982" y="399" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="407" width="266" height="23" fill="#ffff00"/>
+<text x="982" y="423" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="442" width="288" height="29" fill="#ffffff"/>
+<text x="978" y="461" fill="#303030" font-size="13">input.name    sample.json</text>
+<rect x="24" y="494" width="290" height="180" rx="5" fill="#1c1c1c" stroke="#777"/>
+<text x="36" y="520" fill="#c6c6c6" font-size="16">habamax</text>
+<rect x="36" y="537" width="266" height="23" fill="#1c1c1c"/>
+<text x="40" y="553" fill="#87afaf" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="561" width="266" height="23" fill="#1c1c1c"/>
+<text x="40" y="577" fill="#87af87" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="585" width="266" height="23" fill="#1c1c1c"/>
+<text x="40" y="601" fill="#d7af87" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="609" width="266" height="23" fill="#87d787"/>
+<text x="40" y="625" fill="#1c1c1c" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="644" width="288" height="29" fill="#9e9e9e"/>
+<text x="36" y="663" fill="#1c1c1c" font-size="13">input.name    sample.json</text>
+<rect x="338" y="494" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="350" y="520" fill="#dadada" font-size="16">industry</text>
+<rect x="350" y="537" width="266" height="23" fill="#000000"/>
+<text x="354" y="553" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="561" width="266" height="23" fill="#000000"/>
+<text x="354" y="577" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="585" width="266" height="23" fill="#000000"/>
+<text x="354" y="601" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="609" width="266" height="23" fill="#ffff00"/>
+<text x="354" y="625" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="644" width="288" height="29" fill="#dadada"/>
+<text x="350" y="663" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="652" y="494" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="664" y="520" fill="#ffffff" font-size="16">koehler</text>
+<rect x="664" y="537" width="266" height="23" fill="#000000"/>
+<text x="668" y="553" fill="#5fffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="561" width="266" height="23" fill="#000000"/>
+<text x="668" y="577" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="585" width="266" height="23" fill="#000000"/>
+<text x="668" y="601" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="609" width="266" height="23" fill="#ff0000"/>
+<text x="668" y="625" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="644" width="288" height="29" fill="#ffffff"/>
+<text x="664" y="663" fill="#0000ff" font-size="13">input.name    sample.json</text>
+<rect x="966" y="494" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="978" y="520" fill="#c6c6c6" font-size="16">lunaperche</text>
+<rect x="978" y="537" width="266" height="23" fill="#000000"/>
+<text x="982" y="553" fill="#c6c6c6" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="561" width="266" height="23" fill="#000000"/>
+<text x="982" y="577" fill="#ffd787" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="585" width="266" height="23" fill="#000000"/>
+<text x="982" y="601" fill="#ff87ff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="609" width="266" height="23" fill="#ffd787"/>
+<text x="982" y="625" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="644" width="288" height="29" fill="#c6c6c6"/>
+<text x="978" y="663" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="24" y="696" width="290" height="180" rx="5" fill="#e4e4e4" stroke="#777"/>
+<text x="36" y="722" fill="#000000" font-size="16">morning</text>
+<rect x="36" y="739" width="266" height="23" fill="#e4e4e4"/>
+<text x="40" y="755" fill="#008787" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="763" width="266" height="23" fill="#eeeeee"/>
+<text x="40" y="779" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="787" width="266" height="23" fill="#eeeeee"/>
+<text x="40" y="803" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="811" width="266" height="23" fill="#5f00af"/>
+<text x="40" y="827" fill="#e4e4e4" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="846" width="288" height="29" fill="#000000"/>
+<text x="36" y="865" fill="#eeeeee" font-size="13">input.name    sample.json</text>
+<rect x="338" y="696" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="350" y="722" fill="#87ff87" font-size="16">murphy</text>
+<rect x="350" y="739" width="266" height="23" fill="#000000"/>
+<text x="354" y="755" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="763" width="266" height="23" fill="#000000"/>
+<text x="354" y="779" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="787" width="266" height="23" fill="#000000"/>
+<text x="354" y="803" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="811" width="266" height="23" fill="#0000ff"/>
+<text x="354" y="827" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="846" width="288" height="29" fill="#000087"/>
+<text x="350" y="865" fill="#ffffff" font-size="13">input.name    sample.json</text>
+<rect x="652" y="696" width="290" height="180" rx="5" fill="#121212" stroke="#777"/>
+<text x="664" y="722" fill="#d7d7d7" font-size="16">novum</text>
+<rect x="664" y="739" width="266" height="23" fill="#121212"/>
+<text x="668" y="755" fill="#afd7ff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="763" width="266" height="23" fill="#121212"/>
+<text x="668" y="779" fill="#afffaf" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="787" width="266" height="23" fill="#121212"/>
+<text x="668" y="803" fill="#d7d7d7" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="811" width="266" height="23" fill="#5f5f00"/>
+<text x="668" y="827" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="846" width="288" height="29" fill="#5f5f5f"/>
+<text x="664" y="865" fill="#d7d7d7" font-size="13">input.name    sample.json</text>
+<rect x="966" y="696" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="978" y="722" fill="#ffffff" font-size="16">pablo</text>
+<rect x="978" y="739" width="266" height="23" fill="#000000"/>
+<text x="982" y="755" fill="#00afaf" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="763" width="266" height="23" fill="#000000"/>
+<text x="982" y="779" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="787" width="266" height="23" fill="#000000"/>
+<text x="982" y="803" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="811" width="266" height="23" fill="#afaf00"/>
+<text x="982" y="827" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="846" width="288" height="29" fill="#0000d7"/>
+<text x="978" y="865" fill="#ffff00" font-size="13">input.name    sample.json</text>
+<rect x="24" y="898" width="290" height="180" rx="5" fill="#ffd7af" stroke="#777"/>
+<text x="36" y="924" fill="#000000" font-size="16">peachpuff</text>
+<rect x="36" y="941" width="266" height="23" fill="#ffd7af"/>
+<text x="40" y="957" fill="#008787" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="965" width="266" height="23" fill="#ffd7af"/>
+<text x="40" y="981" fill="#d7005f" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="989" width="266" height="23" fill="#ffd7af"/>
+<text x="40" y="1005" fill="#d7005f" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="1013" width="266" height="23" fill="#d700d7"/>
+<text x="40" y="1029" fill="#ffd7af" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="1048" width="288" height="29" fill="#000000"/>
+<text x="36" y="1067" fill="#ffffff" font-size="13">input.name    sample.json</text>
+<rect x="338" y="898" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="350" y="924" fill="#dadada" font-size="16">quiet</text>
+<rect x="350" y="941" width="266" height="23" fill="#000000"/>
+<text x="354" y="957" fill="#dadada" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="965" width="266" height="23" fill="#000000"/>
+<text x="354" y="981" fill="#dadada" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="989" width="266" height="23" fill="#000000"/>
+<text x="354" y="1005" fill="#dadada" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="1013" width="266" height="23" fill="#00afff"/>
+<text x="354" y="1029" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="1048" width="288" height="29" fill="#dadada"/>
+<text x="350" y="1067" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="652" y="898" width="290" height="180" rx="5" fill="#1c1c1c" stroke="#777"/>
+<text x="664" y="924" fill="#d7d7af" font-size="16">retrobox</text>
+<rect x="664" y="941" width="266" height="23" fill="#1c1c1c"/>
+<text x="668" y="957" fill="#87afaf" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="965" width="266" height="23" fill="#1c1c1c"/>
+<text x="668" y="981" fill="#afaf00" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="989" width="266" height="23" fill="#1c1c1c"/>
+<text x="668" y="1005" fill="#d787af" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="1013" width="266" height="23" fill="#878700"/>
+<text x="668" y="1029" fill="#1c1c1c" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="1048" width="288" height="29" fill="#4e4e4e"/>
+<text x="664" y="1067" fill="#d7d7af" font-size="13">input.name    sample.json</text>
+<rect x="966" y="898" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="978" y="924" fill="#00ffff" font-size="16">ron</text>
+<rect x="978" y="941" width="266" height="23" fill="#000000"/>
+<text x="982" y="957" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="965" width="266" height="23" fill="#000000"/>
+<text x="982" y="981" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="989" width="266" height="23" fill="#000000"/>
+<text x="982" y="1005" fill="#00ffff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="1013" width="266" height="23" fill="#afafaf"/>
+<text x="982" y="1029" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="1048" width="288" height="29" fill="#0000ff"/>
+<text x="978" y="1067" fill="#00ffff" font-size="13">input.name    sample.json</text>
+<rect x="24" y="1100" width="290" height="180" rx="5" fill="#ffffff" stroke="#777"/>
+<text x="36" y="1126" fill="#000000" font-size="16">shine</text>
+<rect x="36" y="1143" width="266" height="23" fill="#ffffff"/>
+<text x="40" y="1159" fill="#008787" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="1167" width="266" height="23" fill="#ffffff"/>
+<text x="40" y="1183" fill="#875f5f" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="1191" width="266" height="23" fill="#ffffff"/>
+<text x="40" y="1207" fill="#875f5f" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="1215" width="266" height="23" fill="#5f00af"/>
+<text x="40" y="1231" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="1250" width="288" height="29" fill="#000000"/>
+<text x="36" y="1269" fill="#ffffff" font-size="13">input.name    sample.json</text>
+<rect x="338" y="1100" width="290" height="180" rx="5" fill="#262626" stroke="#777"/>
+<text x="350" y="1126" fill="#ffffff" font-size="16">slate</text>
+<rect x="350" y="1143" width="266" height="23" fill="#262626"/>
+<text x="354" y="1159" fill="#ff8787" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="1167" width="266" height="23" fill="#262626"/>
+<text x="354" y="1183" fill="#87d7ff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="1191" width="266" height="23" fill="#262626"/>
+<text x="354" y="1207" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="1215" width="266" height="23" fill="#d7875f"/>
+<text x="354" y="1231" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="1250" width="288" height="29" fill="#afaf87"/>
+<text x="350" y="1269" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="652" y="1100" width="290" height="180" rx="5" fill="#121212" stroke="#777"/>
+<text x="664" y="1126" fill="#dadada" font-size="16">sorbet</text>
+<rect x="664" y="1143" width="266" height="23" fill="#121212"/>
+<text x="668" y="1159" fill="#87d75f" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="1167" width="266" height="23" fill="#121212"/>
+<text x="668" y="1183" fill="#d7af5f" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="1191" width="266" height="23" fill="#121212"/>
+<text x="668" y="1207" fill="#d75f5f" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="1215" width="266" height="23" fill="#00afff"/>
+<text x="668" y="1231" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="1250" width="288" height="29" fill="#d7d7ff"/>
+<text x="664" y="1269" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="966" y="1100" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="978" y="1126" fill="#c6c6c6" font-size="16">torte</text>
+<rect x="978" y="1143" width="266" height="23" fill="#000000"/>
+<text x="982" y="1159" fill="#5fffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="1167" width="266" height="23" fill="#000000"/>
+<text x="982" y="1183" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="1191" width="266" height="23" fill="#000000"/>
+<text x="982" y="1207" fill="#ffafaf" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="1215" width="266" height="23" fill="#ff0000"/>
+<text x="982" y="1231" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="1250" width="288" height="29" fill="#0000d7"/>
+<text x="978" y="1269" fill="#ffffff" font-size="13">input.name    sample.json</text>
+<rect x="24" y="1302" width="290" height="180" rx="5" fill="#262626" stroke="#777"/>
+<text x="36" y="1328" fill="#eeeeee" font-size="16">unokai</text>
+<rect x="36" y="1345" width="266" height="23" fill="#262626"/>
+<text x="40" y="1361" fill="#5fd7ff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="36" y="1369" width="266" height="23" fill="#262626"/>
+<text x="40" y="1385" fill="#d7d75f" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="36" y="1393" width="266" height="23" fill="#262626"/>
+<text x="40" y="1409" fill="#af87ff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="36" y="1417" width="266" height="23" fill="#5fd7ff"/>
+<text x="40" y="1433" fill="#262626" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="25" y="1452" width="288" height="29" fill="#bcbcbc"/>
+<text x="36" y="1471" fill="#262626" font-size="13">input.name    sample.json</text>
+<rect x="338" y="1302" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="350" y="1328" fill="#d0d0d0" font-size="16">wildcharm</text>
+<rect x="350" y="1345" width="266" height="23" fill="#000000"/>
+<text x="354" y="1361" fill="#ff87ff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="350" y="1369" width="266" height="23" fill="#000000"/>
+<text x="354" y="1385" fill="#00d75f" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="350" y="1393" width="266" height="23" fill="#000000"/>
+<text x="354" y="1409" fill="#00d75f" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="350" y="1417" width="266" height="23" fill="#00d75f"/>
+<text x="354" y="1433" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="339" y="1452" width="288" height="29" fill="#9e9e9e"/>
+<text x="350" y="1471" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="652" y="1302" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
+<text x="664" y="1328" fill="#ffffff" font-size="16">zaibatsu</text>
+<rect x="664" y="1345" width="266" height="23" fill="#000000"/>
+<text x="668" y="1361" fill="#87ffff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="664" y="1369" width="266" height="23" fill="#000000"/>
+<text x="668" y="1385" fill="#ffff5f" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="664" y="1393" width="266" height="23" fill="#000000"/>
+<text x="668" y="1409" fill="#ffff5f" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="664" y="1417" width="266" height="23" fill="#87ffff"/>
+<text x="668" y="1433" fill="#000000" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="653" y="1452" width="288" height="29" fill="#ffffff"/>
+<text x="664" y="1471" fill="#000000" font-size="13">input.name    sample.json</text>
+<rect x="966" y="1302" width="290" height="180" rx="5" fill="#ffffff" stroke="#777"/>
+<text x="978" y="1328" fill="#000000" font-size="16">zellner</text>
+<rect x="978" y="1345" width="266" height="23" fill="#ffffff"/>
+<text x="982" y="1361" fill="#0000ff" font-size="13" font-weight="normal" text-decoration="none">name: &quot;sample&quot;</text>
+<rect x="978" y="1369" width="266" height="23" fill="#ffffff"/>
+<text x="982" y="1385" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">      &quot;hello, Vim&quot;</text>
+<rect x="978" y="1393" width="266" height="23" fill="#ffffff"/>
+<text x="982" y="1409" fill="#ff00ff" font-size="13" font-weight="normal" text-decoration="none">value: null  42  true</text>
+<rect x="978" y="1417" width="266" height="23" fill="#af00ff"/>
+<text x="982" y="1433" fill="#ffffff" font-size="13" font-weight="normal" text-decoration="none">search match</text>
+<rect x="967" y="1452" width="288" height="29" fill="#a8a8a8"/>
+<text x="978" y="1471" fill="#ffff00" font-size="13">input.name    sample.json</text>
+</g></svg>

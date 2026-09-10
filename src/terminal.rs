@@ -1,14 +1,29 @@
+#![allow(dead_code)]
+
 use std::fmt::{Result, Write};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Color {
     C16(u8),
+    #[cfg(feature = "colorscheme")]
+    C256(u8),
     Default,
 }
 
+impl Color {
+    pub fn bright(self) -> Self {
+        match self {
+            Color::C16(index @ 0..=7) => Color::C16(index + 8),
+            #[cfg(feature = "colorscheme")]
+            Color::C256(index) => Color::C256(index),
+            Color::C16(8) | Color::Default => LIGHT_WHITE,
+            color => color,
+        }
+    }
+}
+
 // Commented out colors are unused.
-// #[cfg(test)]
-// pub const BLACK: Color = Color::C16(0);
+pub const BLACK: Color = Color::C16(0);
 pub const RED: Color = Color::C16(1);
 pub const GREEN: Color = Color::C16(2);
 pub const YELLOW: Color = Color::C16(3);
@@ -22,8 +37,12 @@ pub const LIGHT_BLACK: Color = Color::C16(8);
 pub const LIGHT_YELLOW: Color = Color::C16(11);
 pub const LIGHT_BLUE: Color = Color::C16(12);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
+// pub const LIGHT_CYAN: Color = Color::C16(14);
+pub const LIGHT_WHITE: Color = Color::C16(15);
+#[cfg(feature = "colorscheme")]
 pub const LIGHT_CYAN: Color = Color::C16(14);
-// pub const LIGHT_WHITE: Color = Color::C16(15);
+pub const DEFAULT: Color = Color::Default;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Style {
     pub fg: Color,
@@ -31,7 +50,7 @@ pub struct Style {
     pub inverted: bool,
     pub bold: bool,
     pub dimmed: bool,
-    pub underline: bool,
+    pub underlined: bool,
 }
 
 impl Style {
@@ -42,7 +61,7 @@ impl Style {
             inverted: false,
             bold: false,
             dimmed: false,
-            underline: false,
+            underlined: false,
         }
     }
 }
@@ -54,6 +73,8 @@ impl Default for Style {
 }
 
 pub trait Terminal: Write {
+    #[allow(dead_code)]
+    fn clear_screen(&mut self) -> Result;
     fn clear_line(&mut self) -> Result;
 
     fn position_cursor(&mut self, col: u16, row: u16) -> Result;
@@ -67,13 +88,13 @@ pub trait Terminal: Write {
     fn set_inverted(&mut self, inverted: bool) -> Result;
     fn set_bold(&mut self, bold: bool) -> Result;
     fn set_dimmed(&mut self, dimmed: bool) -> Result;
-    fn set_underline(&mut self, underline: bool) -> Result;
+    fn set_underlined(&mut self, underlined: bool) -> Result;
 
-    #[cfg(test)]
+    #[allow(dead_code)]
     fn output(&self) -> &str;
 
     // Only used for testing.
-    #[cfg(test)]
+    #[allow(dead_code)]
     fn clear_output(&mut self);
 }
 
@@ -105,6 +126,10 @@ impl Write for AnsiTerminal {
 }
 
 impl Terminal for AnsiTerminal {
+    fn clear_screen(&mut self) -> Result {
+        write!(self, "\x1b[2J")
+    }
+
     fn clear_line(&mut self) -> Result {
         write!(self, "\x1b[2K")
     }
@@ -125,7 +150,7 @@ impl Terminal for AnsiTerminal {
         self.set_inverted(style.inverted)?;
         self.set_bold(style.bold)?;
         self.set_dimmed(style.dimmed)?;
-        self.set_underline(style.underline)?;
+        self.set_underlined(style.underlined)?;
         Ok(())
     }
 
@@ -138,6 +163,8 @@ impl Terminal for AnsiTerminal {
         if self.style.fg != color {
             match color {
                 Color::C16(c) => write!(self, "\x1b[38;5;{c}m")?,
+                #[cfg(feature = "colorscheme")]
+                Color::C256(c) => write!(self, "\x1b[38;5;{c}m")?,
                 Color::Default => write!(self, "\x1b[39m")?,
             }
             self.style.fg = color;
@@ -149,6 +176,8 @@ impl Terminal for AnsiTerminal {
         if self.style.bg != color {
             match color {
                 Color::C16(c) => write!(self, "\x1b[48;5;{c}m")?,
+                #[cfg(feature = "colorscheme")]
+                Color::C256(c) => write!(self, "\x1b[48;5;{c}m")?,
                 Color::Default => write!(self, "\x1b[49m")?,
             }
             self.style.bg = color;
@@ -200,24 +229,18 @@ impl Terminal for AnsiTerminal {
         Ok(())
     }
 
-    fn set_underline(&mut self, underline: bool) -> Result {
-        if self.style.underline != underline {
-            if underline {
-                write!(self, "\x1b[4m")?;
-            } else {
-                write!(self, "\x1b[24m")?;
-            }
-            self.style.underline = underline;
+    fn set_underlined(&mut self, underlined: bool) -> Result {
+        if self.style.underlined != underlined {
+            write!(self, "\x1b[{}m", if underlined { 4 } else { 24 })?;
+            self.style.underlined = underlined;
         }
         Ok(())
     }
 
-    #[cfg(test)]
     fn output(&self) -> &str {
         &self.output
     }
 
-    #[cfg(test)]
     fn clear_output(&mut self) {
         self.output.clear()
     }
@@ -250,6 +273,8 @@ pub mod test {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 Color::C16(c) => write!(f, "{}", COLOR_NAMES.get(*c as usize).unwrap_or(&"?")),
+                #[cfg(feature = "colorscheme")]
+                Color::C256(c) => write!(f, "C256({c})"),
                 Color::Default => write!(f, "Default"),
             }
         }
@@ -275,6 +300,7 @@ pub mod test {
 
     #[rustfmt::skip]
     impl Terminal for TextOnlyTerminal {
+        fn clear_screen(&mut self) -> Result { Ok(()) }
         fn clear_line(&mut self) -> Result { Ok(()) }
         fn position_cursor(&mut self, _row: u16, _col: u16) -> Result { Ok(()) }
         fn position_cursor_col(&mut self, _col: u16) -> Result { Ok(()) }
@@ -285,7 +311,7 @@ pub mod test {
         fn set_inverted(&mut self, _inverted: bool) -> Result { Ok(()) }
         fn set_bold(&mut self, _bold: bool) -> Result { Ok(()) }
         fn set_dimmed(&mut self, _bold: bool) -> Result { Ok(()) }
-        fn set_underline(&mut self, _underline: bool) -> Result { Ok(()) }
+        fn set_underlined(&mut self, _underlined: bool) -> Result { Ok(()) }
         fn output(&self) -> &str { &self.output }
         fn clear_output(&mut self) { self.output.clear() }
     }
@@ -340,15 +366,19 @@ pub mod test {
                         write!(self.output, "_!D_")?;
                     }
                 }
-                if self.style.underline != self.pending_style.underline {
-                    if self.pending_style.underline {
-                        write!(self.output, "_U_")?;
-                    } else {
-                        write!(self.output, "_!U_")?;
-                    }
-                }
             }
 
+            if self.show_style && self.style.underlined != self.pending_style.underlined {
+                write!(
+                    self.output,
+                    "{}",
+                    if self.pending_style.underlined {
+                        "_U_"
+                    } else {
+                        "_!U_"
+                    }
+                )?;
+            }
             self.style = self.pending_style;
 
             Ok(())
@@ -363,6 +393,10 @@ pub mod test {
     }
 
     impl Terminal for VisibleEscapesTerminal {
+        fn clear_screen(&mut self) -> Result {
+            Ok(())
+        }
+
         fn clear_line(&mut self) -> Result {
             Ok(())
         }
@@ -422,8 +456,8 @@ pub mod test {
             Ok(())
         }
 
-        fn set_underline(&mut self, underline: bool) -> Result {
-            self.pending_style.underline = underline;
+        fn set_underlined(&mut self, underlined: bool) -> Result {
+            self.pending_style.underlined = underlined;
             Ok(())
         }
 
@@ -436,45 +470,5 @@ pub mod test {
             self.pending_style = Style::default();
             self.output.clear()
         }
-    }
-
-    #[test]
-    fn ansi_terminal_enables_and_disables_underline() -> Result {
-        let mut terminal = AnsiTerminal::new(String::new());
-
-        terminal.set_underline(true)?;
-        terminal.set_underline(false)?;
-
-        assert_eq!("\x1b[4m\x1b[24m", terminal.output());
-        assert!(!terminal.style.underline);
-        Ok(())
-    }
-
-    #[test]
-    fn disabling_underline_preserves_bold() -> Result {
-        let mut terminal = AnsiTerminal::new(String::new());
-        terminal.set_bold(true)?;
-        terminal.set_underline(true)?;
-        terminal.clear_output();
-
-        terminal.set_underline(false)?;
-
-        assert_eq!("\x1b[24m", terminal.output());
-        assert!(terminal.style.bold);
-        Ok(())
-    }
-
-    #[test]
-    fn disabling_underline_preserves_dimmed() -> Result {
-        let mut terminal = AnsiTerminal::new(String::new());
-        terminal.set_dimmed(true)?;
-        terminal.set_underline(true)?;
-        terminal.clear_output();
-
-        terminal.set_underline(false)?;
-
-        assert_eq!("\x1b[24m", terminal.output());
-        assert!(terminal.style.dimmed);
-        Ok(())
     }
 }

@@ -11,6 +11,8 @@ use termion::event::MouseEvent::Press;
 use termion::raw::RawTerminal;
 use termion::screen::{ToAlternateScreen, ToMainScreen};
 
+#[cfg(feature = "colorscheme")]
+use crate::config::Config;
 use crate::flatjson;
 use crate::input::TuiEvent;
 use crate::input::TuiEvent::{KeyEvent, MouseEvent, WinChEvent};
@@ -21,9 +23,11 @@ use crate::screenwriter::{MessageSeverity, ScreenWriter};
 use crate::search::{JumpDirection, SearchDirection, SearchState};
 use crate::theme::Theme;
 use crate::types::TTYDimensions;
-use crate::viewer::{Action, JsonViewer, Mode};
+use crate::viewer::{Action, JsonViewer};
 
 pub struct App {
+    #[cfg(feature = "colorscheme")]
+    config: Config,
     viewer: JsonViewer,
     screen_writer: ScreenWriter,
     input_state: InputState,
@@ -76,6 +80,8 @@ enum WriteFormat {
 }
 
 enum Command {
+    #[cfg(feature = "colorscheme")]
+    Colorscheme(String),
     Quit,
     Help,
     SetShowLineNumber(Option<bool>),
@@ -120,6 +126,7 @@ impl App {
     pub fn new(
         opt: &Opt,
         theme: Theme,
+        #[cfg(feature = "colorscheme")] config: Config,
         data: String,
         data_format: DataFormat,
         input_filename: String,
@@ -130,12 +137,14 @@ impl App {
             Err(err) => return Err(format!("Unable to parse input: {err:?}")),
         };
 
-        let mut viewer = JsonViewer::new(flatjson, opt.mode);
+        let mut viewer = JsonViewer::new(flatjson);
         viewer.scrolloff_setting = opt.scrolloff;
 
         let screen_writer = ScreenWriter::init(opt, theme, stdout, TTYDimensions::default());
 
         Ok(App {
+            #[cfg(feature = "colorscheme")]
+            config,
             viewer,
             screen_writer,
             input_state: InputState::Default,
@@ -158,7 +167,6 @@ impl App {
 
     pub fn run(&mut self, input: Box<dyn Iterator<Item = io::Result<TuiEvent>>>) {
         let dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
-        self.viewer.dimensions = dimensions.without_status_bar();
         self.screen_writer.dimensions = dimensions;
         self.draw_screen();
 
@@ -221,9 +229,9 @@ impl App {
             // we'll also stop considering the search active if the collapsed state
             // of the focused row changes.
             let mut jumped_to_search_match = false;
-            let focused_row_before = self.viewer.focused_row;
-            let previous_collapsed_state_of_focused_row =
-                self.viewer.flatjson[focused_row_before].is_collapsed();
+            let focused_node_before = self.viewer.focused_node;
+            let previous_collapsed_state_of_focused_node =
+                self.viewer.flatjson[focused_node_before].is_collapsed();
 
             let action = match event {
                 // Put this first so the current input state doesn't get reset
@@ -419,13 +427,13 @@ impl App {
                             }),
                         },
                         Key::Char('.') => {
-                            let count = self.parse_input_buffer_as_number();
+                            let count = self.parse_input_buffer_as_number().saturating_mul(10);
                             self.screen_writer
                                 .scroll_focused_line_right(&self.viewer, count);
                             None
                         }
                         Key::Char(',') => {
-                            let count = self.parse_input_buffer_as_number();
+                            let count = self.parse_input_buffer_as_number().saturating_mul(10);
                             self.screen_writer
                                 .scroll_focused_line_left(&self.viewer, count);
                             None
@@ -464,6 +472,8 @@ impl App {
                         Key::Left | Key::Char('h') => Some(Action::MoveLeft),
                         Key::Right | Key::Char('l') => Some(Action::MoveRight),
                         Key::Char('H') => Some(Action::FocusParent),
+                        Key::Char('[') => Some(Action::FocusParentOrPreviousSibling),
+                        Key::Char(']') => Some(Action::FocusNextAtParentLevel),
                         Key::Char('c') => Some(Action::CollapseNodeAndSiblings),
                         Key::Char('C') => Some(Action::DeepCollapseNodeAndSiblings),
                         Key::Char('e') => Some(Action::ExpandNodeAndSiblings),
@@ -473,8 +483,6 @@ impl App {
                         Key::Char('$') => Some(Action::FocusLastSibling),
                         Key::Home => Some(Action::FocusTop),
                         Key::End => Some(Action::FocusBottom),
-                        Key::Char('%') => Some(Action::FocusMatchingPair),
-                        Key::Char('m') => Some(Action::ToggleMode),
                         Key::Char('<') => {
                             self.screen_writer
                                 .decrease_indentation_level(self.viewer.flatjson.2 as u16);
@@ -494,6 +502,13 @@ impl App {
                                 match Self::parse_command(&command) {
                                     Command::Quit => break,
                                     Command::Help => self.show_help(),
+                                    #[cfg(feature = "colorscheme")]
+                                    Command::Colorscheme(name) => {
+                                        match self.config.resolve(&name) {
+                                            Ok(theme) => self.screen_writer.set_theme(theme),
+                                            Err(error) => self.set_error_message(error),
+                                        }
+                                    }
                                     Command::SetShowLineNumber(Some(new_val)) => {
                                         self.screen_writer.show_line_numbers = new_val
                                     }
@@ -543,12 +558,12 @@ impl App {
                     self.input_buffer.clear();
 
                     match me {
-                        Press(Left, _, h) => {
+                        Press(Left, w, h) => {
                             // Ignore clicks on status bar or below.
                             if h > self.screen_writer.dimensions.without_status_bar().height {
                                 continue;
                             } else {
-                                Some(Action::Click(h))
+                                Some(self.screen_writer.mouse_action(&self.viewer, h, w))
                             }
                         }
                         Press(WheelUp, _, _) => Some(Action::ScrollUp(3)),
@@ -579,10 +594,10 @@ impl App {
                 // we're no longer actively searching. If the focused row was expanded
                 // or collapsed, we're still searching, but there's no longer a current
                 // match.
-                if focused_row_before != self.viewer.focused_row {
+                if focused_node_before != self.viewer.focused_node {
                     self.search_state.set_no_longer_actively_searching();
-                } else if previous_collapsed_state_of_focused_row
-                    != self.viewer.flatjson[focused_row_before].is_collapsed()
+                } else if previous_collapsed_state_of_focused_node
+                    != self.viewer.flatjson[focused_node_before].is_collapsed()
                 {
                     self.search_state
                         .set_matches_visible_if_actively_searching();
@@ -595,6 +610,10 @@ impl App {
     }
 
     fn draw_screen(&mut self) {
+        self.viewer.set_viewport(
+            self.screen_writer.dimensions.without_status_bar(),
+            self.screen_writer.show_line_numbers || self.screen_writer.show_relative_line_numbers,
+        );
         self.screen_writer.print(
             &self.viewer,
             &self.input_buffer,
@@ -726,7 +745,7 @@ impl App {
     }
 
     fn initialize_object_key_search(&mut self, direction: SearchDirection) -> bool {
-        if let Some(key_range) = &self.viewer.flatjson[self.viewer.focused_row].key_range {
+        if let Some(key_range) = &self.viewer.flatjson[self.viewer.focused_node].key_range {
             // Note key_range already includes quotes around key.
             let object_key = format!("{}: ", &self.viewer.flatjson.1[key_range.clone()]);
             self.initialize_search(direction, object_key)
@@ -749,18 +768,24 @@ impl App {
         }
 
         let destination = self.search_state.jump_to_match(
-            self.viewer.focused_row,
+            self.viewer.focused_node,
             &self.viewer.flatjson,
             jump_direction,
             jumps,
         );
-        Some(Action::JumpTo {
-            line: destination,
-            make_visible: false,
+        Some(Action::FocusNode {
+            node: destination,
+            source: Some(self.search_state.current_match_range().start),
         })
     }
 
     fn parse_command(command: &str) -> Command {
+        #[cfg(feature = "colorscheme")]
+        if let Some(name) = command.trim().strip_prefix("colorscheme") {
+            if name.starts_with(char::is_whitespace) && !name.trim().is_empty() {
+                return Command::Colorscheme(name.trim().to_string());
+            }
+        }
         let args: Vec<&str> = command.split(" ").filter(|s| !s.is_empty()).collect();
 
         match args.as_slice() {
@@ -827,6 +852,10 @@ impl App {
                     let _ = stdin.write_all(HELP.as_bytes());
                     #[cfg(feature = "toon")]
                     let _ = stdin.write_all(TOON_HELP.as_bytes());
+                    #[cfg(feature = "colorscheme")]
+                    let _ = stdin.write_all(
+                        b"\n:colorscheme <name>  Switch to a built-in or configured theme for this session.\n",
+                    );
                     let _ = stdin.flush();
                 }
                 let _ = child.wait();
@@ -841,32 +870,32 @@ impl App {
 
     fn get_content_target_data(&self, content_target: ContentTarget) -> Result<String, String> {
         let json = &self.viewer.flatjson.1;
-        let focused_row_index = self.viewer.focused_row;
-        let focused_row = &self.viewer.flatjson[focused_row_index];
+        let focused_node_index = self.viewer.focused_node;
+        let focused_node = &self.viewer.flatjson[focused_node_index];
 
         let data = match content_target {
             #[cfg(feature = "toon")]
             ContentTarget::ToonValue => crate::toon::encode_value(
                 &self.viewer.flatjson,
-                focused_row_index,
+                focused_node_index,
                 crate::toon::EncodeOptions::default(),
             )
             .map_err(|e| e.to_string())?,
-            ContentTarget::PrettyPrintedValue if focused_row.is_container() => self
+            ContentTarget::PrettyPrintedValue if focused_node.is_container() => self
                 .viewer
                 .flatjson
-                .pretty_printed_value(focused_row_index)
+                .pretty_printed_value(focused_node_index)
                 .unwrap(),
             ContentTarget::PrettyPrintedValue | ContentTarget::OneLineValue => {
-                let range = focused_row.range.clone();
+                let range = focused_node.range.clone();
                 json[range].to_string()
             }
             ContentTarget::String => {
-                if !focused_row.is_string() {
+                if !focused_node.is_string() {
                     return Err("Current value is not a string".to_string());
                 }
 
-                let range = focused_row.range.clone();
+                let range = focused_node.range.clone();
                 let quoteless_range = (range.start + 1)..(range.end - 1);
                 let string_value = &json[quoteless_range];
 
@@ -878,16 +907,14 @@ impl App {
                 }
             }
             ContentTarget::Key => {
-                let Some(key_range) = &focused_row.key_range else {
+                let Some(key_range) = &focused_node.key_range else {
                     return Err("No object key to copy".to_string());
                 };
 
                 let quoteless_range = (key_range.start + 1)..(key_range.end - 1);
 
-                // Don't copy quotes in Data mode.
-                if self.viewer.mode == Mode::Data
-                    && JS_IDENTIFIER.is_match(&json[quoteless_range.clone()])
-                {
+                // Preserve the existing key-copy contract independently of display syntax.
+                if JS_IDENTIFIER.is_match(&json[quoteless_range.clone()]) {
                     json[quoteless_range].to_string()
                 } else {
                     json[key_range.clone()].to_string()
@@ -905,7 +932,7 @@ impl App {
 
                 self.viewer
                     .flatjson
-                    .build_path_to_node(path_type, focused_row_index)?
+                    .build_path_to_node(path_type, focused_node_index)?
             }
         };
 
@@ -918,12 +945,12 @@ impl App {
                 // Checked when the user first hits 'y'.
                 let clipboard = self.clipboard_context.as_mut().unwrap();
 
-                let focused_row = &self.viewer.flatjson[self.viewer.focused_row];
+                let focused_node = &self.viewer.flatjson[self.viewer.focused_node];
 
                 let content_type = match content_target {
                     #[cfg(feature = "toon")]
                     ContentTarget::ToonValue => "TOON value",
-                    ContentTarget::PrettyPrintedValue if focused_row.is_container() => {
+                    ContentTarget::PrettyPrintedValue if focused_node.is_container() => {
                         "pretty-printed value"
                     }
                     ContentTarget::PrettyPrintedValue | ContentTarget::OneLineValue => "value",

@@ -17,11 +17,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install toolchains and check tools
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
           sudo apt-get update
           sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev shellcheck
+          npm install --global @fission-ai/openspec@1.11.0
           cargo install okf --version 0.2.7 --locked
           GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -40,7 +42,23 @@ jobs:
           pattern='^(feat|fix|docs|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_./-]+\))?!?: .+'
           [[ "$PR_TITLE" =~ $pattern ]] || { echo 'Use a Conventional Commit PR title.' >&2; exit 1; }
       - name: Local preflight
+        env:
+          OPENSPEC_BASE: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+          OPENSPEC_PR_BODY: ${{ github.event.pull_request.body }}
         run: scripts/preflight.sh
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install documentation validator
+        run: cargo install okf --version 0.2.7 --locked
+      - name: Validate documentation
+        run: okf validate docs/
+      - name: Check Vim palette generation
+        run: python3 scripts/import-vim-themes.py --check
   compatibility:
     strategy:
       fail-fast: false
@@ -77,11 +95,12 @@ jobs:
         run: scripts/preflight.sh test
   required:
     if: always()
-    needs: [preflight, compatibility]
+    needs: [preflight, docs, compatibility]
     runs-on: ubuntu-24.04
     steps:
       - name: Require all checks
         env:
           PREFLIGHT: ${{ needs.preflight.result }}
+          DOCS: ${{ needs.docs.result }}
           COMPATIBILITY: ${{ needs.compatibility.result }}
-        run: test "$PREFLIGHT" = success && test "$COMPATIBILITY" = success
+        run: test "$PREFLIGHT" = success && test "$DOCS" = success && test "$COMPATIBILITY" = success

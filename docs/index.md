@@ -15,6 +15,9 @@ Validate the complete bundle with `scripts/validate-docs.sh` locally and in CI.
 2. [Release checklist](release-checklist.md) covers release preparation and recovery.
 3. [Published TOON codec](toon-codec.md) describes conversion behavior and known limitations.
 4. [TOON acceptance](toon-acceptance.md) maps automated and manual validation.
+5. [TOON document view](toon-view.md) explains layout, selection, warnings, and export boundaries.
+6. [Color themes](color-themes.md) describes built-in and configured themes.
+7. [Vim companion palettes](vim-themes.md) records the 28 bundled Vim palettes.
 
 ## Design history
 

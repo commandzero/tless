@@ -17,6 +17,8 @@ lint() {
     shellcheck scripts/*.sh
     actionlint
     scripts/test-release.sh
+    scripts/test-openspec.sh
+    scripts/openspec-check.sh
     scripts/validate-docs.sh
 }
 
@@ -24,6 +26,7 @@ tests() {
     cargo test --locked --no-default-features
     cargo test --locked
     cargo test --locked --no-default-features --features sexp
+    cargo test --locked --no-default-features --features colorscheme
     cargo test --locked --all-features
 }
 

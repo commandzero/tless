@@ -1,7 +1,19 @@
+---
+type: Design
+title: Color themes
+description: Original Classic and Cyan theme design and implementation checklist.
+generated: { by: codex, at: 2026-09-07T06:15:02Z }
+---
+
 # Color themes
 
-Status: implemented. The design and implementation checklist below record
-the theme work, including user color overrides.
+This document records the original Classic/Cyan design and the later
+configuration additions. The [Vim companion palettes](vim-themes.md) add
+256-color built-ins and document backgrounds.
+
+Status: implemented. Theme configuration is enabled by the `colorscheme`
+feature; the default build keeps the classic appearance without configuration
+or theme options.
 
 ## Problem
 
@@ -16,15 +28,16 @@ dimmed state. Tests cover these transitions.
 
 ## Goals
 
-- Let users select a built-in color theme with `--theme <name>`.
-- Let users override individual theme colors in
-  `$XDG_CONFIG_HOME/jless/config.yaml`, falling back to
-  `$HOME/.config/jless/config.yaml`. See the [configuration reference](../README.md#color-themes).
+- Let users select a built-in or configured color theme with `--theme <name>`.
+- Let users switch themes during a session with `:colorscheme <name>`.
+- Let users define named themes and 256-color values in
+  `$XDG_CONFIG_HOME/tless/config.yaml`, falling back to
+  `$HOME/.config/tless/config.yaml`. See the [configuration reference](../README.md#color-themes).
 - Keep all mappings from semantic display roles to terminal styles in one
   module.
 - Keep rendering logic independent of named colors.
 - Preserve the current `main` appearance as the default.
-- Retain the palette started on this branch as a second built-in theme.
+- Retain the palette started on this branch and the bundled Vim companions.
 - Make focus and search-match precedence explicit and testable.
 - Support underline as a normal terminal style attribute without leaking it
   into following text.
@@ -34,33 +47,33 @@ dimmed state. Tests cover these transitions.
 - Separate named theme files and user-defined style attributes. Color
   overrides in `config.yaml` are supported.
 - Automatic terminal background detection.
-- Runtime theme switching.
-- 256-color or true-color palette definitions.
+- True-color palette definitions.
 - Redesigning the existing `Terminal` interface beyond correct underline
   support.
 
-These can be added later without changing rendering callers if the theme
-interface below remains stable.
+The theme interface keeps rendering callers independent of configuration
+format and terminal color representation.
 
 ## User interface
 
-Add a Clap value enum and option:
+Add the opt-in `colorscheme` feature and a theme name option:
 
 ```rust
+#[cfg(feature = "colorscheme")]
 pub enum ThemeName {
     Classic,
     Cyan,
 }
 
 pub struct Opt {
-    #[arg(long, value_enum, default_value_t = ThemeName::Classic)]
-    pub theme: ThemeName,
+    #[arg(long)]
+    pub theme: Option<String>,
 }
 ```
 
 `classic` reproduces the appearance on `main`. `cyan` contains the intended
-palette changes from the current branch. Clap reports an unknown name as an
-argument error before the application starts.
+palette changes from the current branch. `Config` resolves built-in and named
+themes and reports unknown names with the available choices.
 
 ## Theme module
 
@@ -73,16 +86,18 @@ pub struct Theme {
 }
 
 pub enum StyleRole {
+    Document,
     JsonValue(JsonValueKind),
     ObjectKey,
     ArrayIndex,
     Punctuation,
+    PunctuationCommaTrailing,
     ContainerDelimiter,
     PreviewText,
     PreviewCount,
     LineNumber,
-    EmptyRowMarker,
-    TruncationIndicator,
+    RowMarkerEmpty,
+    IndicatorTruncation,
     StatusBar,
     StatusPathBase,
     StatusText,
@@ -146,12 +161,14 @@ one implementation, not terminal adapters. Tests use the real theme directly.
 - Callers supply search state only for searchable text. `Theme::style` applies
   a supplied search state regardless of role, including synthetic array indices.
 - Rendering code never handles missing theme entries or theme-selection
-  errors.
+  errors. Configuration resolves a named theme before rendering starts.
 
 ## Ownership and seam placement
 
-`App` selects a theme once from `Opt`. `ScreenWriter` owns the resulting
-`Theme` and passes `&Theme` to `LinePrinter` and highlighting functions.
+`App` resolves the startup theme from `Opt` and `Config`. `ScreenWriter` owns
+the current `Theme` and passes `&Theme` to `LinePrinter` and highlighting
+functions. The `:colorscheme` command replaces that value and refreshes the
+command-line highlighter before the next redraw.
 
 The theme seam sits between semantic rendering decisions and
 `terminal::Style`. The existing `Terminal` seam continues to own output
@@ -209,11 +226,11 @@ Any further difference must be added to this table before implementation.
 
 ## Acceptance criteria
 
-- `jless --theme classic` renders the same style transitions as `main` for a
+- `tless --theme classic` renders the same style transitions as `main` for a
   representative document.
-- `jless --theme cyan` renders every difference in the palette table.
-- Running without `--theme` selects `classic`.
-- An unknown theme name exits with a Clap argument error.
+- `tless --theme cyan` renders every difference in the palette table.
+- Running without `--theme` selects the configured `colorscheme`, or `classic`.
+- An unknown theme name reports the available built-in and configured names.
 - No rendering module refers directly to terminal color constants. Direct
   colors are limited to terminal color definitions and built-in theme data.
 - Focused and ordinary search matches remain distinguishable in both themes.
