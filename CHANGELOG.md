@@ -8,41 +8,23 @@ Earlier upstream history is preserved below.
 ### Changed
 
 - Support terminal input and resize signals with high-numbered file descriptors; keep end-of-line scrolling inside the content at narrow widths and avoid copying all search matches on redraw.
-
 - Stop `J` at the last sibling instead of jumping back to its parent.
-
 - Render collapsed previews and object counts in plain terminal color 8 without extra dimming.
-
 - Use black status-line text and a light gray filename.
-
 - Show inline arrays with a collapsed arrow by default; keep tabular rows visible with collapse controls only on the array parent.
-
 - Underline search matches in yellow and the active match in bright yellow, without reverse video or match backgrounds.
-
 - Use cyan keys, blue booleans that brighten when selected, gray nulls, and a dark gray status bar; retain green strings, dark gray previews, and yellow warnings.
-
 - Scroll horizontally in ten-cell increments with `,` and `.`, multiplied by numeric prefixes.
-
 - Preserve value colors when collapsing short primitive arrays whose complete inline form fits the terminal.
-
 - Remove the `input` prefix from status-bar paths; show `.` at the document root. [#4](https://github.com/commandzero/tless/pull/4)
-
 - Add `[` and `]` motions to select the current parent or its next sibling, falling back to the current node's previous or next sibling when the respective parent target is unavailable, without changing collapse state. [#4](https://github.com/commandzero/tless/pull/4)
-
 - Expand inline arrays to multiline with `l` or Right Arrow; default to multiline above five elements or when the inline line exceeds the available terminal width. Reflow immediately on terminal resize, including on macOS. [#4](https://github.com/commandzero/tless/pull/4)
-
 - Show collapsed object counts as subdued `(N)` hints, separate preview fields with `; `, and keep collapsed annotations out of selection highlighting. [#4](https://github.com/commandzero/tless/pull/4)
-
 - Use bright colors instead of bold for selection, show line numbers and collapse arrows in dark gray with light gray on the selected line, and limit focus highlighting to the selected display line. [#4](https://github.com/commandzero/tless/pull/4)
-
 - **Breaking:** Replace Line/Data modes with one TOON document view in every build. Remove `--mode`, `-m`, interactive `m`, and closing-delimiter navigation. Remove obsolete flags from scripts and use parent/child navigation for containers. Absolute jumps now address expanded TOON lines. See [the document view](docs/toon-view.md). [#4](https://github.com/commandzero/tless/pull/4)
-
 - **Breaking:** Replace the vendored codec with the published toon-format 0.5.0 crate. TOON now follows its duplicate-key, numeric conversion, nesting, and table-order behavior. See [codec behavior](docs/toon-codec.md) before using TOON output for data conversion.
-
 - **Breaking:** Raise the minimum supported Rust version from 1.67 to 1.87. Upgrade the Rust toolchain before building this release.
-
 - Move release, search, rendering, and TOON acceptance guidance into docs; rename third-party notices to NOTICES.md and remove the unused tmux helper.
-
 - **Breaking:** Rename the package and executable from jless to tless. Update scripts and aliases that should use the CommandZero fork; upstream jless can stay installed.
 - **Breaking:** Enable TOON by default and limit input to 512 MiB. Use `--no-default-features` for a JSON/YAML-only build and `--max-input-bytes 0` to remove the input limit.
 - Start the independent tless release history at 0.1.0, with source-checkout and native binary distribution. Keep registry publication a separate release decision.
@@ -51,20 +33,14 @@ Earlier upstream history is preserved below.
 ### Fixed
 
 - Extend themed row selection backgrounds across the gutter, indentation, whitespace, and unused screen width.
-
 - Send the missing-filename diagnostic to stderr.
 
 ### Added
 
 - Add the `borealis` theme with RGB colors from the Borealis dark-mode palette.
-
-- Add 28 Vim companion themes with 256-color palettes and matching document
-  backgrounds, selected with `--theme <name>` in colorscheme-enabled builds.
-
+- Add 28 Vim companion themes with 256-color palettes and matching document backgrounds, selected with `--theme <name>` in colorscheme-enabled builds.
 - Preserve parsed duplicate entries, non-finite values, non-string keys, and multiple roots in the document view with explicit warnings. Select individual inline-array elements and table cells while keeping existing copy/export conversion behavior. [#4](https://github.com/commandzero/tless/pull/4)
-
 - Add an OKF documentation bundle and a shared documentation validation check.
-
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 

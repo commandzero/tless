@@ -149,7 +149,7 @@ An output error can leave a partial payload in the downstream consumer.
 Build from this checkout to enable TOON input and canonical output:
 
 ```sh
-cargo install --path . --locked --features toon
+cargo install --path . --locked
 tless data.toon
 producer | tless --toon
 ```
