@@ -457,7 +457,9 @@ impl ScreenWriter {
         let space_available_for_filename =
             width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
-        let status_style = self.theme.style(StyleRole::StatusBar, StyleState::main());
+        let mut status_style = self.theme.style(StyleRole::StatusBar, StyleState::main());
+        status_style.fg = crate::terminal::BLACK;
+        status_style.inverted = false;
 
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
