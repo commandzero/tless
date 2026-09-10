@@ -257,6 +257,9 @@ fn paint_impl(
                 }
                 style
             };
+            if span.role == TokenRole::Warning {
+                style.dimmed = true;
+            }
         }
         terminal.set_style(&style)?;
         terminal.write_str(grapheme)?;
@@ -339,6 +342,8 @@ mod tests {
     use super::*;
     use crate::flatjson::{parse_top_level_json, parse_top_level_yaml};
     use crate::terminal::test::{TextOnlyTerminal, VisibleEscapesTerminal};
+    #[cfg(feature = "colorscheme")]
+    use crate::theme::Theme;
     use crate::toon_display::Layout;
     fn text(line: &DisplayLine, width: usize, offset: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();
@@ -484,6 +489,29 @@ mod tests {
             .all(|span| span.source.is_none()));
         assert!(line.spans.iter().any(|span| span.source.is_some()));
         assert!(text(line, 200, 0).ends_with("# WARN Non-finite number"));
+    }
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn default_theme_dims_warning_annotations_without_brightening_them() {
+        let flat = parse_top_level_yaml("value: .inf".into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint_themed(
+            &mut terminal,
+            &Theme::default(),
+            &layout.lines[0],
+            0..0,
+            LineViewport::new(&layout.lines[0], 0, 0),
+            200,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        let output = terminal.output();
+        assert!(output.contains("_FG(Yellow)_"), "{}", output);
+        assert!(output.contains("_D_"), "{}", output);
+        assert!(!output.contains("_FG(LightYellow)_"), "{}", output);
     }
     #[test]
     fn container_focus_brightens_row_values_and_implicit_root_fields() {

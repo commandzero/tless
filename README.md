@@ -32,23 +32,26 @@ The upstream `jless` executable can remain installed alongside it.
 
 ## Color themes
 
-Theme support is a compile-time opt-in. Build or install it with:
+Theme support is included in the default build. Build or install it explicitly
+with:
 
 ```sh
 cargo build --release --features colorscheme
 cargo install --path . --features colorscheme
 ```
 
-Default builds use the classic appearance, do not expose `--theme`, and do not
-read the theme configuration file. YAML and TOON viewing remain available in
-both builds.
+The `--no-default-features` build omits `--theme` and the theme configuration
+file. YAML and TOON viewing remain available in both builds.
 
 Use `--theme <name>` to select a built-in or configured theme. Without that
 option, `colorscheme` in the configuration selects the startup theme, otherwise
-`classic` is used. While viewing a document, enter `:colorscheme <name>` to
+`default` is used. While viewing a document, enter `:colorscheme <name>` to
 switch themes without changing your position or search.
+The former `classic` name remains accepted as a compatibility alias for
+`default`.
 
-Vim companions use the original Vim scheme name:
+Vim companions use the original Vim scheme name, with Vim's `default` scheme
+exposed as `vim`:
 
 ```sh
 tless --theme desert data.json
@@ -79,7 +82,7 @@ themes:
     status-bar-foreground: light-cyan
 ```
 
-Custom themes inherit classic styles for omitted keys. Theme keys include
+Custom themes inherit the default styles for omitted keys. Theme keys include
 `document-foreground`, `document-background`, `null`, `boolean`, `number`,
 `string`, `container-empty`, `object-key`, `object-key-focused`, `array-index`,
 `punctuation`, `punctuation-comma-trailing`, `container-delimiter`,

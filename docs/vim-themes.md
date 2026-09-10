@@ -21,6 +21,9 @@ tless --theme desert data.json
 tless --theme peachpuff data.json
 ```
 
+The `vim` companion is based on Vim's `default.vim`; tless's own `default`
+theme is a separate palette.
+
 ![Preview of all 28 Vim companion palettes](vim-themes.svg)
 
 ## Audit method
@@ -59,7 +62,7 @@ RGB values; a terminal may customize indices 0–15.
 | blue | `blue` | dark | 220/18 | 87 | 250 |
 | catppuccin | `catppuccin` | dark | 189/233 | 114 | 181 |
 | darkblue | `darkblue` | dark | 252/17 | 217 | 123 |
-| default | `default` | dark | 7/0 | 13 | 11 |
+| default | `vim` | dark | 7/0 | 13 | 11 |
 | delek | `delek` | light | 16/231 | 40 | 30 |
 | desert | `desert` | dark | 231/236 | 217 | 120 |
 | elflord | `elflord` | dark | 51/16 | 201 | 87 |
@@ -156,7 +159,7 @@ okf validate docs/
 ```
 
 The tests check palette colors, background resets, CLI names, config precedence,
-and focus/search distinctions across every companion. Original Classic/Cyan
+and focus/search distinctions across every companion. Original default/Cyan
 rendering tests remain in place.
 
 ## Attribution

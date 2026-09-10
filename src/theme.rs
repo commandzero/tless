@@ -5,16 +5,18 @@ use clap::ValueEnum;
 #[cfg(feature = "colorscheme")]
 mod vim;
 
-use crate::terminal::{
-    Color, Style, BLUE, GREEN, LIGHT_BLACK, LIGHT_BLUE, MAGENTA, RED, WHITE, YELLOW,
-};
 #[cfg(feature = "colorscheme")]
-use crate::terminal::{CYAN, LIGHT_CYAN, LIGHT_YELLOW};
+use crate::terminal::LIGHT_BLUE;
+use crate::terminal::{
+    Color, Style, BLUE, CYAN, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, MAGENTA, RED, WHITE,
+    YELLOW,
+};
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum ThemeName {
     #[default]
-    Classic,
+    #[value(name = "default", alias("classic"))]
+    Default,
     #[cfg(feature = "colorscheme")]
     Cyan,
     #[cfg(feature = "colorscheme")]
@@ -27,7 +29,7 @@ pub enum ThemeName {
     #[value(name = "darkblue")]
     VimDarkblue,
     #[cfg(feature = "colorscheme")]
-    #[value(name = "default")]
+    #[value(name = "vim")]
     VimDefault,
     #[cfg(feature = "colorscheme")]
     #[value(name = "delek")]
@@ -315,12 +317,20 @@ impl Theme {
     }
 
     pub fn style(&self, role: StyleRole, state: StyleState) -> Style {
-        let search = if state.context == DisplayContext::Preview
-            && state.search == SearchState::CurrentMatch
-        {
-            SearchState::Match
-        } else {
-            state.search
+        let search = {
+            #[cfg(feature = "colorscheme")]
+            if state.context == DisplayContext::Preview
+                && state.search == SearchState::CurrentMatch
+                && self.name != ThemeName::Default
+            {
+                SearchState::Match
+            } else {
+                state.search
+            }
+            #[cfg(not(feature = "colorscheme"))]
+            {
+                state.search
+            }
         };
 
         #[cfg(feature = "colorscheme")]
@@ -510,14 +520,13 @@ impl Theme {
             StyleRole::Document => self.document_style(),
             StyleRole::JsonValue(kind) => color(self.json_value_color(kind)),
             StyleRole::ObjectKey => color(match self.legacy_name() {
-                LegacyTheme::Classic => LIGHT_BLUE,
+                LegacyTheme::Classic => CYAN,
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => CYAN,
             }),
-            StyleRole::ArrayIndex | StyleRole::LineNumber | StyleRole::Ellipsis => Style {
-                dimmed: true,
-                ..Style::default()
-            },
+            StyleRole::ArrayIndex | StyleRole::LineNumber | StyleRole::Ellipsis => {
+                color(LIGHT_BLACK)
+            }
             StyleRole::Punctuation | StyleRole::StatusText => Style::default(),
             StyleRole::PrimitiveTrailingComma => match self.legacy_name() {
                 LegacyTheme::Classic => Style::default(),
@@ -528,26 +537,24 @@ impl Theme {
                 },
             },
             StyleRole::ContainerDelimiter => match self.legacy_name() {
-                LegacyTheme::Classic => Style::default(),
+                LegacyTheme::Classic => color(LIGHT_BLACK),
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => Style {
                     dimmed: true,
                     ..Style::default()
                 },
             },
-            StyleRole::PreviewText => Style {
-                dimmed: true,
-                ..Style::default()
-            },
+            StyleRole::PreviewText => color(LIGHT_BLACK),
             StyleRole::PreviewCount | StyleRole::EmptyRowMarker => color(LIGHT_BLACK),
             StyleRole::TruncationIndicator => color(LIGHT_BLACK),
             StyleRole::StatusBar => Style {
-                inverted: true,
+                fg: crate::terminal::BLACK,
+                bg: LIGHT_BLACK,
                 ..Style::default()
             },
             StyleRole::StatusPathBase => Style {
+                fg: WHITE,
                 bg: LIGHT_BLACK,
-                inverted: true,
                 ..Style::default()
             },
             StyleRole::Message(severity) => color(match severity {
@@ -560,10 +567,10 @@ impl Theme {
 
     fn json_value_color(&self, kind: JsonValueKind) -> Color {
         match (self.legacy_name(), kind) {
-            (LegacyTheme::Classic, JsonValueKind::Null) => LIGHT_BLACK,
+            (LegacyTheme::Classic, JsonValueKind::Null) => WHITE,
             #[cfg(feature = "colorscheme")]
             (LegacyTheme::Cyan, JsonValueKind::Null) => LIGHT_BLUE,
-            (LegacyTheme::Classic, JsonValueKind::Boolean) => YELLOW,
+            (LegacyTheme::Classic, JsonValueKind::Boolean) => BLUE,
             #[cfg(feature = "colorscheme")]
             (LegacyTheme::Cyan, JsonValueKind::Boolean) => MAGENTA,
             (_, JsonValueKind::Number) => MAGENTA,
@@ -579,12 +586,18 @@ impl Theme {
     fn apply_focus(&self, role: StyleRole, focus: FocusState, style: Style) -> Style {
         match (role, focus) {
             (_, FocusState::None) => style,
+            (StyleRole::JsonValue(_), FocusState::Row) => match self.legacy_name() {
+                LegacyTheme::Classic => Style {
+                    fg: style.fg.bright(),
+                    ..style
+                },
+                #[cfg(feature = "colorscheme")]
+                LegacyTheme::Cyan => style,
+            },
             (StyleRole::ObjectKey, FocusState::Row) => match self.legacy_name() {
                 LegacyTheme::Classic => Style {
-                    bg: BLUE,
-                    inverted: true,
-                    bold: true,
-                    ..Style::default()
+                    fg: LIGHT_CYAN,
+                    ..style
                 },
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => Style {
@@ -592,17 +605,28 @@ impl Theme {
                     ..Style::default()
                 },
             },
-            (StyleRole::ArrayIndex, FocusState::Row) => Style {
-                inverted: true,
-                bold: true,
-                ..Style::default()
+            (StyleRole::ArrayIndex, FocusState::Row) => match self.legacy_name() {
+                LegacyTheme::Classic => Style { fg: WHITE, ..style },
+                #[cfg(feature = "colorscheme")]
+                LegacyTheme::Cyan => Style {
+                    inverted: true,
+                    bold: true,
+                    ..Style::default()
+                },
             },
-            (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer) => {
+            (StyleRole::Punctuation | StyleRole::PrimitiveTrailingComma, FocusState::Row) => {
                 match self.legacy_name() {
                     LegacyTheme::Classic => Style {
-                        bold: true,
-                        ..Style::default()
+                        fg: crate::terminal::LIGHT_WHITE,
+                        ..style
                     },
+                    #[cfg(feature = "colorscheme")]
+                    LegacyTheme::Cyan => style,
+                }
+            }
+            (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer) => {
+                match self.legacy_name() {
+                    LegacyTheme::Classic => Style { fg: WHITE, ..style },
                     #[cfg(feature = "colorscheme")]
                     LegacyTheme::Cyan => Style {
                         fg: YELLOW,
@@ -610,38 +634,47 @@ impl Theme {
                     },
                 }
             }
-            (StyleRole::LineNumber, FocusState::Row) => Style {
-                fg: YELLOW,
-                ..Style::default()
+            (StyleRole::LineNumber, FocusState::Row) => match self.legacy_name() {
+                LegacyTheme::Classic => Style { fg: WHITE, ..style },
+                #[cfg(feature = "colorscheme")]
+                LegacyTheme::Cyan => Style {
+                    fg: YELLOW,
+                    ..Style::default()
+                },
             },
-            (StyleRole::TruncationIndicator, FocusState::Row) => Style {
-                bold: true,
-                ..Style::default()
+            (StyleRole::TruncationIndicator, FocusState::Row) => match self.legacy_name() {
+                LegacyTheme::Classic => Style { fg: WHITE, ..style },
+                #[cfg(feature = "colorscheme")]
+                LegacyTheme::Cyan => Style {
+                    bold: true,
+                    ..Style::default()
+                },
             },
             _ => style,
         }
     }
 
     fn search_match_style(&self, context: DisplayContext) -> Style {
-        if context == DisplayContext::Preview {
-            Style {
+        let _ = context;
+        #[cfg(feature = "colorscheme")]
+        if context == DisplayContext::Preview && self.name == ThemeName::Cyan {
+            return Style {
                 fg: LIGHT_BLACK,
-                inverted: self.legacy_name() == LegacyTheme::Classic,
                 ..Style::default()
-            }
-        } else {
-            Style {
-                fg: YELLOW,
-                ..Style::default()
-            }
+            };
+        }
+        Style {
+            fg: YELLOW,
+            underlined: true,
+            ..Style::default()
         }
     }
 
     fn current_match_style(&self) -> Style {
         match self.legacy_name() {
             LegacyTheme::Classic => Style {
-                inverted: true,
-                bold: true,
+                fg: LIGHT_YELLOW,
+                underlined: true,
                 ..Style::default()
             },
             #[cfg(feature = "colorscheme")]
@@ -663,13 +696,15 @@ enum LegacyTheme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::built_in(ThemeName::Classic)
+        Self::built_in(ThemeName::Default)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "colorscheme")]
+    use crate::terminal::LIGHT_WHITE;
 
     fn fg(color: Color) -> Style {
         Style {
@@ -748,13 +783,13 @@ mod tests {
     }
 
     #[test]
-    fn classic_json_palette_matches_main() {
+    fn default_json_palette_matches_main() {
         let theme = Theme::default();
         let state = StyleState::main();
 
         for (kind, expected) in [
-            (JsonValueKind::Null, LIGHT_BLACK),
-            (JsonValueKind::Boolean, YELLOW),
+            (JsonValueKind::Null, WHITE),
+            (JsonValueKind::Boolean, BLUE),
             (JsonValueKind::Number, MAGENTA),
             (JsonValueKind::String, GREEN),
             (JsonValueKind::EmptyObject, WHITE),
@@ -771,12 +806,7 @@ mod tests {
             .with_color(ThemeColor::DocumentForeground, Color::C256(252))
             .with_color(ThemeColor::DocumentBackground, Color::C256(17));
         let state = StyleState::main();
-        for role in [
-            StyleRole::Document,
-            StyleRole::Punctuation,
-            StyleRole::ContainerDelimiter,
-            StyleRole::LineNumber,
-        ] {
+        for role in [StyleRole::Document, StyleRole::Punctuation] {
             let style = theme.style(role, state);
             assert_eq!(style.fg, Color::C256(252));
             assert_eq!(style.bg, Color::C256(17));
@@ -790,6 +820,8 @@ mod tests {
         for role in [
             StyleRole::ObjectKey,
             StyleRole::JsonValue(JsonValueKind::String),
+            StyleRole::ContainerDelimiter,
+            StyleRole::LineNumber,
             StyleRole::PreviewText,
             StyleRole::EmptyRowMarker,
         ] {
@@ -818,62 +850,39 @@ mod tests {
         assert_eq!(style.fg, Color::C256(164));
         assert_eq!(style.bg, Color::C256(231));
         assert!(!style.inverted);
-        assert!(style.bold);
+        assert!(!style.bold);
     }
 
     #[test]
-    fn classic_base_roles_match_main() {
+    fn default_base_roles_match_main() {
         let theme = Theme::default();
         let state = StyleState::main();
 
         for (role, expected) in [
-            (StyleRole::ObjectKey, fg(LIGHT_BLUE)),
-            (
-                StyleRole::ArrayIndex,
-                Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            ),
+            (StyleRole::ObjectKey, fg(CYAN)),
+            (StyleRole::ArrayIndex, fg(LIGHT_BLACK)),
             (StyleRole::Punctuation, Style::default()),
             (StyleRole::PrimitiveTrailingComma, Style::default()),
-            (StyleRole::ContainerDelimiter, Style::default()),
-            (
-                StyleRole::Ellipsis,
-                Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            ),
-            (
-                StyleRole::PreviewText,
-                Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            ),
+            (StyleRole::ContainerDelimiter, fg(LIGHT_BLACK)),
+            (StyleRole::Ellipsis, fg(LIGHT_BLACK)),
+            (StyleRole::PreviewText, fg(LIGHT_BLACK)),
             (StyleRole::PreviewCount, fg(LIGHT_BLACK)),
-            (
-                StyleRole::LineNumber,
-                Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            ),
+            (StyleRole::LineNumber, fg(LIGHT_BLACK)),
             (StyleRole::EmptyRowMarker, fg(LIGHT_BLACK)),
             (StyleRole::TruncationIndicator, fg(LIGHT_BLACK)),
             (
                 StyleRole::StatusBar,
                 Style {
-                    inverted: true,
+                    fg: crate::terminal::BLACK,
+                    bg: LIGHT_BLACK,
                     ..Style::default()
                 },
             ),
             (
                 StyleRole::StatusPathBase,
                 Style {
+                    fg: WHITE,
                     bg: LIGHT_BLACK,
-                    inverted: true,
                     ..Style::default()
                 },
             ),
@@ -889,7 +898,7 @@ mod tests {
     #[test]
     #[cfg(feature = "colorscheme")]
     fn cyan_palette_contains_only_specified_base_differences() {
-        let classic = Theme::built_in(ThemeName::Classic);
+        let default_theme = Theme::built_in(ThemeName::Default);
         let cyan = Theme::built_in(ThemeName::Cyan);
         let state = StyleState::main();
 
@@ -918,22 +927,58 @@ mod tests {
             StyleRole::StatusBar,
             StyleRole::Message(MessageSeverity::Error),
         ] {
-            assert_eq!(cyan.style(role, state), classic.style(role, state));
+            assert_eq!(cyan.style(role, state), default_theme.style(role, state));
         }
     }
 
     #[test]
     #[cfg(feature = "colorscheme")]
     fn focus_and_search_precedence_is_explicit() {
-        let classic = Theme::default();
+        let default_theme = Theme::default();
         let cyan = Theme::built_in(ThemeName::Cyan);
 
         assert_eq!(
-            classic.style(StyleRole::ObjectKey, StyleState::main().focused()),
+            default_theme.style(StyleRole::ObjectKey, StyleState::main().focused()),
+            fg(LIGHT_CYAN)
+        );
+        for (kind, expected) in [
+            (JsonValueKind::String, Color::C16(10)),
+            (JsonValueKind::Number, Color::C16(13)),
+            (JsonValueKind::Boolean, LIGHT_BLUE),
+            (JsonValueKind::Null, LIGHT_WHITE),
+        ] {
+            assert_eq!(
+                default_theme.style(StyleRole::JsonValue(kind), StyleState::main().focused()),
+                fg(expected)
+            );
+        }
+        assert_eq!(
+            default_theme.style(StyleRole::Punctuation, StyleState::main().focused()),
+            fg(LIGHT_WHITE)
+        );
+        assert_eq!(
+            default_theme.style(
+                StyleRole::PrimitiveTrailingComma,
+                StyleState::main().focused()
+            ),
+            fg(LIGHT_WHITE)
+        );
+        assert_eq!(
+            default_theme.style(StyleRole::ContainerDelimiter, StyleState::main().focused()),
+            fg(WHITE)
+        );
+        assert_eq!(
+            default_theme.style(StyleRole::LineNumber, StyleState::main().focused()),
+            fg(WHITE)
+        );
+        assert_eq!(
+            default_theme.style(
+                StyleRole::JsonValue(JsonValueKind::String),
+                StyleState::main().search(SearchState::Match)
+            ),
             Style {
-                bg: BLUE,
-                inverted: true,
-                bold: true,
+                fg: YELLOW,
+                underlined: true,
                 ..Style::default()
             }
         );
@@ -942,15 +987,15 @@ mod tests {
             fg(LIGHT_CYAN)
         );
         assert_eq!(
-            classic.style(
+            default_theme.style(
                 StyleRole::ObjectKey,
                 StyleState::main()
                     .focused()
                     .search(SearchState::CurrentMatch),
             ),
             Style {
-                inverted: true,
-                bold: true,
+                fg: LIGHT_YELLOW,
+                underlined: true,
                 ..Style::default()
             }
         );
@@ -971,16 +1016,16 @@ mod tests {
 
     #[test]
     #[cfg(feature = "colorscheme")]
-    fn preview_reduces_current_match_to_ordinary_match() {
-        let classic = Theme::default();
+    fn preview_vim_match_reduces_current_match_to_ordinary_match() {
+        let default_theme = Theme::default();
         let cyan = Theme::built_in(ThemeName::Cyan);
         let state = StyleState::preview().search(SearchState::CurrentMatch);
 
         assert_eq!(
-            classic.style(StyleRole::PreviewText, state),
+            default_theme.style(StyleRole::PreviewText, state),
             Style {
-                fg: LIGHT_BLACK,
-                inverted: true,
+                fg: LIGHT_YELLOW,
+                underlined: true,
                 ..Style::default()
             }
         );
@@ -990,37 +1035,35 @@ mod tests {
     #[test]
     #[cfg(feature = "colorscheme")]
     fn paired_container_focus_uses_theme_delimiter_style() {
-        let classic = Theme::default();
+        let default_theme = Theme::default();
         let cyan = Theme::built_in(ThemeName::Cyan);
         let state = StyleState::main().paired_container();
 
         assert_eq!(
-            classic.style(StyleRole::ContainerDelimiter, state),
-            Style {
-                bold: true,
-                ..Style::default()
-            }
+            default_theme.style(StyleRole::ContainerDelimiter, state),
+            fg(WHITE)
         );
         assert_eq!(cyan.style(StyleRole::ContainerDelimiter, state), fg(YELLOW));
     }
 
     #[test]
-    fn status_roles_preserve_classic_styles() {
+    fn status_roles_preserve_default_styles() {
         let theme = Theme::default();
         let state = StyleState::main();
 
         assert_eq!(
             theme.style(StyleRole::StatusBar, state),
             Style {
-                inverted: true,
+                fg: crate::terminal::BLACK,
+                bg: LIGHT_BLACK,
                 ..Style::default()
             }
         );
         assert_eq!(
             theme.style(StyleRole::StatusPathBase, state),
             Style {
+                fg: WHITE,
                 bg: LIGHT_BLACK,
-                inverted: true,
                 ..Style::default()
             }
         );
@@ -1045,12 +1088,15 @@ mod tests {
     fn preview_search_override_uses_context_for_every_role() {
         let theme = Theme::default()
             .with_color(ThemeColor::SearchMatchPreview, BLUE)
-            .with_color(ThemeColor::SearchMatch, RED);
+            .with_color(ThemeColor::SearchMatch, RED)
+            .with_color(ThemeColor::SearchMatchCurrent, GREEN);
         for role in [
             StyleRole::PreviewText,
             StyleRole::ObjectKey,
             StyleRole::Ellipsis,
         ] {
+            let state = StyleState::preview().search(SearchState::Match);
+            assert_eq!(theme.style(role, state).fg, BLUE);
             assert_eq!(
                 theme
                     .style(
@@ -1058,13 +1104,7 @@ mod tests {
                         StyleState::preview().search(SearchState::CurrentMatch)
                     )
                     .fg,
-                BLUE
-            );
-            assert_eq!(
-                theme
-                    .style(role, StyleState::main().search(SearchState::Match))
-                    .fg,
-                RED
+                GREEN
             );
         }
     }

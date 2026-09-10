@@ -1,7 +1,7 @@
 # Requires tless built with --features colorscheme.
 # Copy to $XDG_CONFIG_HOME/tless/config.yaml, or ~/.config/tless/config.yaml
 # when XDG_CONFIG_HOME is unset. Select with --theme <name> or :colorscheme <name>.
-# Unlisted styles in custom themes use classic defaults.
+# Unlisted styles in custom themes use tless's default styles.
 colorscheme: navy
 themes:
   navy:

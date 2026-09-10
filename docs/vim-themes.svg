@@ -41,7 +41,7 @@
 <rect x="653" y="240" width="288" height="29" fill="#d0d0d0"/>
 <text x="664" y="259" fill="#00005f" font-size="13">input.name    sample.json</text>
 <rect x="966" y="90" width="290" height="180" rx="5" fill="#000000" stroke="#777"/>
-<text x="978" y="116" fill="#c0c0c0" font-size="16">default</text>
+<text x="978" y="116" fill="#c0c0c0" font-size="16">vim</text>
 <rect x="978" y="133" width="266" height="23" fill="#000000"/>
 <text x="982" y="149" fill="#ffff00" font-size="13" font-weight="bold" text-decoration="none">name: &quot;sample&quot;</text>
 <rect x="978" y="157" width="266" height="23" fill="#000000"/>

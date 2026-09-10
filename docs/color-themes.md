@@ -1,19 +1,19 @@
 ---
 type: Design
 title: Color themes
-description: Original Classic and Cyan theme design and implementation checklist.
+description: Original default and Cyan theme design and implementation checklist.
 generated: { by: codex, at: 2026-09-07T06:15:02Z }
 ---
 
 # Color themes
 
-This document records the original Classic/Cyan design and the later
+This document records the original default/Cyan design and the later
 configuration additions. The [Vim companion palettes](vim-themes.md) add
 256-color built-ins and document backgrounds.
 
 Status: implemented. Theme configuration is enabled by the `colorscheme`
-feature; the default build keeps the classic appearance without configuration
-or theme options.
+feature, which is included in the default build. A `--no-default-features`
+build keeps the default appearance without configuration or theme options.
 
 ## Problem
 
@@ -56,12 +56,12 @@ format and terminal color representation.
 
 ## User interface
 
-Add the opt-in `colorscheme` feature and a theme name option:
+Add the `colorscheme` feature and a theme name option:
 
 ```rust
 #[cfg(feature = "colorscheme")]
 pub enum ThemeName {
-    Classic,
+    Default,
     Cyan,
 }
 
@@ -71,7 +71,7 @@ pub struct Opt {
 }
 ```
 
-`classic` reproduces the appearance on `main`. `cyan` contains the intended
+`default` reproduces the appearance on `main`. `cyan` contains the intended
 palette changes from the current branch. `Config` resolves built-in and named
 themes and reports unknown names with the available choices.
 
@@ -190,27 +190,32 @@ remain rendering responsibilities.
 
 ## Palette requirements
 
-`classic` must match `main` exactly. This protects existing users and gives the
+`default` must match `main` exactly. This protects existing users and gives the
 migration a stable oracle.
 
 `cyan` applies the branch's intended differences:
 
-| Role or state | Classic | Cyan |
+| Role or state | Default | Cyan |
 | --- | --- | --- |
-| Null | light black | light blue |
-| Boolean | yellow | magenta |
+| Null | white | light blue |
+| Boolean | blue | magenta |
 | Number | magenta | magenta |
 | String | green | green |
 | Empty object or array | white | light black |
-| Object key | light blue | cyan |
-| Focused object key | blue background, inverted, bold | light cyan |
+| Object key | cyan | cyan |
+| Focused object key | light cyan | light cyan |
 | Primitive trailing comma | default | dimmed |
-| Unfocused container delimiter | default | dimmed |
-| Focused or paired container delimiter | bold | yellow |
-| Search match in preview text | light black, inverted | light black |
-| Current search match | bold, inverted | light yellow, underlined |
+| Unfocused container delimiter | light black | dimmed |
+| Focused or paired container delimiter | white | yellow |
+| Warning annotation | yellow, dimmed | yellow, dimmed |
+| Collapsed count or preview text | light black | light black |
+| Line number | light black; white when focused | light black; yellow when focused |
+| Status/path bar | black on light black | black on light black |
+| Filename | white on light black | white on light black |
+| Search match in preview text | yellow, underlined | light black |
+| Current search match | light yellow, underlined | light yellow, underlined |
 
-All roles not listed in the table initially inherit their `classic` mapping.
+All roles not listed in the table initially inherit their `default` mapping.
 Any further difference must be added to this table before implementation.
 
 ## Terminal underline behavior
@@ -226,10 +231,10 @@ Any further difference must be added to this table before implementation.
 
 ## Acceptance criteria
 
-- `tless --theme classic` renders the same style transitions as `main` for a
+- `tless --theme default` renders the same style transitions as `main` for a
   representative document.
 - `tless --theme cyan` renders every difference in the palette table.
-- Running without `--theme` selects the configured `colorscheme`, or `classic`.
+- Running without `--theme` selects the configured `colorscheme`, or `default`.
 - An unknown theme name reports the available built-in and configured names.
 - No rendering module refers directly to terminal color constants. Direct
   colors are limited to terminal color definitions and built-in theme data.
@@ -245,7 +250,7 @@ Any further difference must be added to this table before implementation.
 - Add `AnsiTerminal` transition tests for enabling and disabling underline,
   including transitions to bold and dimmed text.
 - Extend `VisibleEscapesTerminal` with observable underline state.
-- Run existing line-printer tests once with an explicitly selected `classic`
+- Run existing line-printer tests once with an explicitly selected `default`
   theme. Add focused tests for the `cyan` differences rather than duplicating
   the entire suite.
 - Add an option-parsing test for each valid theme and one invalid name.
@@ -259,4 +264,4 @@ Any further difference must be added to this table before implementation.
    highlighting.
 5. Replace direct styles with semantic lookups, one rendering area at a time.
 6. Remove obsolete constants, mappings, and stale styling documentation.
-7. Run the full test suite and compare `classic` output with `main`.
+7. Run the full test suite and compare `default` output with `main`.

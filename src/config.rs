@@ -29,7 +29,7 @@ impl Config {
         self.resolve(
             requested
                 .or(self.colorscheme.as_deref())
-                .unwrap_or("classic"),
+                .unwrap_or("default"),
         )
     }
 
@@ -40,14 +40,14 @@ impl Config {
             .find(|variant| {
                 variant
                     .to_possible_value()
-                    .is_some_and(|value| value.get_name() == name)
+                    .is_some_and(|value| value.matches(name, false))
             })
-            .or_else(|| self.themes.contains_key(name).then_some(ThemeName::Classic))
+            .or_else(|| self.themes.contains_key(name).then_some(ThemeName::Default))
             .ok_or_else(|| {
                 let mut names: Vec<String> = ThemeName::value_variants()
                     .iter()
                     .filter_map(|variant| variant.to_possible_value())
-                    .map(|value| value.get_name().to_string())
+                    .map(|value| value.get_name().to_owned())
                     .collect();
                 names.extend(self.themes.keys().cloned());
                 names.sort_unstable();
@@ -227,7 +227,7 @@ mod tests {
             config.resolve_startup(None).unwrap(),
             config.resolve("navy").unwrap()
         );
-        for name in ["classic", "cyan", "delek", "navy"] {
+        for name in ["default", "classic", "cyan", "delek", "navy"] {
             assert_eq!(
                 config.resolve_startup(Some(name)).unwrap(),
                 config.resolve(name).unwrap()
@@ -289,10 +289,20 @@ mod tests {
         let config =
             Config::parse("themes: {navy: {string: cyan}, sunset: {string: red}}").unwrap();
         let error = config.resolve("missing").unwrap_err();
-        assert!(error.contains("classic"));
+        assert!(error.contains("default"));
+        assert!(error.contains("vim"));
         assert!(error.contains("delek"));
         assert!(error.contains("navy"));
         assert!(error.contains("sunset"));
+    }
+
+    #[test]
+    fn default_and_vim_are_distinct_built_ins() {
+        let default = Config::default().resolve("default").unwrap();
+        let vim = Config::default().resolve("vim").unwrap();
+        assert_eq!(default, Theme::default());
+        assert_eq!(vim.document_style().fg, Color::C256(7));
+        assert_eq!(vim.document_style().bg, Color::C256(0));
     }
 
     #[test]

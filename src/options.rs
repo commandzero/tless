@@ -96,14 +96,16 @@ mod colorscheme_tests {
     }
 
     #[test]
-    fn accepts_named_theme() {
-        assert_eq!(
-            Opt::try_parse_from(["tless", "--theme", "delek"])
-                .unwrap()
-                .theme
-                .as_deref(),
-            Some("delek")
-        );
+    fn accepts_named_themes() {
+        for name in ["default", "vim", "delek"] {
+            assert_eq!(
+                Opt::try_parse_from(["tless", "--theme", name])
+                    .unwrap()
+                    .theme
+                    .as_deref(),
+                Some(name)
+            );
+        }
     }
 }
 
