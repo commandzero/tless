@@ -26,7 +26,7 @@ Rendering a hidden viewer or stripping its ANSI output is unsuitable. Display ex
 
 ### Reuse TOON export exactly
 
-Delegate TOON encoding through `src/toon.rs`. The pinned published encoder remains authoritative, including known invalid empty-object-array output. Do not silently repair it, introduce a second encoder, or claim that successful encoding proves validity or fidelity for every value. CLI regressions should cover both ordinary valid output and the documented exception. Fixing the upstream codec limitation is separate work.
+Delegate TOON encoding through `src/toon.rs`. For YAML pipeline input, first serialize decoded values as safe JSON and rebuild the adapter input so display backing text cannot corrupt quotes or escapes. This leaves interactive export commands unchanged. The pinned published encoder remains authoritative, including known invalid empty-object-array output. Do not silently repair it, introduce a second encoder, or claim that successful encoding proves validity or fidelity for every value. CLI regressions should cover both ordinary valid output and the documented exception. Fixing the upstream codec limitation is separate work.
 
 ### Serialize JSON and YAML from parsed values
 

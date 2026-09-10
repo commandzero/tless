@@ -26,6 +26,7 @@ mod jsonstringunescaper;
 mod jsontokenizer;
 mod lineprinter;
 mod options;
+mod output;
 mod screenwriter;
 mod search;
 mod terminal;
@@ -60,7 +61,7 @@ fn main() {
     };
 
     if !isatty::stdout_isatty() {
-        if let Err(error) = print_pretty_printed_input(input_string, data_format) {
+        if let Err(error) = print_output(input_string, data_format, opt.output) {
             eprintln!("{}", error);
             std::process::exit(1);
         }
@@ -89,21 +90,12 @@ fn main() {
     app.run(Box::new(input::get_input()));
 }
 
-fn print_pretty_printed_input(input: String, data_format: DataFormat) -> Result<(), String> {
-    // Don't try to pretty print YAML input; just pass it through.
-    let pass_through = match data_format {
-        DataFormat::Yaml => true,
-        #[cfg(feature = "toon")]
-        DataFormat::Toon => true,
-        DataFormat::Json => false,
-    };
-    let output = if pass_through {
-        input
-    } else {
-        flatjson::parse_top_level_json(input)
-            .map_err(|error| format!("Unable to parse input: {error:?}"))?
-            .pretty_printed()
-    };
+fn print_output(
+    input: String,
+    data_format: DataFormat,
+    output_format: options::OutputFormat,
+) -> Result<(), String> {
+    let output = output::serialize(input, data_format, output_format)?;
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
     stdout

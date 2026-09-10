@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T06:18:16Z }
+generated: { by: codex/gpt-6, at: 2026-09-10T22:25:27Z }
 ---
 
 # TOON acceptance checks
@@ -29,7 +29,8 @@ The known large-number round-trip failure has an explicit string-result assertio
 | Nesting bounds, empty input, CRLF, BOM rejection | `input_depth_follows_published_codec_boundary`, `enforces_container_depth_and_accepts_blank_lines`, `accepts_empty_input_and_crlf_but_rejects_bom` |
 | Focused export, unsupported YAML, multiple roots | `focused_export_includes_collapsed_children_and_normalizes_closing_rows`, `unsupported_yaml_does_not_block_a_supported_focused_value`, `export_depth_is_relative_to_the_selected_subtree` |
 | Navigation, search, paths, collapse/expand | `decoded_navigation_search_and_paths_match_json_with_escaped_unicode` |
-| Format options, disabled builds, input limits, byte-preserving pipelines | `tests/toon_cli.rs` |
+| Format options, disabled builds, input limits, parsed pipelines | `tests/toon_cli.rs` |
+| Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
 
 Tests use isolated pseudoterminals and disposable files. They do not write to the
@@ -57,8 +58,8 @@ Record the actual host and results in the release PR.
    The shared writer propagates write and flush errors. Standard `File::flush`
    has no buffer to flush; no separate failing-file-flush test is claimed.
 5. Open malformed TOON interactively. Confirm a useful parse diagnostic and
-   normal terminal restoration. Non-terminal TOON pass-through must preserve
-   malformed input bytes without entering the decoder.
+   normal terminal restoration. Non-terminal TOON output must reject malformed
+   input with status 1, a stderr diagnostic, and an empty stdout payload.
 
 ## Document-view acceptance
 

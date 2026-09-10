@@ -32,6 +32,15 @@ mod terminal_commands {
     }
 
     #[test]
+    fn output_selection_leaves_terminal_view_and_json_print_unchanged() {
+        for option in ["--output=json", "--output=yaml", "--output=toon"] {
+            let output = session_with_format(r#"{"a":1}"#, "lpp q", Some(option));
+            assert!(strip_styles(&output).contains("a: 1"));
+            assert!(output.contains("1\r\n\r\nPress any key to continue."));
+        }
+    }
+
+    #[test]
     fn terminal_peer_answers_cursor_requests_across_read_boundaries() {
         let request = b"prefix\x1b[6nsuffix";
         for split in 0..=request.len() {
@@ -486,7 +495,7 @@ fn toon_extension_is_detected_and_explicit_json_overrides_it() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("without TOON support"));
     }
     assert_eq!(
-        run(&["--json", path.to_str().unwrap()], b"").stdout,
+        run(&["--json", "-o", "json", path.to_str().unwrap()], b"").stdout,
         b"42\n"
     );
     std::fs::remove_file(path).unwrap();
@@ -494,15 +503,12 @@ fn toon_extension_is_detected_and_explicit_json_overrides_it() {
 
 #[cfg(feature = "toon")]
 #[test]
-fn toon_pipeline_passes_through_without_validation() {
+fn toon_pipeline_validates_before_output() {
     let input = "\u{feff}items[99]: a,b\r\n  \r\n".as_bytes();
     let output = run(&["--toon"], input);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(output.stdout, input);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Unable to parse input"));
 }
 
 #[cfg(feature = "toon")]
@@ -556,8 +562,12 @@ fn input_limit_applies_to_stdin_and_files_without_partial_output() {
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("input exceeds"));
-    assert!(run(&["--max-input-bytes", "3"], b"123").status.success());
-    assert!(run(&["--max-input-bytes", "0"], b"123").status.success());
+    assert!(run(&["-o", "json", "--max-input-bytes", "3"], b"123")
+        .status
+        .success());
+    assert!(run(&["-o", "json", "--max-input-bytes", "0"], b"123")
+        .status
+        .success());
     let path = std::env::temp_dir().join(format!("tless-limit-{}.json", std::process::id()));
     std::fs::write(&path, b"123").unwrap();
     let output = run(&["--max-input-bytes", "2", path.to_str().unwrap()], b"");

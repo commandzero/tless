@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Document layout, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-09T22:49:34Z }
+generated: { by: codex/gpt-6, at: 2026-09-10T22:25:27Z }
 ---
 
 # TOON document view
@@ -148,7 +148,8 @@ counts, and previews are presentation annotations, not a new file format.
 Copy and print commands operate on the selected parsed value. Whole-document
 write commands operate on the parsed document. None serializes the screen.
 
-Existing JSON output stays JSON. Standard TOON export through `yt`, `pt`, and
+Interactive JSON commands stay JSON. Redirected stdout defaults to standard TOON;
+use `-o json` or `-o yaml` to select a different machine-output format. Standard TOON export through `yt`, `pt`, and
 `:wt` retains the [published codec's conversion behavior](toon-codec.md),
 including last-value-wins duplicates and possible numeric precision loss.
 Redirected stdout retains the [command-line contract](../README.md#command-line-contract).
