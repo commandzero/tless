@@ -72,13 +72,13 @@ Keys and table field names SHALL share a syntax category. Strings, numbers, bool
 
 ### Requirement: Collapse presentation
 
-Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Inline primitive arrays SHALL show `▸` by default; clicking their arrow or pressing Space SHALL expand them to multiline. Tabular rows SHALL NOT have collapse indicators or support row collapse; only their array parent SHALL be collapsible. Collapsing SHALL retain the container's header and replace multiline contents with a preview in document order. Complete inline primitive arrays with at most five elements that fit the terminal SHALL retain value syntax styling; other previews SHALL be subdued. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object SHALL show its immediate-entry count as `{N}`, such as `{1}` or `{7}`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
+Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Inline primitive arrays SHALL show `▸` by default; clicking their arrow or pressing Space SHALL expand them to multiline. Tabular rows SHALL NOT have collapse indicators or support row collapse; only their array parent SHALL be collapsible. Collapsing SHALL retain the container's header and replace multiline contents with a preview in document order. Complete inline primitive arrays with at most five elements that fit the terminal SHALL retain value syntax styling; other previews SHALL be subdued. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object SHALL show its immediate-entry count as `(N)`, such as `(1)` or `(7)`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
 
 #### Scenario: Object and array collapse
 
 - **WHEN** `owner` has 2 immediate fields and `tags` has 3 items, and both are collapsed
 - **THEN** their lines SHALL retain `owner:` and `tags[3]:`
-- **AND** only `owner` SHALL receive `{2}`
+- **AND** only `owner` SHALL receive `(2)`
 - **AND** object previews SHALL be subdued; a complete fitting inline primitive array SHALL retain value syntax styling
 
 #### Scenario: Tabular row collapse

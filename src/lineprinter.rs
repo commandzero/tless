@@ -324,7 +324,7 @@ mod tests {
         let projection = layout.project(&flat);
         let line = &projection[0].line;
         let fitted = fit_annotations(line, 50);
-        assert!(fitted.text.contains("{2}"));
+        assert!(fitted.text.contains("(2)"));
         assert!(fitted.text.contains("# WARN"));
         let render = |focus| {
             let mut terminal = VisibleEscapesTerminal::new(false, true);

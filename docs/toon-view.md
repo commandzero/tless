@@ -74,7 +74,7 @@ Tabular array rows have no collapse control and stay visible; only their array
 parent can be collapsed. Collapsing retains a container
 header and shows a subdued preview. Object fields use `; ` separators, such as
 `name: Ada; active: true`. Objects also show their immediate-entry
-count as `{N}`, such as `{7}` for seven entries. Counts, previews, and warnings
+count as `(N)`, such as `(7)` for seven entries. Counts, previews, and warnings
 remain subdued even on the selected line. Arrays keep the count already in their
 TOON header. A collapsed primitive array with at most five values keeps its
 value colors when the complete inline line fits the terminal, including after

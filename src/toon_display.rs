@@ -777,7 +777,7 @@ impl Layout {
                     line.owner = node;
                     if !flat[node].is_array() {
                         let count = info.entry_count;
-                        line.token(&format!(" {{{count}}}"), node, TokenRole::Count, None);
+                        line.token(&format!(" ({count})"), node, TokenRole::Count, None);
                     }
                     let mut messages: Vec<_> = self.own_warnings[node]
                         .iter()
