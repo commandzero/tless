@@ -92,6 +92,12 @@ YAML output SHALL serialize parsed roots as a YAML document stream, with `---` o
 - **WHEN** parsed data contains the strings `true` and `.inf`, a numeric infinity, and both numeric key `1` and string key `"1"`
 - **THEN** YAML output SHALL preserve these type distinctions through appropriate quoting and key syntax
 
+#### Scenario: Long and escape-heavy string keys
+
+- **WHEN** a parsed string mapping key exceeds YAML's implicit-key length limit after quoting and escaping
+- **THEN** YAML output SHALL use explicit key syntax and preserve the entire decoded key and its value
+- **AND** this SHALL apply to both JSON and YAML input
+
 ### Requirement: Feature availability
 
 JSON and YAML output SHALL be available in every build profile. Standard TOON output SHALL require the existing `toon` feature. All builds SHALL recognize the three output selector values. With non-terminal stdout, unavailable TOON output SHALL fail with status 1 and a diagnostic suggesting a TOON-enabled build or explicit JSON or YAML output. It SHALL NOT silently change the default format. TOON input availability SHALL remain unchanged.

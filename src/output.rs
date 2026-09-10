@@ -59,14 +59,16 @@ fn encode(document: &FlatJson, format: OutputFormat) -> Result<String, String> {
             output.push_str(&"  ".repeat(row.depth));
             if let Some(range) = &row.key_range {
                 match &row.key_value {
-                    Some(KeyValue::String(key)) => quote(&mut output, key, yaml),
+                    Some(KeyValue::String(key)) => quote_mapping_key(&mut output, key, yaml),
                     Some(key) if yaml => {
                         output.push_str("? ");
                         key_yaml(&mut output, key);
                         output.push(' ');
                     }
                     Some(_) => return Err("JSON output requires string mapping keys".to_owned()),
-                    None => quote(&mut output, &decode(&document.1[range.clone()])?, yaml),
+                    None => {
+                        quote_mapping_key(&mut output, &decode(&document.1[range.clone()])?, yaml)
+                    }
                 }
                 output.push_str(": ");
             }
@@ -114,6 +116,17 @@ fn encode(document: &FlatJson, format: OutputFormat) -> Result<String, String> {
 
 fn decode(raw: &str) -> Result<String, String> {
     unsafe_unescape_json_string(&raw[1..raw.len() - 1]).map_err(|e| e.to_string())
+}
+
+fn quote_mapping_key(output: &mut String, text: &str, yaml: bool) {
+    let start = output.len();
+    quote(output, text, yaml);
+    // YAML implicit keys are limited to 1024 source characters, including
+    // quotes and escape sequences. Explicit keys have no such length limit.
+    if yaml && output[start..].chars().count() > 1024 {
+        output.insert_str(start, "? ");
+        output.push(' ');
+    }
 }
 
 fn quote(output: &mut String, text: &str, yaml: bool) {

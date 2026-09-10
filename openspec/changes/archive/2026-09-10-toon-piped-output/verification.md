@@ -37,3 +37,9 @@ TOON still uses the pinned published encoder. Its duplicate-key normalization, n
 ## Synchronization review
 
 `piped-output` is a new capability. Reviewed all seven added requirements and their scenarios against the new main spec. Their bodies match exactly. The purpose is preserved; the main spec uses `## Requirements` rather than a delta-operation header. No existing capability is modified, removed, or renamed.
+
+## Long-key verification follow-up
+
+A subsequent verification found that string keys with more than 1024 emitted characters produced invalid YAML. The first failing ASCII case had 1023 key characters plus two quotes. The new `yaml_long_and_escaped_string_keys_round_trip` test reproduced the failure before the fix. The serializer now uses explicit key syntax when the quoted and escaped representation exceeds that limit.
+
+Regression cases cover 1021, 1022, 1023, 1024, and 1100 ASCII characters, escaped quotes and controls, and multibyte Unicode. Each runs through both JSON and explicit-key YAML input, reparses the emitted YAML, checks nested values and siblings, and compares conversion back to JSON. The added scenario is synchronized between the archived delta and the main spec. This closes the gap in the earlier verification.

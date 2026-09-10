@@ -121,6 +121,46 @@ fn yaml_preserves_typed_complex_keys_and_nonfinite_values() {
 }
 
 #[test]
+fn yaml_long_and_escaped_string_keys_round_trip() {
+    let mut keys: Vec<(String, String)> = [1021, 1022, 1023, 1024, 1100]
+        .iter()
+        .copied()
+        .map(|length| ("a".repeat(length), "a".repeat(length)))
+        .collect();
+    keys.extend([
+        ("\\\"".repeat(600), "\"".repeat(600)),
+        ("\\u0001".repeat(200), "\u{1}".repeat(200)),
+        ("é".repeat(600), "é".repeat(600)),
+    ]);
+    for (escaped, decoded) in keys {
+        for input_format in ["--json", "--yaml"] {
+            let key_prefix = if input_format == "--yaml" { "? " } else { "" };
+            let input = format!(
+                "{{\"outer\": {{{key_prefix}\"{escaped}\" : [1, {{\"ok\": true}}]}}, \"tail\": 2}}"
+            );
+            let output = success(&[input_format, "-o", "yaml"], &input);
+            let docs = yaml_rust::YamlLoader::load_from_str(&output).unwrap_or_else(|e| {
+                panic!(
+                    "{}; input {}, key length {}",
+                    e,
+                    input_format,
+                    decoded.chars().count()
+                )
+            });
+            assert_eq!(docs.len(), 1);
+            assert_eq!(docs[0]["outer"][decoded.as_str()][0].as_i64(), Some(1));
+            assert_eq!(
+                docs[0]["outer"][decoded.as_str()][1]["ok"].as_bool(),
+                Some(true)
+            );
+            assert_eq!(docs[0]["tail"].as_i64(), Some(2));
+            let json = success(&["--yaml", "-o", "json"], &output);
+            assert_eq!(json, success(&[input_format, "-o", "json"], &input));
+        }
+    }
+}
+
+#[test]
 fn file_detection_and_override_do_not_select_output() {
     let path = std::env::temp_dir().join(format!("tless-output-{}.yaml", std::process::id()));
     std::fs::write(&path, "a: 1").unwrap();
