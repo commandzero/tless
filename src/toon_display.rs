@@ -1194,23 +1194,58 @@ fn bounded_prefix(text: &str, limit: usize) -> &str {
     &text[..end]
 }
 
+fn truncate_preview(preview: &mut Preview, limit: usize) {
+    let end = bounded_prefix(&preview.text, limit).len();
+    preview.text.truncate(end);
+    for map in &mut preview.source_map {
+        map.display.end = map.display.end.min(end);
+    }
+    preview
+        .source_map
+        .retain(|map| map.display.start < map.display.end);
+}
+
+fn append_ellipsis(preview: &mut Preview, source: Option<Range<usize>>) {
+    const LIMIT: usize = 256;
+    const ELLIPSIS_LEN: usize = '…'.len_utf8();
+    truncate_preview(preview, LIMIT - ELLIPSIS_LEN);
+    let start = preview.text.len();
+    preview.text.push('…');
+    if let Some(source) = source {
+        preview.source_map.push(SourceMap {
+            source,
+            display: start..preview.text.len(),
+        });
+    }
+}
+
 fn preview_append(preview: &mut Preview, text: &str, source: Option<Range<usize>>) {
-    let remaining = 256usize.saturating_sub(preview.text.len());
+    const LIMIT: usize = 256;
+    const ELLIPSIS_LEN: usize = '…'.len_utf8();
+    let remaining = LIMIT.saturating_sub(preview.text.len());
     if remaining == 0 {
+        if !text.is_empty() {
+            append_ellipsis(preview, source);
+        }
         return;
     }
     let start = preview.text.len();
     let limit = if text.len() > remaining {
-        remaining.saturating_sub('…'.len_utf8())
+        (LIMIT - ELLIPSIS_LEN).saturating_sub(start)
     } else {
         remaining
     };
     let part = bounded_prefix(text, limit);
     preview.text.push_str(part);
-    if part.len() < text.len() && remaining >= '…'.len_utf8() {
-        preview.text.push('…');
-    }
-    if let Some(source) = source {
+    if part.len() < text.len() {
+        append_ellipsis(preview, None);
+        if let Some(source) = source {
+            preview.source_map.push(SourceMap {
+                source,
+                display: start.min(LIMIT - ELLIPSIS_LEN)..preview.text.len(),
+            });
+        }
+    } else if let Some(source) = source {
         preview.source_map.push(SourceMap {
             source,
             display: start..preview.text.len(),
@@ -1503,6 +1538,15 @@ mod tests {
         let visible = layout.project(&flat);
         assert!(visible[0].line.text.len() < 280);
         assert!(visible[0].line.text.ends_with('…'));
+    }
+
+    #[test]
+    fn bounded_preview_marks_truncation_with_little_room_left() {
+        let mut preview = Preview::default();
+        preview_append(&mut preview, &"x".repeat(254), None);
+        preview_append(&mut preview, "longer", None);
+        assert_eq!(preview.text.len(), 256);
+        assert!(preview.text.ends_with('…'));
     }
     #[test]
     fn mappings_and_collapse_restore() {
