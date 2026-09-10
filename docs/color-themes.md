@@ -2,7 +2,7 @@
 type: Design
 title: Color themes
 description: Original default and Cyan theme design and implementation checklist.
-generated: { by: codex, at: 2026-09-07T06:15:02Z }
+generated: { by: codex, at: 2026-09-10T21:13:08Z }
 ---
 
 # Color themes
@@ -26,6 +26,11 @@ Underline support is implemented in all terminal adapters. `AnsiTerminal`
 emits SGR 4 to enable underline and SGR 24 to disable it, preserving bold and
 dimmed state. Tests cover these transitions.
 
+Selected rows fill the complete terminal width with the theme's selection
+background, including indentation, spaces, and clipping markers. Themes without
+a distinct selection background keep their existing appearance. Search matches
+retain their theme styles over the row background.
+
 ## Goals
 
 - Let users select a built-in or configured color theme with `--theme <name>`.
@@ -47,7 +52,8 @@ dimmed state. Tests cover these transitions.
 - Separate named theme files and user-defined style attributes. Color
   overrides in `config.yaml` are supported.
 - Automatic terminal background detection.
-- True-color palette definitions.
+- User-defined true-color palette definitions. The built-in [Borealis](borealis.md)
+  palette uses exact RGB colors.
 - Redesigning the existing `Terminal` interface beyond correct underline
   support.
 

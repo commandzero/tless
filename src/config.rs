@@ -227,7 +227,7 @@ mod tests {
             config.resolve_startup(None).unwrap(),
             config.resolve("navy").unwrap()
         );
-        for name in ["default", "classic", "cyan", "delek", "navy"] {
+        for name in ["default", "classic", "cyan", "borealis", "delek", "navy"] {
             assert_eq!(
                 config.resolve_startup(Some(name)).unwrap(),
                 config.resolve(name).unwrap()

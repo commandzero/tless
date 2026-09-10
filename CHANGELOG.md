@@ -50,9 +50,13 @@ Earlier upstream history is preserved below.
 
 ### Fixed
 
+- Extend themed row selection backgrounds across the gutter, indentation, whitespace, and unused screen width.
+
 - Send the missing-filename diagnostic to stderr.
 
 ### Added
+
+- Add the `borealis` theme with RGB colors from the Borealis dark-mode palette.
 
 - Add 28 Vim companion themes with 256-color palettes and matching document
   backgrounds, selected with `--theme <name>` in colorscheme-enabled builds.

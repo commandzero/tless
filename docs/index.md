@@ -19,6 +19,8 @@ Validate the complete bundle with `scripts/validate-docs.sh` locally and in CI.
 6. [Color themes](color-themes.md) describes built-in and configured themes.
 7. [Vim companion palettes](vim-themes.md) records the 28 bundled Vim palettes.
 
+8. [Borealis](borealis.md) documents the true-color palette and source mappings.
+
 ## Design history
 
 1. [Search](design/search.md) preserves upstream design notes.

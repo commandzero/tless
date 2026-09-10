@@ -50,6 +50,10 @@ switch themes without changing your position or search.
 The former `classic` name remains accepted as a compatibility alias for
 `default`.
 
+The `borealis` theme uses the Borealis dark-mode CSS palette with RGB colors.
+It requires a true-color terminal. Use `tless --theme borealis data.json` or
+`:colorscheme borealis`. See [the palette mapping](docs/borealis.md).
+
 Vim companions use the original Vim scheme name, with Vim's `default` scheme
 exposed as `vim`:
 

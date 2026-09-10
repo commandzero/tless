@@ -165,8 +165,9 @@ fn paint_impl(
     if width == 0 {
         return Ok(());
     }
+    let row_style = theme.map_or_else(Style::default, |theme| theme.row_style(!focused.is_empty()));
     if left > 0 {
-        terminal.reset_style()?;
+        terminal.set_style(&row_style)?;
         terminal.write_char('…')?;
     }
     let mut column = 0;
@@ -186,9 +187,7 @@ fn paint_impl(
             .copied()
             .find(|span| span.range.contains(&byte))
             .or_else(|| line.spans.iter().find(|span| span.range.contains(&byte)));
-        let mut style = theme.map_or_else(Style::default, |theme| {
-            theme.style(StyleRole::Document, StyleState::main())
-        });
+        let mut style = row_style;
         if let Some(span) = span {
             let annotation = matches!(
                 span.role,
@@ -196,6 +195,7 @@ fn paint_impl(
             );
             let role = match span.role {
                 TokenRole::Key => StyleRole::ObjectKey,
+                TokenRole::FieldDefinition => StyleRole::FieldDefinition,
                 TokenRole::String => StyleRole::JsonValue(JsonValueKind::String),
                 TokenRole::Number => StyleRole::JsonValue(JsonValueKind::Number),
                 TokenRole::Boolean => StyleRole::JsonValue(JsonValueKind::Boolean),
@@ -223,18 +223,19 @@ fn paint_impl(
                 SearchState::None
             };
             style = if let Some(theme) = theme {
-                theme.style(
+                theme.style_on_row(
                     role,
                     StyleState {
                         focus,
                         search,
                         ..StyleState::main()
                     },
+                    !focused.is_empty(),
                 )
             } else {
                 let mut style = Style::default();
                 style.fg = match span.role {
-                    TokenRole::Key => crate::terminal::CYAN,
+                    TokenRole::Key | TokenRole::FieldDefinition => crate::terminal::CYAN,
                     TokenRole::String => crate::terminal::GREEN,
                     TokenRole::Number => crate::terminal::MAGENTA,
                     TokenRole::Boolean => crate::terminal::BLUE,
@@ -265,10 +266,11 @@ fn paint_impl(
         terminal.write_str(grapheme)?;
         used += cells;
     }
-    terminal.reset_style()?;
     if right > 0 && left + used < width {
+        terminal.set_style(&row_style)?;
         terminal.write_char('…')?;
     }
+    terminal.reset_style()?;
     Ok(())
 }
 
@@ -359,6 +361,85 @@ mod tests {
         .unwrap();
         terminal.output().to_string()
     }
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn selected_row_keeps_background_on_indentation_spaces_and_clipping() {
+        use crate::terminal::{AnsiTerminal, Color};
+        use crate::theme::ThemeName;
+        let flat =
+            parse_top_level_json(r#"{"obj":{"value":"long text with spaces inside"}}"#.into())
+                .unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[1];
+        assert!(line.text.starts_with("  "));
+        for name in [
+            ThemeName::Borealis,
+            ThemeName::VimDesert,
+            ThemeName::VimDefault,
+        ] {
+            let theme = Theme::built_in(name);
+            let bg = theme.row_style(true).bg;
+            assert_ne!(bg, theme.row_style(false).bg);
+            let bg_escape = match bg {
+                Color::Rgb(r, g, b) => format!("\x1b[48;2;{r};{g};{b}m"),
+                Color::C256(c) => format!("\x1b[48;5;{c}m"),
+                _ => panic!("expected explicit selection background"),
+            };
+            for (offset, width) in [(0, 80), (0, 12), (5, 12), (5, 1)] {
+                let mut terminal = AnsiTerminal::new(String::new());
+                paint_themed(
+                    &mut terminal,
+                    &theme,
+                    line,
+                    line.owner..line.owner + 1,
+                    LineViewport::new(line, offset, 0),
+                    width,
+                    &[],
+                    &(0..0),
+                )
+                .unwrap();
+                let output = terminal.output().strip_suffix("\x1b[0m").unwrap();
+                assert!(output.contains(&bg_escape), "{:?}: {:?}", name, output);
+                assert_eq!(
+                    output.matches("\x1b[48;").count(),
+                    1,
+                    "{name:?}: {output:?}"
+                );
+                assert!(!output.contains("\x1b[49m"));
+                assert!(!output.contains("\x1b[0m"));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn borealis_table_fields_and_punctuation_use_plain_text() {
+        let flat = parse_top_level_json(r#"{"rows":[{"field":1,"name":true}]}"#.into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[0];
+        let theme = Theme::built_in(crate::theme::ThemeName::Borealis);
+        let mut terminal = crate::terminal::AnsiTerminal::new(String::new());
+        paint_impl(
+            &mut terminal,
+            Some(&theme),
+            line,
+            usize::MAX..usize::MAX,
+            LineViewport::new(line, 0, 0),
+            100,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        assert!(
+            terminal
+                .output()
+                .contains("\x1b[38;2;202;211;226m[1]{field,name}:"),
+            "{}",
+            terminal.output()
+        );
+        assert!(!terminal.output().contains("\x1b[1m"));
+    }
+
     #[test]
     fn reveal_window_reserves_only_actual_clipping_markers() {
         let flat = parse_top_level_json(r#"{"x":"aaaaaaaaaaaaaaaaaaaaaaaaaaZ"}"#.into()).unwrap();

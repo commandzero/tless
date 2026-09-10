@@ -7,6 +7,7 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenRole {
     Key,
+    FieldDefinition,
     String,
     Number,
     Boolean,
@@ -341,17 +342,21 @@ impl Layout {
             result.annotate(flat, line_idx);
             let line = &mut result.lines[line_idx];
             for span in &mut line.spans {
-                if matches!(span.role, TokenRole::Key | TokenRole::String) {
+                if matches!(
+                    span.role,
+                    TokenRole::Key | TokenRole::FieldDefinition | TokenRole::String
+                ) {
                     if let Some(source) = &span.source {
                         let row = &flat[span.node];
-                        let parsed = if span.role == TokenRole::Key {
-                            match &row.key_value {
-                                Some(KeyValue::String(text)) => Some(text.as_str()),
-                                _ => None,
-                            }
-                        } else {
-                            row.string_value.as_deref()
-                        };
+                        let parsed =
+                            if matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition) {
+                                match &row.key_value {
+                                    Some(KeyValue::String(text)) => Some(text.as_str()),
+                                    _ => None,
+                                }
+                            } else {
+                                row.string_value.as_deref()
+                            };
                         let raw = &flat.1[source.clone()];
                         if raw.starts_with('"') {
                             span.source_map = string_source_map(
@@ -535,7 +540,7 @@ impl Layout {
                         line.token(
                             &self.key(flat, field),
                             field,
-                            TokenRole::Key,
+                            TokenRole::FieldDefinition,
                             flat[field].key_range.clone(),
                         );
                         let range = begin..line.text.len();
@@ -544,7 +549,7 @@ impl Layout {
                             line.spans.push(Span {
                                 range: range.clone(),
                                 node: other,
-                                role: TokenRole::Key,
+                                role: TokenRole::FieldDefinition,
                                 source: flat[other].key_range.clone(),
                                 source_map: vec![],
                             });
@@ -662,7 +667,10 @@ impl Layout {
         let mut ids: Vec<_> = self.lines[line]
             .spans
             .iter()
-            .filter(|s| s.role != TokenRole::Key || self.nodes[s.node].line == line)
+            .filter(|s| {
+                !matches!(s.role, TokenRole::Key | TokenRole::FieldDefinition)
+                    || self.nodes[s.node].line == line
+            })
             .map(|s| s.node)
             .collect();
         ids.push(self.lines[line].owner);
@@ -1312,7 +1320,10 @@ mod tests {
         let key_span = layout.lines[0]
             .spans
             .iter()
-            .find(|span| span.node == fields[0] && span.role == TokenRole::Key)
+            .find(|span| {
+                span.node == fields[0]
+                    && matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition)
+            })
             .unwrap();
         assert_eq!(key_span.source, flat[fields[0]].key_range);
         assert_eq!(&layout.lines[0].text[key_span.range.clone()], "a");
@@ -1487,7 +1498,7 @@ mod tests {
             .line
             .spans
             .iter()
-            .filter(|span| span.role == TokenRole::Key)
+            .filter(|span| matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition))
             .collect();
         assert_eq!(keys.len(), 2);
         assert_ne!(keys[0].node, keys[1].node);

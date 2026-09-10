@@ -46,9 +46,10 @@ fn paint_document_row(
     theme: &Theme,
     row: u16,
     width: u16,
+    focused: bool,
 ) -> std::fmt::Result {
     terminal.position_cursor(1, row)?;
-    let style = theme.style(StyleRole::Document, StyleState::main());
+    let style = theme.row_style(focused);
     terminal.set_style(&style)?;
     terminal.clear_line()?;
     if style.bg != Color::Default {
@@ -224,13 +225,14 @@ impl ScreenWriter {
         let focused = viewer.focused_line_index();
         let number_width = self.number_width(viewer);
         for screen in 0..viewer.dimensions.height {
+            let index = viewer.top_visible_line + usize::from(screen);
             paint_document_row(
                 &mut self.terminal,
                 &self.theme,
                 screen + 1,
                 self.dimensions.width,
+                index == focused && viewer.visible.get(index).is_some(),
             )?;
-            let index = viewer.top_visible_line + usize::from(screen);
             let Some(visible) = viewer.visible.get(index) else {
                 self.terminal.set_style(
                     &self
@@ -253,13 +255,14 @@ impl ScreenWriter {
                 } else {
                     visible.absolute + 1
                 };
-                self.terminal.set_style(&self.theme.style(
+                self.terminal.set_style(&self.theme.style_on_row(
                     StyleRole::LineNumber,
                     if index == focused {
                         StyleState::main().focused()
                     } else {
                         StyleState::main()
                     },
+                    index == focused,
                 ))?;
                 let label = format!("{:>width$} ", number, width = number_width - 1);
                 self.terminal
@@ -269,13 +272,14 @@ impl ScreenWriter {
             if available == 0 {
                 continue;
             }
-            self.terminal.set_style(&self.theme.style(
+            self.terminal.set_style(&self.theme.style_on_row(
                 StyleRole::ContainerDelimiter,
                 if index == focused {
                     StyleState::main().focused()
                 } else {
                     StyleState::main()
                 },
+                index == focused,
             ))?;
             let arrow = if viewer.layout.nodes[line.owner].collapsible && !line.separator {
                 if viewer.flatjson[line.owner].is_collapsed()
@@ -601,6 +605,28 @@ fn end_scroll_offset(width: usize, available: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::end_scroll_offset;
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn selected_row_fill_covers_width_and_clears_when_focus_moves() {
+        use crate::terminal::{AnsiTerminal, Terminal};
+        use crate::theme::{Theme, ThemeName};
+        let theme = Theme::built_in(ThemeName::Borealis);
+        for width in [0, 1, 40] {
+            let mut terminal = AnsiTerminal::new(String::new());
+            super::paint_document_row(&mut terminal, &theme, 1, width, true).unwrap();
+            assert!(terminal.output().contains("\x1b[48;2;10;35;66m"));
+            assert!(terminal
+                .output()
+                .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize))));
+            terminal.clear_output();
+            super::paint_document_row(&mut terminal, &theme, 1, width, false).unwrap();
+            assert!(terminal.output().contains("\x1b[48;2;5;15;33m"));
+            assert!(terminal
+                .output()
+                .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize))));
+        }
+    }
 
     #[test]
     fn end_scroll_stays_inside_content_at_narrow_widths() {

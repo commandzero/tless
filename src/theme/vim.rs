@@ -48,7 +48,7 @@ impl VimPalette {
                 JsonValueKind::String => self.string,
                 JsonValueKind::EmptyObject | JsonValueKind::EmptyArray => self.delimiter,
             },
-            StyleRole::ObjectKey => self.identifier,
+            StyleRole::ObjectKey | StyleRole::FieldDefinition => self.identifier,
             StyleRole::ArrayIndex | StyleRole::LineNumber => self.linenr,
             StyleRole::Punctuation | StyleRole::StatusText => self.normal,
             StyleRole::PrimitiveTrailingComma | StyleRole::ContainerDelimiter => self.delimiter,
@@ -66,7 +66,10 @@ impl VimPalette {
     pub(super) fn focused_style(&self, role: StyleRole, state: StyleState) -> Style {
         let base = self.base_style(role);
         let mut style = match (role, state.focus) {
-            (StyleRole::ObjectKey | StyleRole::ArrayIndex, FocusState::Row) => self.visual,
+            (
+                StyleRole::ObjectKey | StyleRole::FieldDefinition | StyleRole::ArrayIndex,
+                FocusState::Row,
+            ) => self.visual,
             (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer) => {
                 self.matchparen
             }

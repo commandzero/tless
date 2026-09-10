@@ -3,6 +3,8 @@
 use clap::ValueEnum;
 
 #[cfg(feature = "colorscheme")]
+mod borealis;
+#[cfg(feature = "colorscheme")]
 mod vim;
 
 #[cfg(feature = "colorscheme")]
@@ -19,6 +21,8 @@ pub enum ThemeName {
     Default,
     #[cfg(feature = "colorscheme")]
     Cyan,
+    #[cfg(feature = "colorscheme")]
+    Borealis,
     #[cfg(feature = "colorscheme")]
     #[value(name = "blue")]
     VimBlue,
@@ -223,6 +227,7 @@ pub enum StyleRole {
     Document,
     JsonValue(JsonValueKind),
     ObjectKey,
+    FieldDefinition,
     ArrayIndex,
     Punctuation,
     PrimitiveTrailingComma,
@@ -334,7 +339,9 @@ impl Theme {
         };
 
         #[cfg(feature = "colorscheme")]
-        let mut style = if let Some(palette) = self.name.vim_palette() {
+        let mut style = if self.name == ThemeName::Borealis {
+            borealis::style(role, state, search)
+        } else if let Some(palette) = self.name.vim_palette() {
             match search {
                 SearchState::None => palette.focused_style(role, state),
                 SearchState::Match => palette.search_style(false),
@@ -451,7 +458,9 @@ impl Theme {
 
         match (role, state.focus) {
             (StyleRole::Document, _) => ThemeColor::DocumentForeground,
-            (StyleRole::ObjectKey, FocusState::Row) => ThemeColor::FocusedObjectKey,
+            (StyleRole::ObjectKey | StyleRole::FieldDefinition, FocusState::Row) => {
+                ThemeColor::FocusedObjectKey
+            }
             (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer) => {
                 ThemeColor::FocusedContainerDelimiter
             }
@@ -463,7 +472,7 @@ impl Theme {
             (StyleRole::JsonValue(JsonValueKind::EmptyObject | JsonValueKind::EmptyArray), _) => {
                 ThemeColor::EmptyContainer
             }
-            (StyleRole::ObjectKey, _) => ThemeColor::ObjectKey,
+            (StyleRole::ObjectKey | StyleRole::FieldDefinition, _) => ThemeColor::ObjectKey,
             (StyleRole::ArrayIndex, _) => ThemeColor::ArrayIndex,
             (StyleRole::Punctuation, _) => ThemeColor::Punctuation,
             (StyleRole::PrimitiveTrailingComma, _) => ThemeColor::PrimitiveTrailingComma,
@@ -497,9 +506,38 @@ impl Theme {
         }
     }
 
+    /// Background shared by the gutter, document cells, and unused row width.
+    pub fn row_style(&self, focused: bool) -> Style {
+        let mut row = self.style(StyleRole::Document, StyleState::main());
+        if focused {
+            let focus = self.style(StyleRole::ObjectKey, StyleState::main().focused());
+            row.bg = if focus.inverted { focus.fg } else { focus.bg };
+        }
+        row
+    }
+
+    pub fn style_on_row(&self, role: StyleRole, state: StyleState, focused: bool) -> Style {
+        let mut style = self.style(role, state);
+        if focused && state.search == SearchState::None {
+            let row = self.row_style(true);
+            if row.bg != self.row_style(false).bg {
+                // Preserve the visible text color of reverse-video Vim styles.
+                if style.inverted {
+                    std::mem::swap(&mut style.fg, &mut style.bg);
+                    style.inverted = false;
+                }
+                style.bg = row.bg;
+            }
+        }
+        style
+    }
+
     pub fn document_style(&self) -> Style {
         #[cfg(feature = "colorscheme")]
         {
+            if self.name == ThemeName::Borealis {
+                return borealis::style(StyleRole::Document, StyleState::main(), SearchState::None);
+            }
             self.name.vim_palette().map_or(Style::default(), |palette| {
                 palette.base_style(StyleRole::Document)
             })
@@ -519,7 +557,7 @@ impl Theme {
         match role {
             StyleRole::Document => self.document_style(),
             StyleRole::JsonValue(kind) => color(self.json_value_color(kind)),
-            StyleRole::ObjectKey => color(match self.legacy_name() {
+            StyleRole::ObjectKey | StyleRole::FieldDefinition => color(match self.legacy_name() {
                 LegacyTheme::Classic => CYAN,
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => CYAN,
@@ -594,17 +632,19 @@ impl Theme {
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => style,
             },
-            (StyleRole::ObjectKey, FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style {
-                    fg: LIGHT_CYAN,
-                    ..style
-                },
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    fg: LIGHT_CYAN,
-                    ..Style::default()
-                },
-            },
+            (StyleRole::ObjectKey | StyleRole::FieldDefinition, FocusState::Row) => {
+                match self.legacy_name() {
+                    LegacyTheme::Classic => Style {
+                        fg: LIGHT_CYAN,
+                        ..style
+                    },
+                    #[cfg(feature = "colorscheme")]
+                    LegacyTheme::Cyan => Style {
+                        fg: LIGHT_CYAN,
+                        ..Style::default()
+                    },
+                }
+            }
             (StyleRole::ArrayIndex, FocusState::Row) => match self.legacy_name() {
                 LegacyTheme::Classic => Style { fg: WHITE, ..style },
                 #[cfg(feature = "colorscheme")]
