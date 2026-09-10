@@ -25,14 +25,24 @@ TOON still uses the pinned published encoder. Its duplicate-key normalization, n
 
 ## Validation
 
-- Rust 1.87 and Rust 1.97.1: all four feature profiles passed on each compiler, including isolated terminal tests, with no skips. Each matrix ran 504 tests.
+- Rust 1.87 and Rust 1.97.1: all four feature profiles passed on each compiler, including isolated terminal tests, with no skips. Each final matrix ran 508 tests. This total includes the isolated terminal tests in `tests/toon_cli.rs`.
 - Strict active-change validation and all four main-spec validations passed with OpenSpec 1.11.0.
 - Complete docs bundle validation passed with zero errors or warnings.
 - The initial development preflight passed lint, workflow checks, and 20 OpenSpec gate fixtures, then correctly rejected the still-active committed planning change. Final committed-head validation passed after archival.
 - A sandbox terminal-access failure was rerun with terminal access. Concurrent compiler matrices caused a CLI executable replacement race; final matrices run sequentially.
 
-- Full final preflight passed, including formatting, minimal/all-feature Clippy, ShellCheck, actionlint 1.7.12, release tests, 20 OpenSpec gate fixtures, the associated-change gate, docs validation, and 504 feature-matrix tests.
+- Full final preflight passed, including formatting, minimal/all-feature Clippy, ShellCheck, actionlint 1.7.12, release tests, 20 OpenSpec gate fixtures, the associated-change gate, docs validation, and 508 feature-matrix tests, including isolated terminal tests.
 - Native archived-task validation passed for both archives. The associated-change gate passed native delta, archive-task, and main-spec validation with the prepared PR description.
+
+The final counts below apply to each compiler. Earlier runs had 504 tests; adding the long-key regression added one test to each of the four feature profiles.
+
+| Feature profile | Unit tests | Piped-output tests | CLI tests, including isolated terminal tests | Total |
+| --- | --- | --- | --- | --- |
+| Minimal | 84 | 9 | 20 | 113 |
+| Default TOON | 103 | 9 | 27 | 139 |
+| S-expression only | 86 | 9 | 20 | 115 |
+| All features | 105 | 9 | 27 | 141 |
+| Per compiler | 378 | 36 | 94 | 508 |
 
 ## Synchronization review
 
