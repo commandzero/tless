@@ -125,9 +125,33 @@ tless --max-input-bytes 1073741824 large.json
 ```
 
 A missing filename or `-` reads stdin. Format flags override filename detection.
-With redirected stdout, JSON is pretty-printed; YAML and TOON pass through as UTF-8 bytes without syntax validation.
-JSON output can contain multiple top-level values separated by newlines.
-TOON pass-through preserves the input's framing, including a missing final newline.
+With non-terminal stdout, including pipes and redirected files, output defaults to
+standard TOON. Select `-o json`, `-o yaml`, or `-o toon` with the `--output` flag.
+Input flags select parsing independently; `--output` does not force machine mode
+when stdout is a terminal or change interactive copy/write commands.
+
+```sh
+cat file.json | tless | cat                 # TOON output
+cat file.json | tless -o json | consumer    # preserve JSON pipeline behavior
+tless --yaml -o yaml file.yaml > normalized.yaml
+tless --toon --output=json file.toon > converted.json
+```
+
+Every input is parsed and reserialized, including matching input/output formats.
+TOON has no final newline and requires one root; an empty object emits no bytes.
+JSON uses two-space pretty-printing and a final LF per root, preserving multiple
+roots as a sequence of JSON values. Original JSON number tokens and duplicate
+entries survive `-o json`. YAML emits `---` before each root and a final LF per
+document. It preserves parsed types and entries, including typed keys and
+non-finite numbers. Source comments, anchors, and formatting are not preserved.
+JSON conversion rejects non-string keys and non-finite numbers.
+Empty JSON remains a parse error; zero-root YAML emits nothing with JSON/YAML
+output and fails with TOON output. Empty TOON decodes to an empty object.
+
+This default change is incompatible with scripts expecting JSON. Add `-o json`
+to those scripts. `-o yaml` reserializes YAML; it does not restore byte-for-byte
+pass-through. Standard TOON retains the normalization and known codec limitations
+[documented below](#toon-support).
 Machine mode emits no prompts or ANSI styling. Diagnostics go to stderr.
 
 Exit status 0 means success or a normal viewer quit.
@@ -141,7 +165,7 @@ The default input limit is 512 MiB, measured in bytes; `--max-input-bytes 0` rem
 The reader consumes at most the limit plus 1 byte before rejecting an oversized input.
 Parsed data and rendered output need additional memory; this is not a total-process memory limit.
 JSON and YAML have no configurable depth bound. TOON has the limits below.
-No output starts until input loading and any machine-mode JSON parsing finish.
+No output starts until input loading, parsing, and machine-output serialization finish.
 An output error can leave a partial payload in the downstream consumer.
 
 ## TOON support
@@ -156,8 +180,11 @@ producer | tless --toon
 
 The `toon` Cargo feature is enabled by default. Use `--no-default-features`
 for a JSON/YAML-only source build. It can be combined with `sexp`.
-Disabled builds omit TOON commands and help; opening a `.toon` filename explains
-how to enable support. `--json` and `--yaml` override filename detection.
+Disabled builds omit interactive TOON commands and the `--toon` input option;
+opening a `.toon` filename explains how to enable support. All builds recognize
+the three output values. Without `toon`, default or explicit TOON machine output
+fails with a diagnostic; select `-o json` or `-o yaml`. The interactive view
+remains available. `--json` and `--yaml` override filename detection.
 
 This implementation targets `toon-spec: 3.0`, not TOON 4.x. It uses strict
 two-space decoding with literal dotted keys and supports declared comma, tab,
@@ -184,9 +211,9 @@ See [codec behavior and known limitations](docs/toon-codec.md) for concrete exam
 Export rejects non-string YAML keys, non-finite numbers, and more than 256 nested
 containers relative to the selected root. Input depth follows the codec's own bound.
 
-Interactive input accepts CRLF and trailing blank lines, but rejects an initial
-BOM and blank rows inside arrays. With non-terminal stdout, selected TOON text
-passes through unchanged without parsing, even if its syntax is malformed.
+TOON input accepts CRLF and trailing blank lines, but rejects an initial
+BOM and blank rows inside arrays. Non-terminal output also validates TOON input
+and reports parse failures before writing stdout.
 Invalid UTF-8 is always an input error.
 
 Builds resolve the published codec through Cargo.lock, with its CLI features disabled.
