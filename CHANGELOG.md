@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Use black status-line text and a dark gray filename.
+
 - Show inline arrays with a collapsed arrow by default; keep tabular rows visible with collapse controls only on the array parent.
 
 - Show search matches in yellow and the active match in bright yellow, without reverse video or match backgrounds.

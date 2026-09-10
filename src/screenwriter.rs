@@ -307,7 +307,7 @@ impl ScreenWriter {
             .position_cursor(1, self.dimensions.height.saturating_sub(1).max(1))?;
         self.terminal.clear_line()?;
         self.terminal.set_style(&terminal::Style {
-            fg: terminal::WHITE,
+            fg: terminal::BLACK,
             bg: terminal::LIGHT_BLACK,
             ..terminal::Style::default()
         })?;
@@ -404,7 +404,7 @@ impl ScreenWriter {
             width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
         let status_style = terminal::Style {
-            fg: terminal::WHITE,
+            fg: terminal::BLACK,
             bg: terminal::LIGHT_BLACK,
             ..terminal::Style::default()
         };
@@ -425,7 +425,10 @@ impl ScreenWriter {
 
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
-            self.terminal.set_style(&status_style)?;
+            self.terminal.set_style(&terminal::Style {
+                fg: terminal::LIGHT_BLACK,
+                ..status_style
+            })?;
 
             let truncated_slice = TruncatedStrSlice {
                 s: filename,

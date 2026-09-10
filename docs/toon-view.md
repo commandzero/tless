@@ -39,7 +39,7 @@ has visible descendants. Inline elements and table cells keep individual focus.
 Default syntax colors use terminal palette indexes: keys cyan (6), strings green
 (2), numbers magenta (5), booleans blue (4, brightening to 12 when selected), and nulls gray (7).
 Previews use dark gray (8), and warnings use yellow (3). The status bar uses a
-dark gray (8) background with gray (7) text.
+dark gray (8) background with black (0) text and a dark gray (8) filename.
 
 ## Selection and navigation
 
