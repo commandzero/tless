@@ -7,7 +7,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- Use cyan keys, bright blue booleans, gray nulls, and a dark gray status bar; retain green strings, dark gray previews, and yellow warnings.
+- Use cyan keys, blue booleans that brighten when selected, gray nulls, and a dark gray status bar; retain green strings, dark gray previews, and yellow warnings.
 
 - Scroll horizontally in ten-cell increments with `,` and `.`, multiplied by numeric prefixes.
 

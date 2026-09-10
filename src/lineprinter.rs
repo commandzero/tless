@@ -151,7 +151,7 @@ pub fn paint(
                 TokenRole::Key => terminal::CYAN,
                 TokenRole::String => terminal::GREEN,
                 TokenRole::Number => terminal::MAGENTA,
-                TokenRole::Boolean => terminal::LIGHT_BLUE,
+                TokenRole::Boolean => terminal::BLUE,
                 TokenRole::Null => terminal::WHITE,
                 TokenRole::Warning => terminal::YELLOW,
                 TokenRole::Count | TokenRole::Preview => terminal::LIGHT_BLACK,
@@ -382,7 +382,7 @@ mod tests {
         assert!(painted.contains("hello"));
         assert!(!painted.contains("_D_"));
         assert!(painted.contains("_FG(Magenta)_1"));
-        assert!(painted.contains("_FG(LightBlue)_true"));
+        assert!(painted.contains("_FG(Blue)_true"));
         assert!(painted.contains("_FG(White)_null"));
         assert!(painted.contains("_FG(Green)_hello"));
         assert_eq!(text(&layout.lines[0], 100, 0), "[4]: 1,true,null,hello");

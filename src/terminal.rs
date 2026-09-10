@@ -22,7 +22,7 @@ impl Color {
 pub const RED: Color = Color::C16(1);
 pub const GREEN: Color = Color::C16(2);
 pub const YELLOW: Color = Color::C16(3);
-// pub const BLUE: Color = Color::C16(4);
+pub const BLUE: Color = Color::C16(4);
 pub const MAGENTA: Color = Color::C16(5);
 pub const CYAN: Color = Color::C16(6);
 pub const WHITE: Color = Color::C16(7);
@@ -30,7 +30,7 @@ pub const LIGHT_BLACK: Color = Color::C16(8);
 // pub const LIGHT_RED: Color = Color::C16(9);
 // pub const LIGHT_GREEN: Color = Color::C16(10);
 // pub const LIGHT_YELLOW: Color = Color::C16(11);
-pub const LIGHT_BLUE: Color = Color::C16(12);
+// pub const LIGHT_BLUE: Color = Color::C16(12);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
 // pub const LIGHT_CYAN: Color = Color::C16(14);
 pub const LIGHT_WHITE: Color = Color::C16(15);
