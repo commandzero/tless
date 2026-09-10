@@ -11,7 +11,7 @@ Earlier upstream history is preserved below.
 
 - Render collapsed previews and object counts in plain terminal color 8 without extra dimming.
 
-- Use black status-line text and a dark gray filename.
+- Use black status-line text and a light gray filename.
 
 - Show inline arrays with a collapsed arrow by default; keep tabular rows visible with collapse controls only on the array parent.
 

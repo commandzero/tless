@@ -426,7 +426,7 @@ impl ScreenWriter {
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
             self.terminal.set_style(&terminal::Style {
-                fg: terminal::LIGHT_BLACK,
+                fg: terminal::WHITE,
                 ..status_style
             })?;
 

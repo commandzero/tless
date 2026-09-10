@@ -40,7 +40,7 @@ Default syntax colors use terminal palette indexes: keys cyan (6), strings green
 (2), numbers magenta (5), booleans blue (4, brightening to 12 when selected), and nulls gray (7).
 Previews and collapsed object counts use plain dark gray (8), without the
 terminal dim attribute, matching line numbers. Warnings use yellow (3). The status bar uses a
-dark gray (8) background with black (0) text and a dark gray (8) filename.
+dark gray (8) background with black (0) text and a light gray (7) filename.
 
 ## Selection and navigation
 
