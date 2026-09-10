@@ -10,7 +10,14 @@ pub enum DataFormat {
     Toon,
 }
 
-/// A pager for JSON (or YAML) data
+#[derive(PartialEq, Eq, Copy, Clone, Debug, ValueEnum)]
+pub enum OutputFormat {
+    Json,
+    Yaml,
+    Toon,
+}
+
+/// A pager for JSON, YAML, and TOON data
 #[derive(Debug, Parser)]
 #[command(name = "tless", version)]
 pub struct Opt {
@@ -20,6 +27,11 @@ pub struct Opt {
     /// and by default will assume JSON. Can specify input format
     /// explicitly using --json or --yaml.
     pub input: Option<PathBuf>,
+
+    /// Format for non-terminal stdout. TOON requires a toon-enabled build.
+    /// Input format and interactive commands are unchanged.
+    #[arg(short = 'o', long, value_enum, default_value = "toon")]
+    pub output: OutputFormat,
 
     /// Maximum input bytes. Use 0 for unlimited input. The complete input stays in memory.
     #[arg(long, default_value_t = 536_870_912)]

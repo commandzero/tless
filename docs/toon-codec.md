@@ -10,7 +10,7 @@ sources:
     resource: ../src/toon.rs
   - id: fixtures
     resource: ../src/toon_fixtures.rs
-generated: { by: codex/gpt-6, at: 2026-09-09T06:18:16Z }
+generated: { by: codex/gpt-6, at: 2026-09-10T22:25:27Z }
 ---
 
 # Published TOON codec behavior
@@ -25,11 +25,13 @@ list output. Those codec changes are no longer part of tless.
 
 ## Input and output contract
 
-Interactive TOON input uses the published strict decoder with 2-space indentation
+TOON input uses the published strict decoder with 2-space indentation
 and path expansion disabled. Canonical output uses the published default encoder,
 with commas, 2 spaces, and no key folding. The wrapper still handles empty documents,
-CRLF, and BOM rejection. Redirected TOON stdout passes through the input unchanged
-without syntax validation.
+CRLF, and BOM rejection. Redirected stdout defaults to the same standard encoder. `-o json` and `-o yaml`
+select other serializers independently of input format. TOON input is decoded
+and re-encoded even when the selected output is TOON; malformed input fails
+before any stdout payload.
 
 The interactive [document view](toon-view.md) builds its layout directly from
 parsed nodes. It preserves their duplicate occurrences, decimal tokens, types,
