@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Show search matches in yellow and the active match in bright yellow, without reverse video or match backgrounds.
+
 - Use cyan keys, blue booleans that brighten when selected, gray nulls, and a dark gray status bar; retain green strings, dark gray previews, and yellow warnings.
 
 - Scroll horizontally in ten-cell increments with `,` and `.`, multiplied by numeric prefixes.

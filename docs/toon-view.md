@@ -59,6 +59,8 @@ and shows `.` at the document root. A cell's path includes its row index and key
 parent is the row object, whose parent is the array. Duplicate entries remain
 separate selections, with an occurrence number beside the path.
 
+Search matches use yellow foreground (3), with bright yellow (11) for the active
+match. The default theme never uses reverse video.
 Search matches parsed keys and values. A hidden result expands its ancestors.
 Table-key matches highlight the shared header while retaining the selected
 row's field identity. Generated warnings, counts, and previews add no matches.

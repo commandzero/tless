@@ -170,11 +170,10 @@ pub fn paint(
                     .any(|range| range.start < byte + grapheme.len() && byte < range.end)
             };
             if matches.iter().any(overlaps) {
-                style.inverted = true;
+                style.fg = terminal::YELLOW;
             }
             if overlaps(current) {
-                style.bg = terminal::YELLOW;
-                style.fg = terminal::DEFAULT;
+                style.fg = terminal::LIGHT_YELLOW;
             }
         }
         terminal.set_style(&style)?;
@@ -443,8 +442,33 @@ mod tests {
         .unwrap();
         let output = terminal.output();
         let before = output.find("aaaa").unwrap();
-        assert!(!output[..before].contains("_BG(Yellow)_"), "{}", output);
-        assert!(output[before..].contains("_BG(Yellow)_"), "{}", output);
+        assert!(
+            !output[..before].contains("_FG(LightYellow)_"),
+            "{}",
+            output
+        );
+        assert!(
+            output[before..].contains("_FG(LightYellow)_NEEDLE"),
+            "{}",
+            output
+        );
+        assert!(!output.contains("_INV_"), "{}", output);
+        assert!(!output.contains("_BG("), "{}", output);
+        terminal.clear_output();
+        paint(
+            &mut terminal,
+            &layout.lines[0],
+            0..1,
+            LineViewport::new(&layout.lines[0], 0, 0),
+            100,
+            std::slice::from_ref(&query),
+            &(0..0),
+        )
+        .unwrap();
+        let output = terminal.output();
+        assert!(output.contains("_FG(Yellow)_NEEDLE"), "{}", output);
+        assert!(!output.contains("_INV_"), "{}", output);
+        assert!(!output.contains("_BG("), "{}", output);
         assert!(!output.contains("_B_"), "{}", output);
     }
     fn reduced_text(line: &DisplayLine, viewport: LineViewport, width: usize) -> String {
