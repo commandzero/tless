@@ -6,24 +6,33 @@ pub enum Color {
     Default,
 }
 
+impl Color {
+    pub fn bright(self) -> Self {
+        match self {
+            Color::C16(index @ 0..=7) => Color::C16(index + 8),
+            Color::C16(8) | Color::Default => LIGHT_WHITE,
+            color => color,
+        }
+    }
+}
+
 // Commented out colors are unused.
-// #[cfg(test)]
-// pub const BLACK: Color = Color::C16(0);
+pub const BLACK: Color = Color::C16(0);
 pub const RED: Color = Color::C16(1);
 pub const GREEN: Color = Color::C16(2);
 pub const YELLOW: Color = Color::C16(3);
 pub const BLUE: Color = Color::C16(4);
 pub const MAGENTA: Color = Color::C16(5);
-// pub const CYAN: Color = Color::C16(6);
+pub const CYAN: Color = Color::C16(6);
 pub const WHITE: Color = Color::C16(7);
 pub const LIGHT_BLACK: Color = Color::C16(8);
 // pub const LIGHT_RED: Color = Color::C16(9);
 // pub const LIGHT_GREEN: Color = Color::C16(10);
-// pub const LIGHT_YELLOW: Color = Color::C16(11);
-pub const LIGHT_BLUE: Color = Color::C16(12);
+pub const LIGHT_YELLOW: Color = Color::C16(11);
+// pub const LIGHT_BLUE: Color = Color::C16(12);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
 // pub const LIGHT_CYAN: Color = Color::C16(14);
-// pub const LIGHT_WHITE: Color = Color::C16(15);
+pub const LIGHT_WHITE: Color = Color::C16(15);
 pub const DEFAULT: Color = Color::Default;
 
 #[derive(Copy, Clone)]
@@ -33,6 +42,7 @@ pub struct Style {
     pub inverted: bool,
     pub bold: bool,
     pub dimmed: bool,
+    pub underlined: bool,
 }
 
 impl Style {
@@ -43,6 +53,7 @@ impl Style {
             inverted: false,
             bold: false,
             dimmed: false,
+            underlined: false,
         }
     }
 }
@@ -69,6 +80,7 @@ pub trait Terminal: Write {
     fn set_inverted(&mut self, inverted: bool) -> Result;
     fn set_bold(&mut self, bold: bool) -> Result;
     fn set_dimmed(&mut self, dimmed: bool) -> Result;
+    fn set_underlined(&mut self, underlined: bool) -> Result;
 
     #[allow(dead_code)]
     fn output(&self) -> &str;
@@ -130,6 +142,7 @@ impl Terminal for AnsiTerminal {
         self.set_inverted(style.inverted)?;
         self.set_bold(style.bold)?;
         self.set_dimmed(style.dimmed)?;
+        self.set_underlined(style.underlined)?;
         Ok(())
     }
 
@@ -200,6 +213,14 @@ impl Terminal for AnsiTerminal {
                 }
             }
             self.style.dimmed = dimmed;
+        }
+        Ok(())
+    }
+
+    fn set_underlined(&mut self, underlined: bool) -> Result {
+        if self.style.underlined != underlined {
+            write!(self, "\x1b[{}m", if underlined { 4 } else { 24 })?;
+            self.style.underlined = underlined;
         }
         Ok(())
     }
@@ -276,6 +297,7 @@ pub mod test {
         fn set_inverted(&mut self, _inverted: bool) -> Result { Ok(()) }
         fn set_bold(&mut self, _bold: bool) -> Result { Ok(()) }
         fn set_dimmed(&mut self, _bold: bool) -> Result { Ok(()) }
+        fn set_underlined(&mut self, _underlined: bool) -> Result { Ok(()) }
         fn output(&self) -> &str { &self.output }
         fn clear_output(&mut self) { self.output.clear() }
     }
@@ -332,6 +354,17 @@ pub mod test {
                 }
             }
 
+            if self.show_style && self.style.underlined != self.pending_style.underlined {
+                write!(
+                    self.output,
+                    "{}",
+                    if self.pending_style.underlined {
+                        "_U_"
+                    } else {
+                        "_!U_"
+                    }
+                )?;
+            }
             self.style = self.pending_style;
 
             Ok(())
@@ -406,6 +439,11 @@ pub mod test {
 
         fn set_dimmed(&mut self, dimmed: bool) -> Result {
             self.pending_style.dimmed = dimmed;
+            Ok(())
+        }
+
+        fn set_underlined(&mut self, underlined: bool) -> Result {
+            self.pending_style.underlined = underlined;
             Ok(())
         }
 

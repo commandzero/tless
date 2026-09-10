@@ -20,7 +20,6 @@ use termion::screen::AlternateScreen;
 
 mod app;
 mod flatjson;
-mod highlighting;
 mod input;
 mod jsonparser;
 mod jsonstringunescaper;
@@ -32,6 +31,7 @@ mod search;
 mod terminal;
 #[cfg(feature = "toon")]
 mod toon;
+mod toon_display;
 mod truncatedstrview;
 mod types;
 mod viewer;

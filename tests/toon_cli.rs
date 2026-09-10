@@ -13,7 +13,6 @@ fn run(args: &[&str], input: &[u8]) -> Output {
     child.wait_with_output().unwrap()
 }
 
-#[cfg(feature = "toon")]
 mod terminal_commands {
     use super::*;
     use std::fs::File;
@@ -48,6 +47,10 @@ mod terminal_commands {
     }
 
     fn session_with_format(input: &str, commands: &str, format: Option<&str>) -> String {
+        session_with_width(input, commands, format, 120)
+    }
+
+    fn session_with_width(input: &str, commands: &str, format: Option<&str>, width: u16) -> String {
         let path = std::env::temp_dir().join(format!(
             "tless-pty-{}-{}.json",
             std::process::id(),
@@ -63,7 +66,7 @@ mod terminal_commands {
         let mut slave = -1;
         let mut size = libc::winsize {
             ws_row: 24,
-            ws_col: 120,
+            ws_col: width,
             ws_xpixel: 0,
             ws_ypixel: 0,
         };
@@ -110,12 +113,15 @@ mod terminal_commands {
             unsafe { libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) },
             -1
         );
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // Newly built binaries can start slowly on macOS. Keep interaction
+        // checks bounded separately once the first screen is available.
+        let mut deadline = Instant::now() + Duration::from_secs(90);
         let mut output = Vec::new();
         let mut sent = false;
         let mut keys = commands.bytes();
         let mut next_key_at = Instant::now();
         let mut waiting_for_prompt = None;
+        let mut entering_command = false;
         let mut waiting_for_redraw = None;
         let mut scanned_cursor_requests = 0;
         loop {
@@ -129,6 +135,7 @@ mod terminal_commands {
                     }
                     if !sent && String::from_utf8_lossy(&output).contains("tless-pty-") {
                         sent = true;
+                        deadline = Instant::now() + Duration::from_secs(10);
                     }
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
@@ -155,10 +162,22 @@ mod terminal_commands {
                 && Instant::now() >= next_key_at
             {
                 if let Some(key) = keys.next() {
-                    if key == b':' {
+                    if key == 0x12 {
+                        size.ws_col = 16;
+                        size.ws_row = 8;
+                        assert_ne!(
+                            unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCSWINSZ, &size) },
+                            -1
+                        );
+                        next_key_at = Instant::now() + Duration::from_millis(100);
+                        continue;
+                    }
+                    if !entering_command && matches!(key, b':' | b'/' | b'?') {
+                        entering_command = true;
                         waiting_for_prompt = Some(output.len());
                     }
                     if key == b'\n' {
+                        entering_command = false;
                         waiting_for_redraw = Some(output.len());
                     }
                     master.write_all(&[key]).unwrap();
@@ -180,6 +199,174 @@ mod terminal_commands {
         String::from_utf8(output).unwrap()
     }
 
+    fn strip_styles(output: &str) -> String {
+        regex::Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]")
+            .unwrap()
+            .replace_all(output, "")
+            .into_owned()
+    }
+
+    #[test]
+    fn every_input_uses_the_same_toon_document_lines() {
+        let json =
+            r#"{"tags":["rust","cli"],"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#;
+        let yaml = "tags: [rust, cli]\nusers:\n  - {id: 1, name: Ada}\n  - {id: 2, name: Lin}\n";
+        let mut cases = vec![(json, None), (yaml, Some("--yaml"))];
+        if cfg!(feature = "toon") {
+            cases.push((
+                "tags[2]: rust,cli\nusers[2]{id,name}:\n  1,Ada\n  2,Lin",
+                Some("--toon"),
+            ));
+        }
+        for (input, format) in cases {
+            let output = strip_styles(&session_with_format(input, "q", format));
+            for expected in ["tags[2]: rust,cli", "users[2]{id,name}:", "1,Ada", "2,Lin"] {
+                assert!(
+                    output.contains(expected),
+                    "missing {}: {}",
+                    expected,
+                    output
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn brackets_move_to_entries_at_the_parent_level() {
+        for (motion, expected) in [
+            ("[", "\"x\": 20"),
+            ("]", "30\r\n\r\nPress any key to continue."),
+        ] {
+            let output = session(
+                r#"{"a":10,"b":{"x":20},"c":30}"#,
+                &format!("ljl{}pp q", motion),
+            );
+            assert!(output.contains(expected), "{}", output);
+        }
+    }
+
+    #[test]
+    fn bracket_fallbacks_select_siblings_when_parent_targets_are_missing() {
+        for (input, commands, expected) in [
+            (r#"{"a":{"x":1,"y":2},"b":3}"#, "ll]pp q", "3"),
+            (r#"{"only":{"x":1,"y":2}}"#, "ll]]pp q", "2"),
+            ("1 2 3", "]pp q", "2"),
+            ("1 2 3", "][pp q", "1"),
+        ] {
+            let output = session(input, commands);
+            assert!(
+                output.contains(&format!("{}\r\n\r\nPress any key to continue.", expected)),
+                "{}",
+                output
+            );
+        }
+    }
+
+    #[test]
+    fn right_expands_inline_arrays_into_navigable_lines() {
+        let output = session(r#"["alpha","beta"]"#, "ljpp q");
+        let clean = strip_styles(&output);
+        assert!(clean.contains("[2]: alpha,beta"), "{}", clean);
+        assert!(clean.contains("  - alpha"), "{}", clean);
+        assert!(clean.contains("  - beta"), "{}", clean);
+        assert!(output.contains("\"alpha\"\r\n\r\nPress any key to continue."));
+    }
+
+    #[test]
+    fn terminal_resize_reflows_arrays_before_another_keypress() {
+        // The helper resizes on ^R without sending that byte to the app.
+        // If resize waits for input, q exits before a multiline redraw occurs.
+        let output = strip_styles(&session(r#"["alpha","beta"]"#, "\x12q"));
+        assert!(output.contains("[2]: alpha,beta"), "{}", output);
+        assert!(output.contains("  - alpha"), "{}", output);
+        assert!(output.contains("  - beta"), "{}", output);
+    }
+
+    #[test]
+    fn arrays_start_multiline_when_large_or_too_wide() {
+        for (input, width, last) in [
+            ("[1,2,3,4,5,6]", 120, "  - 6"),
+            (r#"{"items":["alpha","beta"]}"#, 20, "  - beta"),
+        ] {
+            let output = strip_styles(&session_with_width(input, "q", None, width));
+            assert!(output.contains(last), "{}", output);
+        }
+    }
+
+    #[test]
+    fn hidden_search_reveals_and_prints_the_cell_without_annotations() {
+        let output = session(
+            r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,
+            "l /Lin\npp q",
+        );
+        assert!(
+            output.contains("\"Lin\"\r\n\r\nPress any key to continue."),
+            "{}",
+            output
+        );
+        assert!(strip_styles(&output).contains("users[1].name"));
+    }
+
+    #[test]
+    fn resize_and_column_motion_preserve_the_parsed_selection() {
+        let output = session(
+            r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,
+            "lllJj\x12pp q",
+        );
+        assert!(
+            output.contains("\"Lin\"\r\n\r\nPress any key to continue."),
+            "{}",
+            output
+        );
+    }
+
+    #[test]
+    fn duplicate_warnings_and_occurrence_status_preserve_copy_identity() {
+        let output = session(r#"{"status":"queued","status":"done"}"#, "lJpp q");
+        let clean = strip_styles(&output);
+        assert!(clean.contains("# WARN Duplicate key"));
+        assert!(clean.contains("occurrence 2 of 2"));
+        assert!(output.contains("\"done\"\r\n\r\nPress any key to continue."));
+    }
+
+    #[test]
+    fn search_in_the_last_fully_visible_column_does_not_scroll() {
+        let value = format!("{}Z", "a".repeat(26));
+        let input = format!("{{\"x\":\"{}\"}}", value);
+        let output = strip_styles(&session_with_width(&input, "/Z\nq", None, 35));
+        let line = format!("x: {}", value);
+        assert!(output.matches(&line).count() >= 2, "{}", output);
+        assert!(!output.contains("…Z"), "{}", output);
+    }
+
+    #[test]
+    fn long_string_search_reveals_the_match_inside_its_token() {
+        let input = format!("{{\"value\":\"{}NEEDLE\"}}", "a".repeat(150));
+        let output = strip_styles(&session_with_width(&input, "/NEEDLE\nq", None, 35));
+        assert!(output.contains("…NEEDLE"), "{}", output);
+    }
+
+    #[test]
+    fn horizontal_keys_move_in_ten_cell_increments() {
+        let input = r#""0123456789abcdefghijKLMNOPQRSTUVWXYZ0123456789abcdefghij""#;
+        for (commands, expected) in [
+            (".q", "…abcdefghij"),
+            ("2.q", "…KLMNOPQRST"),
+            ("2.,q", "…abcdefghij"),
+        ] {
+            let output = strip_styles(&session_with_width(input, commands, None, 35));
+            assert!(output.contains(expected), "{}", output);
+        }
+    }
+
+    #[test]
+    fn semicolon_reaches_the_end_from_an_intermediate_horizontal_offset() {
+        let input = format!("\"{}TAIL\"", "a".repeat(150));
+        let output = strip_styles(&session_with_width(&input, "10.;q", None, 35));
+        assert!(output.contains("TAIL"), "{}", output);
+    }
+
+    #[cfg(feature = "toon")]
     #[test]
     fn write_open_failure_reports_an_error_and_keeps_the_viewer_usable() {
         let target = std::env::temp_dir()
@@ -192,6 +379,7 @@ mod terminal_commands {
         assert!(!target.exists());
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn writes_canonical_toon_through_the_viewer_command() {
         let target = std::env::temp_dir().join(format!("tless-write-{}.toon", std::process::id()));
@@ -201,6 +389,7 @@ mod terminal_commands {
         std::fs::remove_file(target).unwrap();
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn writes_toon_from_yaml_and_toon_inputs_without_changing_json_commands() {
         let target = std::env::temp_dir().join(format!("tless-formats-{}.out", std::process::id()));
@@ -226,9 +415,10 @@ mod terminal_commands {
         }
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn prints_focused_canonical_toon_on_the_persistent_screen() {
-        let output = session(r#"{"items":[1,2]}"#, "jpt q");
+        let output = session(r#"{"items":[1,2]}"#, "lpt q");
         assert!(
             output.contains("[2]: 1,2\r\n\r\nPress any key to continue."),
             "{}",
@@ -236,6 +426,7 @@ mod terminal_commands {
         );
     }
 
+    #[cfg(feature = "toon")]
     #[test]
     fn bang_writes_replace_the_entire_file_after_successful_encoding() {
         let target =
@@ -317,16 +508,19 @@ fn toon_pipeline_passes_through_without_validation() {
 #[cfg(feature = "toon")]
 #[test]
 fn output_io_failure_exits_nonzero() {
-    use std::os::unix::io::FromRawFd;
-    let mut pipe = [-1; 2];
-    assert_eq!(unsafe { libc::pipe(pipe.as_mut_ptr()) }, 0);
-    let reader = unsafe { std::fs::File::from_raw_fd(pipe[0]) };
-    let writer = unsafe { std::fs::File::from_raw_fd(pipe[1]) };
+    use std::net::Shutdown;
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+
+    let (reader, writer) = UnixStream::pair().unwrap();
+    // Shutdown also affects copies inherited by concurrently spawned terminal
+    // tests, so an inherited reader cannot temporarily make the write succeed.
+    reader.shutdown(Shutdown::Both).unwrap();
     drop(reader);
     let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
         .arg("--toon")
         .stdin(Stdio::piped())
-        .stdout(writer)
+        .stdout(OwnedFd::from(writer))
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
@@ -383,4 +577,19 @@ fn version_help_and_usage_error_follow_cli_contract() {
     assert_eq!(invalid.status.code(), Some(2));
     assert!(invalid.stdout.is_empty());
     assert!(!invalid.stderr.is_empty());
+}
+
+#[test]
+fn removed_modes_are_usage_errors_and_help_describes_toon_addresses() {
+    for args in [
+        &["--mode", "line"][..],
+        &["--mode", "data"][..],
+        &["-m", "data"][..],
+    ] {
+        let output = run(args, b"");
+        assert_eq!(output.status.code(), Some(2));
+    }
+    let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
+    assert!(!help.contains("--mode"));
+    assert!(help.contains("TOON line addresses"));
 }

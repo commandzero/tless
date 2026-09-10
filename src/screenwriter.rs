@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::iter::Peekable;
 use std::ops::Range;
 
 use rustyline::Editor;
@@ -9,16 +8,15 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::MAX_BUFFER_SIZE;
-use crate::flatjson::{Index, OptionIndex, PathType, Row, Value};
+use crate::flatjson::{Index, PathType};
 use crate::lineprinter as lp;
-use crate::lineprinter::LineNumber;
 use crate::options::Opt;
-use crate::search::{MatchRangeIter, SearchState};
+use crate::search::SearchState;
 use crate::terminal;
 use crate::terminal::{AnsiTerminal, Terminal};
 use crate::truncatedstrview::{TruncatedStrSlice, TruncatedStrView};
 use crate::types::TTYDimensions;
-use crate::viewer::{JsonViewer, Mode};
+use crate::viewer::{Action, JsonViewer};
 
 pub struct ScreenWriter {
     pub stdout: RawTerminal<Box<dyn std::io::Write>>,
@@ -30,7 +28,9 @@ pub struct ScreenWriter {
     pub show_relative_line_numbers: bool,
 
     indentation_reduction: u16,
-    truncated_row_value_views: HashMap<Index, TruncatedStrView>,
+    last_focus: Option<(usize, usize, u16)>,
+    layout_generation: usize,
+    horizontal_offsets: HashMap<Index, usize>,
 }
 
 pub enum MessageSeverity {
@@ -49,8 +49,6 @@ impl MessageSeverity {
     }
 }
 
-const TAB_SIZE: isize = 2;
-const PATH_BASE: &str = "input";
 const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
 
 impl ScreenWriter {
@@ -68,7 +66,9 @@ impl ScreenWriter {
             show_line_numbers: options.show_line_numbers,
             show_relative_line_numbers: options.show_relative_line_numbers,
             indentation_reduction: 0,
-            truncated_row_value_views: HashMap::new(),
+            last_focus: None,
+            layout_generation: 0,
+            horizontal_offsets: HashMap::new(),
         }
     }
 
@@ -84,7 +84,25 @@ impl ScreenWriter {
         self.print_status_bar(viewer, input_buffer, input_filename, search_state, message);
     }
 
+    fn sync_layout(&mut self, viewer: &JsonViewer) {
+        if self.layout_generation != viewer.layout_generation {
+            self.horizontal_offsets.clear();
+            self.last_focus = None;
+            self.layout_generation = viewer.layout_generation;
+        }
+    }
+
     pub fn print_viewer(&mut self, viewer: &JsonViewer, search_state: &SearchState) {
+        self.sync_layout(viewer);
+        let focus = (
+            viewer.focused_node,
+            viewer.absolute_anchor_line,
+            self.dimensions.width,
+        );
+        if self.last_focus != Some(focus) {
+            self.reveal_focused_span(viewer);
+            self.last_focus = Some(focus);
+        }
         match self.print_screen_impl(viewer, search_state) {
             Ok(_) => match self.terminal.flush_contents(&mut self.stdout) {
                 Ok(_) => {}
@@ -125,46 +143,140 @@ impl ScreenWriter {
         }
     }
 
+    fn number_width(&self, viewer: &JsonViewer) -> usize {
+        if self.show_line_numbers || self.show_relative_line_numbers {
+            viewer.layout.lines.len().to_string().len().max(2) + 1
+        } else {
+            0
+        }
+    }
+
+    fn line_viewport(&self, line: &crate::toon_display::VisibleLine) -> lp::LineViewport {
+        lp::LineViewport::new(
+            &line.line,
+            self.horizontal_offsets
+                .get(&line.absolute)
+                .copied()
+                .unwrap_or(0),
+            usize::from(self.indentation_reduction) * 2,
+        )
+    }
+
+    pub fn mouse_action(&self, viewer: &JsonViewer, row: u16, column: u16) -> Action {
+        let index = (viewer.top_visible_line + usize::from(row.saturating_sub(1)))
+            .min(viewer.visible.len() - 1);
+        let number_width = self.number_width(viewer);
+        let column = usize::from(column.saturating_sub(1));
+        if column >= number_width && column < number_width + 2 {
+            Action::ClickArrow(row)
+        } else {
+            let viewport = self.line_viewport(&viewer.visible[index]);
+            let column = viewport.source_column(column.saturating_sub(number_width + 2));
+            let line = &viewer.visible[index].line;
+            let fitted = if viewport.horizontal_offset == 0 {
+                lp::fit_annotations(
+                    line,
+                    usize::from(self.dimensions.width).saturating_sub(number_width + 2)
+                        + viewport.removed_indentation,
+                )
+            } else {
+                std::borrow::Cow::Borrowed(line)
+            };
+            let (node, source) = lp::hit_test(&fitted, column);
+            Action::FocusNode { node, source }
+        }
+    }
+
     fn print_screen_impl(
         &mut self,
         viewer: &JsonViewer,
         search_state: &SearchState,
     ) -> std::fmt::Result {
-        let mut line = OptionIndex::Index(viewer.top_row);
-        let mut search_matches = search_state
-            .matches_iter(viewer.flatjson[line.unwrap()].range.start)
-            .peekable();
-        let current_match = search_state.current_match_range();
-
-        let mut delta_to_focused_row = viewer.index_of_focused_row_on_screen() as isize;
-
-        for row_index in 0..viewer.dimensions.height {
-            match line {
-                OptionIndex::Nil => {
-                    self.terminal.position_cursor(1, row_index + 1)?;
-                    self.terminal.clear_line()?;
-                    self.terminal.set_fg(terminal::LIGHT_BLACK)?;
-                    self.terminal.write_char('~')?;
-                }
-                OptionIndex::Index(index) => {
-                    self.print_line(
-                        viewer,
-                        row_index,
-                        index,
-                        delta_to_focused_row,
-                        &mut search_matches,
-                        &current_match,
-                    )?;
-                    line = match viewer.mode {
-                        Mode::Line => viewer.flatjson.next_visible_row(index),
-                        Mode::Data => viewer.flatjson.next_item(index),
-                    };
-                }
+        let matches = search_state.matches_iter(0).as_slice();
+        let current = search_state.current_match_range();
+        let focused = viewer.focused_line_index();
+        let number_width = self.number_width(viewer);
+        for screen in 0..viewer.dimensions.height {
+            self.terminal.position_cursor(1, screen + 1)?;
+            self.terminal.clear_line()?;
+            self.terminal.reset_style()?;
+            let index = viewer.top_visible_line + usize::from(screen);
+            let Some(visible) = viewer.visible.get(index) else {
+                self.terminal.set_fg(terminal::LIGHT_BLACK)?;
+                self.terminal.write_char('~')?;
+                continue;
+            };
+            let line = &visible.line;
+            if number_width > 0 {
+                let relative = viewer.visible[index.min(focused)..index.max(focused)]
+                    .iter()
+                    .filter(|line| !line.line.separator)
+                    .count();
+                let number = if self.show_relative_line_numbers
+                    && (index != focused || !self.show_line_numbers)
+                {
+                    relative
+                } else {
+                    visible.absolute + 1
+                };
+                self.terminal.set_fg(if index == focused {
+                    terminal::WHITE
+                } else {
+                    terminal::LIGHT_BLACK
+                })?;
+                let label = format!("{:>width$} ", number, width = number_width - 1);
+                self.terminal
+                    .write_str(&label[..label.len().min(usize::from(self.dimensions.width))])?;
             }
-
-            delta_to_focused_row -= 1;
+            let available = usize::from(self.dimensions.width).saturating_sub(number_width);
+            if available == 0 {
+                continue;
+            }
+            self.terminal.reset_style()?;
+            self.terminal.set_fg(if index == focused {
+                terminal::WHITE
+            } else {
+                terminal::LIGHT_BLACK
+            })?;
+            let arrow = if viewer.layout.nodes[line.owner].collapsible && !line.separator {
+                if viewer.flatjson[line.owner].is_collapsed()
+                    || viewer.layout.nodes[line.owner].inline_array
+                {
+                    '▸'
+                } else {
+                    '▾'
+                }
+            } else {
+                ' '
+            };
+            self.terminal.write_char(arrow)?;
+            if available == 1 {
+                continue;
+            }
+            self.terminal.write_char(' ')?;
+            let viewport = self.line_viewport(visible);
+            let fitted = if viewport.horizontal_offset == 0 {
+                lp::fit_annotations(line, available - 2 + viewport.removed_indentation)
+            } else {
+                std::borrow::Cow::Borrowed(line)
+            };
+            lp::paint(
+                &mut self.terminal,
+                &fitted,
+                if index == focused {
+                    viewer.focused_node..match viewer.flatjson[viewer.focused_node].pair_index() {
+                        crate::flatjson::OptionIndex::Index(end) => end + 1,
+                        _ => viewer.focused_node + 1,
+                    }
+                } else {
+                    0..0
+                },
+                viewport,
+                available - 2,
+                matches,
+                &current,
+            )?;
         }
-
         Ok(())
     }
 
@@ -183,130 +295,6 @@ impl ScreenWriter {
         result
     }
 
-    fn print_line(
-        &mut self,
-        viewer: &JsonViewer,
-        screen_index: u16,
-        index: Index,
-        delta_to_focused_row: isize,
-        search_matches: &mut Peekable<MatchRangeIter>,
-        focused_search_match: &Range<usize>,
-    ) -> std::fmt::Result {
-        let is_focused = index == viewer.focused_row;
-
-        self.terminal.position_cursor(1, screen_index + 1)?;
-        self.terminal.clear_line()?;
-        let row = &viewer.flatjson[index];
-
-        let indentation_level =
-            row.depth
-                .saturating_sub(self.indentation_reduction as usize) as isize;
-        let indentation = indentation_level * TAB_SIZE;
-
-        let focused = is_focused;
-
-        let mut focused_because_matching_container_pair = false;
-        if row.is_container() {
-            let pair_index = row.pair_index().unwrap();
-            if is_focused || viewer.focused_row == pair_index {
-                focused_because_matching_container_pair = true;
-            }
-        }
-
-        let mut trailing_comma = false;
-
-        if viewer.mode == Mode::Line {
-            // The next_sibling field isn't set for CloseContainer rows, so
-            // we need to get the OpenContainer row before we check if a row
-            // is the last row in a container, and thus whether we should
-            // print a trailing comma or not.
-            let row_root = if row.is_closing_of_container() {
-                &viewer.flatjson[row.pair_index().unwrap()]
-            } else {
-                row
-            };
-
-            // Don't print trailing commas after top level elements.
-            if row_root.parent.is_some() && row_root.next_sibling.is_some() {
-                if row.is_opening_of_container() && row.is_expanded() {
-                    // Don't print trailing commas after { or [, but
-                    // if it's collapsed, we do print one after the } or ].
-                } else {
-                    trailing_comma = true;
-                }
-            }
-        }
-
-        let search_matches_copy = (*search_matches).clone();
-
-        let mut absolute_line_number = None;
-        let mut relative_line_number = None;
-        let max_line_number_width = isize::max(
-            2,
-            isize::ilog10(viewer.flatjson.0.len() as isize + 1) as isize + 1,
-        );
-
-        if self.show_line_numbers {
-            absolute_line_number = Some(index + 1);
-        }
-        if self.show_relative_line_numbers {
-            relative_line_number = Some(delta_to_focused_row.unsigned_abs());
-        }
-
-        let mut line = lp::LinePrinter {
-            mode: viewer.mode,
-            terminal: &mut self.terminal,
-
-            flatjson: &viewer.flatjson,
-            row,
-            line_number: LineNumber {
-                absolute: absolute_line_number,
-                relative: relative_line_number,
-                max_width: max_line_number_width,
-            },
-
-            width: self.dimensions.width as isize,
-            indentation,
-
-            focused,
-            focused_because_matching_container_pair,
-            trailing_comma,
-
-            search_matches: Some(search_matches_copy),
-            focused_search_match,
-            // This is only used internally and really shouldn't be exposed.
-            emphasize_focused_search_match: true,
-
-            cached_truncated_value: Some(self.truncated_row_value_views.entry(index)),
-        };
-
-        // TODO: Handle error here? Or is never an error because writes
-        // to String should never fail?
-        line.print_line().unwrap();
-
-        *search_matches = line.search_matches.unwrap();
-
-        Ok(())
-    }
-
-    fn line_primitive_value_ref<'a, 'b>(
-        &'a self,
-        row: &'a Row,
-        viewer: &'b JsonViewer,
-    ) -> Option<&'b str> {
-        match &row.value {
-            Value::OpenContainer { .. } | Value::CloseContainer { .. } => None,
-            _ => {
-                let range = row.range.clone();
-                if let Value::String = &row.value {
-                    Some(&viewer.flatjson.1[range.start + 1..range.end - 1])
-                } else {
-                    Some(&viewer.flatjson.1[range])
-                }
-            }
-        }
-    }
-
     fn print_status_bar_impl(
         &mut self,
         viewer: &JsonViewer,
@@ -316,10 +304,11 @@ impl ScreenWriter {
         message: &Option<(String, MessageSeverity)>,
     ) -> std::fmt::Result {
         self.terminal
-            .position_cursor(1, self.dimensions.height - 1)?;
+            .position_cursor(1, self.dimensions.height.saturating_sub(1).max(1))?;
         self.terminal.clear_line()?;
         self.terminal.set_style(&terminal::Style {
-            inverted: true,
+            fg: terminal::BLACK,
+            bg: terminal::LIGHT_BLACK,
             ..terminal::Style::default()
         })?;
         // Need to print a line to ensure the entire bar with the path to
@@ -329,10 +318,24 @@ impl ScreenWriter {
         }
         self.terminal.write_char('\r')?;
 
-        let path_to_node = viewer
+        let mut path_to_node = viewer
             .flatjson
-            .build_path_to_node(PathType::DotWithTopLevelIndex, viewer.focused_row)
+            .build_path_to_node(PathType::DotWithTopLevelIndex, viewer.focused_node)
             .unwrap();
+        if path_to_node.is_empty() {
+            path_to_node.push('.');
+        }
+        let node = &viewer.layout.nodes[viewer.focused_node];
+        if let (Some(occurrence), Some(total)) = (node.occurrence, node.occurrence_total) {
+            write!(path_to_node, " (occurrence {occurrence} of {total})")?;
+        }
+        if viewer.visible[viewer.focused_line_index()]
+            .line
+            .text
+            .is_empty()
+        {
+            path_to_node.push_str(" (empty object)");
+        }
         self.print_path_to_node_and_file_name(
             &path_to_node,
             input_filename,
@@ -357,9 +360,10 @@ impl ScreenWriter {
                 // Print out which match we're on:
                 let match_tracker = format!("[{}/{}]", match_num + 1, search_state.num_matches());
                 self.terminal.position_cursor(
-                    self.dimensions.width
-                        - (1 + MAX_BUFFER_SIZE as u16)
-                        - (3 + match_tracker.len() as u16 + 3),
+                    self.dimensions
+                        .width
+                        .saturating_sub(1 + MAX_BUFFER_SIZE as u16 + 6 + match_tracker.len() as u16)
+                        .max(1),
                     self.dimensions.height,
                 )?;
 
@@ -372,88 +376,59 @@ impl ScreenWriter {
 
         self.terminal.position_cursor(
             // TODO: This can overflow on very skinny screens (2-3 columns).
-            self.dimensions.width - (1 + MAX_BUFFER_SIZE as u16),
+            self.dimensions
+                .width
+                .saturating_sub(1 + MAX_BUFFER_SIZE as u16)
+                .max(1),
             self.dimensions.height,
         )?;
         self.terminal
             .write_str(std::str::from_utf8(input_buffer).unwrap())?;
 
         // Position the cursor better for random debugging prints. (2 so it's after ':')
-        self.terminal.position_cursor(2, self.dimensions.height)?;
+        self.terminal.position_cursor_col(2)?;
 
         Ok(())
     }
 
-    // input.data.viewer.gameDetail.plays[3].playStats[0].gsisPlayer.id filename.>
-    // input.data.viewer.gameDetail.plays[3].playStats[0].gsisPlayer.id fi>
-    // // Path also shrinks if needed
-    // <.data.viewer.gameDetail.plays[3].playStats[0].gsisPlayer.id
     fn print_path_to_node_and_file_name(
         &mut self,
         path_to_node: &str,
         filename: &str,
         width: isize,
     ) -> std::fmt::Result {
-        let base_len = PATH_BASE.len() as isize;
         let path_display_width = UnicodeWidthStr::width(path_to_node) as isize;
-        let row = self.dimensions.height - 1;
+        let row = self.dimensions.height.saturating_sub(1).max(1);
 
         let space_available_for_filename =
-            width - base_len - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
-        let mut space_available_for_base = width - path_display_width;
+            width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
-        let inverted_style = terminal::Style {
-            inverted: true,
+        let status_style = terminal::Style {
+            fg: terminal::BLACK,
+            bg: terminal::LIGHT_BLACK,
             ..terminal::Style::default()
         };
 
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
 
-        if truncated_filename.any_contents_visible() {
-            let filename_width = truncated_filename.used_space().unwrap();
-            space_available_for_base -= filename_width - SPACE_BETWEEN_PATH_AND_FILENAME;
-        }
-
-        let truncated_base = TruncatedStrView::init_back(PATH_BASE, space_available_for_base);
-
         self.terminal.position_cursor(1, row)?;
-        self.terminal.set_style(&inverted_style)?;
-        self.terminal.set_bg(terminal::LIGHT_BLACK)?;
-
-        let base_slice = TruncatedStrSlice {
-            s: PATH_BASE,
-            truncated_view: &truncated_base,
+        self.terminal.set_style(&status_style)?;
+        let path_slice = TruncatedStrSlice {
+            s: path_to_node,
+            truncated_view: &TruncatedStrView::init_back(path_to_node, width),
         };
-
-        write!(self.terminal, "{base_slice}")?;
-
-        self.terminal.set_bg(terminal::DEFAULT)?;
-
-        // If the path is the exact same width as the screen, we won't print out anything
-        // for the PATH_BASE, and the path won't be truncated. But there is truncated
-        // content (the PATH_BASE), so we'll just manually handle this case.
-        if truncated_base.used_space().is_none() && path_display_width == width {
-            self.terminal.write_char('…')?;
-            let mut graphemes = path_to_node.graphemes(true);
-            // Skip one character.
-            graphemes.next();
-            self.terminal.write_str(graphemes.as_str())?;
-        } else {
-            let path_slice = TruncatedStrSlice {
-                s: path_to_node,
-                truncated_view: &TruncatedStrView::init_back(path_to_node, width),
-            };
-
-            write!(self.terminal, "{path_slice}")?;
-        }
+        write!(self.terminal, "{path_slice}")?;
 
         if truncated_filename.any_contents_visible() {
             let filename_width = truncated_filename.used_space().unwrap();
 
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
-            self.terminal.set_style(&inverted_style)?;
+            self.terminal.set_style(&terminal::Style {
+                fg: terminal::WHITE,
+                ..status_style
+            })?;
 
             let truncated_slice = TruncatedStrSlice {
                 s: filename,
@@ -474,6 +449,44 @@ impl ScreenWriter {
         self.indentation_reduction = self.indentation_reduction.saturating_sub(1)
     }
 
+    fn reveal_focused_span(&mut self, viewer: &JsonViewer) {
+        let line = &viewer.visible[viewer.focused_line_index()].line;
+        if let Some(span) = line
+            .spans
+            .iter()
+            .find(|span| span.node == viewer.focused_node && span.source.is_some())
+        {
+            self.reveal_byte_range(viewer, span.range.clone());
+        }
+    }
+
+    fn reveal_byte_range(&mut self, viewer: &JsonViewer, range: Range<usize>) {
+        let line = &viewer.visible[viewer.focused_line_index()].line;
+        let start_byte = line
+            .text
+            .grapheme_indices(true)
+            .find(|(byte, text)| byte + text.len() > range.start)
+            .map_or(range.start, |(byte, _)| byte);
+        let end_byte = line
+            .text
+            .grapheme_indices(true)
+            .find(|(byte, text)| byte + text.len() >= range.end)
+            .map_or(range.end, |(byte, text)| byte + text.len());
+        let viewport = self.line_viewport(&viewer.visible[viewer.focused_line_index()]);
+        let start = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..start_byte]));
+        let end = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..end_byte]));
+        let document_width =
+            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
+        let visible_columns = viewport.visible_columns(line, document_width);
+        let offset = self
+            .horizontal_offsets
+            .entry(viewer.absolute_anchor_line)
+            .or_default();
+        if start < visible_columns.start || end > visible_columns.end {
+            *offset = start;
+        }
+    }
+
     pub fn scroll_focused_line_right(&mut self, viewer: &JsonViewer, count: usize) {
         self.scroll_focused_line(viewer, count, true);
     }
@@ -482,91 +495,68 @@ impl ScreenWriter {
         self.scroll_focused_line(viewer, count, false);
     }
 
-    pub fn scroll_focused_line(&mut self, viewer: &JsonViewer, count: usize, to_right: bool) {
-        let row = viewer.focused_row;
-        let tsv = self.truncated_row_value_views.get(&row);
-        if let Some(tsv) = tsv {
-            if tsv.range.is_none() {
-                return;
-            }
-
-            // Make tsv not a reference.
-            let mut tsv = *tsv;
-            let value_ref = self
-                .line_primitive_value_ref(&viewer.flatjson[row], viewer)
-                .unwrap();
-            if to_right {
-                tsv = tsv.scroll_right(value_ref, count);
-            } else {
-                tsv = tsv.scroll_left(value_ref, count);
-            }
-            self.truncated_row_value_views
-                .insert(viewer.focused_row, tsv);
-        }
+    fn scroll_focused_line(&mut self, viewer: &JsonViewer, count: usize, right: bool) {
+        let absolute = viewer.absolute_anchor_line;
+        let line = &viewer.visible[viewer.focused_line_index()];
+        let width = self.line_viewport(line).content_width(&line.line);
+        let offset = self.horizontal_offsets.entry(absolute).or_default();
+        *offset = if right {
+            offset.saturating_add(count).min(width.saturating_sub(1))
+        } else {
+            offset.saturating_sub(count)
+        };
     }
 
     pub fn scroll_focused_line_to_an_end(&mut self, viewer: &JsonViewer) {
-        let row = viewer.focused_row;
-        let tsv = self.truncated_row_value_views.get(&row);
-        if let Some(tsv) = tsv {
-            if tsv.range.is_none() {
-                return;
-            }
-
-            // Make tsv not a reference.
-            let mut tsv = *tsv;
-            let value_ref = self
-                .line_primitive_value_ref(&viewer.flatjson[row], viewer)
-                .unwrap();
-            tsv = tsv.jump_to_an_end(value_ref);
-            self.truncated_row_value_views
-                .insert(viewer.focused_row, tsv);
-        }
+        let absolute = viewer.absolute_anchor_line;
+        let line = &viewer.visible[viewer.focused_line_index()];
+        let width = self.line_viewport(line).content_width(&line.line);
+        let available =
+            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
+        let offset = self.horizontal_offsets.entry(absolute).or_default();
+        let end = end_scroll_offset(width, available);
+        *offset = if *offset < end { end } else { 0 };
     }
 
-    pub fn scroll_line_to_search_match(
-        &mut self,
-        viewer: &JsonViewer,
-        focused_search_range: Range<usize>,
-    ) {
-        let row = viewer.focused_row;
-        let tsv = self.truncated_row_value_views.get(&row);
-        if let Some(tsv) = tsv {
-            // Make tsv not a reference.
-            let mut tsv = *tsv;
-            if tsv.range.is_none() {
-                return;
-            }
-
-            let json_row = &viewer.flatjson[row];
-            let value_ref = self.line_primitive_value_ref(json_row, viewer).unwrap();
-
-            let mut range = json_row.range.clone();
-            if json_row.is_string() {
-                range.start += 1;
-                range.end -= 1;
-            }
-
-            let no_overlap =
-                focused_search_range.end <= range.start || range.end <= focused_search_range.start;
-            if no_overlap {
-                return;
-            }
-
-            let mut value_range_start = range.start;
-            if let Value::String = &json_row.value {
-                value_range_start += 1;
-            }
-
-            let offset_focused_range = Range {
-                start: focused_search_range.start.saturating_sub(value_range_start),
-                end: focused_search_range.end - value_range_start,
-            };
-
-            tsv = tsv.focus(value_ref, &offset_focused_range);
-
-            self.truncated_row_value_views
-                .insert(viewer.focused_row, tsv);
+    pub fn scroll_line_to_search_match(&mut self, viewer: &JsonViewer, range: Range<usize>) {
+        self.sync_layout(viewer);
+        let line = &viewer.visible[viewer.focused_line_index()].line;
+        let target = line
+            .spans
+            .iter()
+            .filter(|span| span.node == viewer.focused_node)
+            .find_map(|span| span.matching_ranges(&range).into_iter().next());
+        if let Some(target) = target {
+            self.reveal_byte_range(viewer, target);
+            // The match may lie deep inside the token; generic node focus must
+            // not move the next paint back to that token's beginning.
+            self.last_focus = Some((
+                viewer.focused_node,
+                viewer.absolute_anchor_line,
+                self.dimensions.width,
+            ));
         }
+    }
+}
+
+fn end_scroll_offset(width: usize, available: usize) -> usize {
+    width
+        .saturating_sub(available.saturating_sub(1))
+        .min(width.saturating_sub(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::end_scroll_offset;
+
+    #[test]
+    fn end_scroll_stays_inside_content_at_narrow_widths() {
+        for available in [0, 1, 2] {
+            assert_eq!(end_scroll_offset(10, available), 9);
+        }
+        assert_eq!(end_scroll_offset(0, 0), 0);
+        assert_eq!(end_scroll_offset(1, 0), 0);
+        assert_eq!(end_scroll_offset(10, 5), 6);
+        assert_eq!(end_scroll_offset(10, 20), 0);
     }
 }
