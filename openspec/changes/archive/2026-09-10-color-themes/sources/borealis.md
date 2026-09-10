@@ -3,11 +3,6 @@ type: Reference
 title: Borealis theme
 description: Borealis RGB palette, source attribution, and tless role mappings.
 generated: { by: codex, at: 2026-09-10T20:59:37Z }
-sources:
-  - id: borealis
-    resource: ../../../../../examples/themes/borealis.tmTheme
-  - id: borealis-css
-    resource: ../../../../../examples/themes/borealis.css
 ---
 
 # Borealis
@@ -17,12 +12,11 @@ during a session. Set `colorscheme: borealis` in the tless configuration to
 use it at startup. Theme support requires the `colorscheme` feature, enabled
 by default.
 
-Borealis follows the `html:has(#dark-mode:checked)` palette in the
-[Borealis CSS source](../../../../../examples/themes/borealis.css), supplied from
-`~/Development/starlift/src/server/assets/theme/borealis.css`.
-The [original TextMate source](../../../../../examples/themes/borealis.tmTheme) supplies
-the teal string color, which the CSS does not define. Both source files are
-preserved unchanged.
+Borealis follows the `html:has(#dark-mode:checked)` palette in the Borealis CSS
+source supplied from `~/Development/starlift/src/server/assets/theme/borealis.css`.
+The original TextMate source supplies the teal string color, which the CSS does
+not define. The source files remain external to this repository; their hashes
+below preserve the source identities used for the implementation.
 
 This built-in requires a true-color terminal. It emits 24-bit foreground and
 background sequences without detecting terminal capability or approximating
