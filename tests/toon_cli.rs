@@ -508,16 +508,19 @@ fn toon_pipeline_passes_through_without_validation() {
 #[cfg(feature = "toon")]
 #[test]
 fn output_io_failure_exits_nonzero() {
-    use std::os::unix::io::FromRawFd;
-    let mut pipe = [-1; 2];
-    assert_eq!(unsafe { libc::pipe(pipe.as_mut_ptr()) }, 0);
-    let reader = unsafe { std::fs::File::from_raw_fd(pipe[0]) };
-    let writer = unsafe { std::fs::File::from_raw_fd(pipe[1]) };
+    use std::net::Shutdown;
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+
+    let (reader, writer) = UnixStream::pair().unwrap();
+    // Shutdown also affects copies inherited by concurrently spawned terminal
+    // tests, so an inherited reader cannot temporarily make the write succeed.
+    reader.shutdown(Shutdown::Both).unwrap();
     drop(reader);
     let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
         .arg("--toon")
         .stdin(Stdio::piped())
-        .stdout(writer)
+        .stdout(OwnedFd::from(writer))
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
