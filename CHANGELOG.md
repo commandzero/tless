@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Support terminal input and resize signals with high-numbered file descriptors; keep end-of-line scrolling inside the content at narrow widths and avoid copying all search matches on redraw.
+
 - Stop `J` at the last sibling instead of jumping back to its parent.
 
 - Render collapsed previews and object counts in plain terminal color 8 without extra dimming.

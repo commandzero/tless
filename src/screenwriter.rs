@@ -192,7 +192,7 @@ impl ScreenWriter {
         viewer: &JsonViewer,
         search_state: &SearchState,
     ) -> std::fmt::Result {
-        let matches: Vec<_> = search_state.matches_iter(0).cloned().collect();
+        let matches = search_state.matches_iter(0).as_slice();
         let current = search_state.current_match_range();
         let focused = viewer.focused_line_index();
         let number_width = self.number_width(viewer);
@@ -273,7 +273,7 @@ impl ScreenWriter {
                 },
                 viewport,
                 available - 2,
-                &matches,
+                matches,
                 &current,
             )?;
         }
@@ -514,7 +514,7 @@ impl ScreenWriter {
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
         let offset = self.horizontal_offsets.entry(absolute).or_default();
-        let end = width.saturating_sub(available.saturating_sub(1));
+        let end = end_scroll_offset(width, available);
         *offset = if *offset < end { end } else { 0 };
     }
 
@@ -536,5 +536,27 @@ impl ScreenWriter {
                 self.dimensions.width,
             ));
         }
+    }
+}
+
+fn end_scroll_offset(width: usize, available: usize) -> usize {
+    width
+        .saturating_sub(available.saturating_sub(1))
+        .min(width.saturating_sub(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::end_scroll_offset;
+
+    #[test]
+    fn end_scroll_stays_inside_content_at_narrow_widths() {
+        for available in [0, 1, 2] {
+            assert_eq!(end_scroll_offset(10, available), 9);
+        }
+        assert_eq!(end_scroll_offset(0, 0), 0);
+        assert_eq!(end_scroll_offset(1, 0), 0);
+        assert_eq!(end_scroll_offset(10, 5), 6);
+        assert_eq!(end_scroll_offset(10, 20), 0);
     }
 }
