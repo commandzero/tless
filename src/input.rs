@@ -333,7 +333,16 @@ fn wait_for_high_descriptors(input_fd: libc::c_int, signal_fd: libc::c_int) -> i
         {
             return Err(io::Error::from_raw_os_error(libc::EBADF));
         }
-        return Ok(descriptors[1].revents != 0);
+        if descriptors.iter().any(|fd| fd.revents & libc::POLLERR != 0) {
+            return Err(io::Error::from_raw_os_error(libc::EIO));
+        }
+        if descriptors[1].revents & libc::POLLHUP != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "resize signal pipe closed",
+            ));
+        }
+        return Ok(descriptors[1].revents & libc::POLLIN != 0);
     }
 }
 
@@ -342,6 +351,20 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::os::fd::{FromRawFd, OwnedFd};
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn high_descriptor_fallback_rejects_a_closed_signal_pipe() {
+        let (input, _input_writer) = UnixStream::pair().unwrap();
+        let (signal, signal_writer) = UnixStream::pair().unwrap();
+        signal_writer.shutdown(std::net::Shutdown::Both).unwrap();
+        assert_eq!(
+            wait_for_high_descriptors(input.as_raw_fd(), signal.as_raw_fd())
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+    }
 
     #[test]
     fn descriptors_above_select_capacity_support_input_and_resize() {
