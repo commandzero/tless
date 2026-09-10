@@ -15,7 +15,7 @@ Earlier upstream history is preserved below.
 
 - Show inline arrays with a collapsed arrow by default; keep tabular rows visible with collapse controls only on the array parent.
 
-- Show search matches in yellow and the active match in bright yellow, without reverse video or match backgrounds.
+- Underline search matches in yellow and the active match in bright yellow, without reverse video or match backgrounds.
 
 - Use cyan keys, blue booleans that brighten when selected, gray nulls, and a dark gray status bar; retain green strings, dark gray previews, and yellow warnings.
 

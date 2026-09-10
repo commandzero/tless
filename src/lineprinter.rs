@@ -172,9 +172,11 @@ pub fn paint(
             };
             if matches.iter().any(overlaps) {
                 style.fg = terminal::YELLOW;
+                style.underlined = true;
             }
             if overlaps(current) {
                 style.fg = terminal::LIGHT_YELLOW;
+                style.underlined = true;
             }
         }
         terminal.set_style(&style)?;
@@ -430,7 +432,7 @@ mod tests {
 
     #[test]
     fn mapped_search_does_not_highlight_unrelated_string_characters() {
-        let flat = parse_top_level_json(r#""aaaaNEEDLE""#.into()).unwrap();
+        let flat = parse_top_level_json(r#""aaaaNEEDLEzz""#.into()).unwrap();
         let layout = Layout::canonical(&flat);
         let source = flat.1.find("NEEDLE").unwrap();
         let query = source..source + 6;
@@ -447,13 +449,15 @@ mod tests {
         .unwrap();
         let output = terminal.output();
         let before = output.find("aaaa").unwrap();
+        assert!(!output[..before].contains("_U_"), "{}", output);
+        assert!(output.contains("_!U_zz"), "{}", output);
         assert!(
             !output[..before].contains("_FG(LightYellow)_"),
             "{}",
             output
         );
         assert!(
-            output[before..].contains("_FG(LightYellow)_NEEDLE"),
+            output[before..].contains("_FG(LightYellow)__U_NEEDLE"),
             "{}",
             output
         );
@@ -471,7 +475,7 @@ mod tests {
         )
         .unwrap();
         let output = terminal.output();
-        assert!(output.contains("_FG(Yellow)_NEEDLE"), "{}", output);
+        assert!(output.contains("_FG(Yellow)__U_NEEDLE"), "{}", output);
         assert!(!output.contains("_INV_"), "{}", output);
         assert!(!output.contains("_BG("), "{}", output);
         assert!(!output.contains("_B_"), "{}", output);
