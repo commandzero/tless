@@ -36,6 +36,11 @@ selected line. Focus uses bright syntax colors
 instead of bold text, and stays on the selected display line when a container
 has visible descendants. Inline elements and table cells keep individual focus.
 
+Default syntax colors use terminal palette indexes: keys cyan (6), strings green
+(2), numbers magenta (5), booleans bright blue (12), and nulls gray (7).
+Previews use dark gray (8), and warnings use yellow (3). The status bar uses a
+dark gray (8) background with gray (7) text.
+
 ## Selection and navigation
 
 Up/down moves through visible data lines. Parent, child, and sibling motions

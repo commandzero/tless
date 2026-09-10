@@ -62,7 +62,7 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 
 ### Requirement: Syntax styling
 
-Keys and table field names SHALL share a syntax category. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. TOON array counts SHALL use structural styling. Expanded data and complete inline primitive arrays of at most five elements that fit the terminal SHALL retain their data styling, including when collapsed. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling. These annotations SHALL remain subdued without focus highlighting or bold when their owning container is selected.
+Keys and table field names SHALL share a syntax category. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. Default terminal palette indexes SHALL be cyan 6 for keys, green 2 for strings, magenta 5 for numbers, bright blue 12 for booleans, gray 7 for nulls, dark gray 8 for previews, and yellow 3 for warnings. The status bar SHALL use a dark gray 8 background with gray 7 text. TOON array counts SHALL use structural styling. Expanded data and complete inline primitive arrays of at most five elements that fit the terminal SHALL retain their data styling, including when collapsed. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling. These annotations SHALL remain subdued without focus highlighting or bold when their owning container is selected.
 
 #### Scenario: Expanded primitive array
 

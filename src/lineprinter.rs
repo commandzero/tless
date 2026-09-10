@@ -148,11 +148,11 @@ pub fn paint(
         let mut style = Style::default();
         if let Some(span) = span {
             style.fg = match span.role {
-                TokenRole::Key => terminal::BLUE,
+                TokenRole::Key => terminal::CYAN,
                 TokenRole::String => terminal::GREEN,
                 TokenRole::Number => terminal::MAGENTA,
-                TokenRole::Boolean => terminal::YELLOW,
-                TokenRole::Null => terminal::LIGHT_BLACK,
+                TokenRole::Boolean => terminal::LIGHT_BLUE,
+                TokenRole::Null => terminal::WHITE,
                 TokenRole::Warning => terminal::YELLOW,
                 TokenRole::Count | TokenRole::Preview => terminal::LIGHT_BLACK,
                 TokenRole::Structure => terminal::DEFAULT,
@@ -382,8 +382,8 @@ mod tests {
         assert!(painted.contains("hello"));
         assert!(!painted.contains("_D_"));
         assert!(painted.contains("_FG(Magenta)_1"));
-        assert!(painted.contains("_FG(Yellow)_true"));
-        assert!(painted.contains("_FG(LightBlack)_null"));
+        assert!(painted.contains("_FG(LightBlue)_true"));
+        assert!(painted.contains("_FG(White)_null"));
         assert!(painted.contains("_FG(Green)_hello"));
         assert_eq!(text(&layout.lines[0], 100, 0), "[4]: 1,true,null,hello");
     }

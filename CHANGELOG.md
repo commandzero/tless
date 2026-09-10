@@ -7,6 +7,8 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Use cyan keys, bright blue booleans, gray nulls, and a dark gray status bar; retain green strings, dark gray previews, and yellow warnings.
+
 - Scroll horizontally in ten-cell increments with `,` and `.`, multiplied by numeric prefixes.
 
 - Preserve value colors when collapsing short primitive arrays whose complete inline form fits the terminal.

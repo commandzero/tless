@@ -305,7 +305,8 @@ impl ScreenWriter {
             .position_cursor(1, self.dimensions.height.saturating_sub(1).max(1))?;
         self.terminal.clear_line()?;
         self.terminal.set_style(&terminal::Style {
-            inverted: true,
+            fg: terminal::WHITE,
+            bg: terminal::LIGHT_BLACK,
             ..terminal::Style::default()
         })?;
         // Need to print a line to ensure the entire bar with the path to
@@ -400,8 +401,9 @@ impl ScreenWriter {
         let space_available_for_filename =
             width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
-        let inverted_style = terminal::Style {
-            inverted: true,
+        let status_style = terminal::Style {
+            fg: terminal::WHITE,
+            bg: terminal::LIGHT_BLACK,
             ..terminal::Style::default()
         };
 
@@ -409,7 +411,7 @@ impl ScreenWriter {
             TruncatedStrView::init_start(filename, space_available_for_filename);
 
         self.terminal.position_cursor(1, row)?;
-        self.terminal.set_style(&inverted_style)?;
+        self.terminal.set_style(&status_style)?;
         let path_slice = TruncatedStrSlice {
             s: path_to_node,
             truncated_view: &TruncatedStrView::init_back(path_to_node, width),
@@ -421,7 +423,7 @@ impl ScreenWriter {
 
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
-            self.terminal.set_style(&inverted_style)?;
+            self.terminal.set_style(&status_style)?;
 
             let truncated_slice = TruncatedStrSlice {
                 s: filename,
