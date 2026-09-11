@@ -137,6 +137,5 @@ changelog, and extracted binary. Tags use `vX.Y.Z` or `vX.Y.Z-rc.N`.
 
 The independent tless release history starts at 0.1.0. It changes the executable name,
 default TOON feature, input limit, and tested binary platform floors together.
-No tless releases or tless Homebrew formula were found during migration preparation.
 The upstream jless package, tags, and download URLs remain unchanged.
 Recheck consumers before publication, then follow [the release checklist](release-checklist.md).

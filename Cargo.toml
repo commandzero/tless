@@ -9,7 +9,7 @@ categories = ["command-line-utilities"]
 repository = "https://github.com/CommandZero/tless"
 homepage = "https://github.com/CommandZero/tless"
 documentation = "https://github.com/CommandZero/tless#readme"
-publish = false
+publish = true
 edition = "2024"
 rust-version = "1.87"
 
