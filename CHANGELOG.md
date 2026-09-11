@@ -5,6 +5,8 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-10
+
 ### Changed
 
 - Move the crate to Rust 2024 edition while retaining Rust 1.87 as the minimum compiler.
@@ -30,7 +32,7 @@ Earlier upstream history is preserved below.
 - Move release, search, rendering, and TOON acceptance guidance into docs; rename third-party notices to NOTICES.md and remove the unused tmux helper.
 - **Breaking:** Rename the package and executable from jless to tless. Update scripts and aliases that should use the CommandZero fork; upstream jless can stay installed.
 - **Breaking:** Enable TOON by default and limit input to 512 MiB. Use `--no-default-features` for a JSON/YAML-only build and `--max-input-bytes 0` to remove the input limit.
-- Start the independent tless release history at 0.1.0, with source-checkout and native binary distribution. Keep registry publication a separate release decision.
+- Start the independent tless release history at 0.1.0, with a published crate and native binary distribution.
 - Define macOS 15 and Ubuntu 24.04 as the tested binary release floors. Older systems require independent source-build validation.
 
 ### Fixed
@@ -47,7 +49,8 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/35f1c7686bd096ecce2ce73016dc70191869bb6c...HEAD
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/CommandZero/tless/compare/35f1c7686bd096ecce2ce73016dc70191869bb6c...v0.1.0
 
 ## Upstream history
 
