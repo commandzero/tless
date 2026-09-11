@@ -57,6 +57,16 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 - **AND** default-theme focus SHALL use bright foreground colors instead of bold and SHALL apply on all visible physical rows belonging to the selected logical display line
 - **AND** default-theme line numbers and collapse arrows SHALL use dark gray ordinarily and light gray on the selected display line
 
+### Requirement: Theme selection background fills the row
+
+When a theme defines a distinct selection background, each visible physical row of the selected logical display line SHALL fill the terminal width with it, including indentation, spaces, gutters, and clipping markers. Themes without a distinct selection background SHALL retain their appearance. Search matches SHALL retain their theme search style over the row background.
+
+#### Scenario: Borealis selected row
+
+- **WHEN** a short document line is selected under Borealis
+- **THEN** the selection background SHALL extend through unused columns to the terminal edge
+- **AND** search spans SHALL retain their search background
+
 ## ADDED Requirements
 
 ### Requirement: Optional line wrapping
