@@ -314,9 +314,7 @@ impl JsonViewer {
             });
         let first = self
             .physical_rows
-            .iter()
-            .position(|row| row.logical_line == logical)
-            .unwrap_or(0);
+            .partition_point(|row| row.logical_line < logical);
         byte.and_then(|byte| {
             self.physical_rows
                 .iter()
@@ -675,14 +673,11 @@ impl JsonViewer {
             let focused = self.focused_line_index();
             let focused_first = self
                 .physical_rows
-                .iter()
-                .position(|row| row.logical_line == focused)
-                .unwrap_or(0);
-            let focused_last = self
+                .partition_point(|row| row.logical_line < focused);
+            let focused_end = self
                 .physical_rows
-                .iter()
-                .rposition(|row| row.logical_line == focused)
-                .unwrap_or(focused_first);
+                .partition_point(|row| row.logical_line <= focused);
+            let focused_last = focused_end.saturating_sub(1);
             self.top_physical_row = if down {
                 previous_top
                     .saturating_add(distance)

@@ -656,6 +656,28 @@ mod terminal_commands {
     }
 
     #[test]
+    fn deep_mouse_continuation_stays_visible_after_redraw() {
+        let value = format!("{}CLICKED", "abcdefghijklmnopqrstuvwxyz".repeat(8));
+        let input = format!(r#"{{"first":1,"long":"{}"}}"#, value);
+        // Scroll to the end, then click the bottom viewer row on a continuation.
+        let wheel_down = "\x1b[<65;1;4M";
+        let click = "\x1b[<0;8;6M";
+        let output = session_with_width(
+            &input,
+            &format!("l\x0c\x12{}{click}q", wheel_down.repeat(12)),
+            None,
+            35,
+        );
+        let rows = rendered_rows(&output, 16, 8);
+        assert!(
+            rows.windows(2)
+                .any(|pair| pair[0].contains("CLICKE") && pair[1].contains('D')),
+            "{:?}",
+            rows
+        );
+    }
+
+    #[test]
     fn hidden_search_reveals_and_prints_the_cell_without_annotations() {
         let output = session(
             r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,

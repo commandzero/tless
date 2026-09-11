@@ -601,6 +601,7 @@ impl App {
                             | Action::MoveFocusedLineToTop
                             | Action::MoveFocusedLineToCenter
                             | Action::MoveFocusedLineToBottom
+                            | Action::FocusNodeAt { .. }
                             | Action::NoOp
                     )
                 {
