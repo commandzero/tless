@@ -155,6 +155,7 @@ impl JsonViewer {
         self.wrap_width = width;
         self.wrap_indentation = indentation;
         self.rebuild_physical_rows();
+        self.ensure_visible();
         true
     }
 
@@ -692,13 +693,24 @@ impl JsonViewer {
                 if self.top_physical_row == previous_top {
                     self.vertical(distance, down);
                 } else {
-                    let index = (self.top_physical_row + screen_index)
-                        .min(self.physical_rows.len().saturating_sub(1));
-                    let index = (index..self.physical_rows.len())
+                    let viewport_end = self
+                        .top_physical_row
+                        .saturating_add(height)
+                        .min(self.physical_rows.len());
+                    let index =
+                        (self.top_physical_row + screen_index).min(viewport_end.saturating_sub(1));
+                    let index = (index..viewport_end)
                         .find(|&i| {
                             !self.visible[self.physical_rows[i].logical_line]
                                 .line
                                 .separator
+                        })
+                        .or_else(|| {
+                            (self.top_physical_row..index).rev().find(|&i| {
+                                !self.visible[self.physical_rows[i].logical_line]
+                                    .line
+                                    .separator
+                            })
                         })
                         .unwrap_or(index);
                     self.focus_line(self.physical_rows[index].logical_line, true);
@@ -1891,6 +1903,35 @@ mod tests {
 
         assert!(target_index >= v.top_physical_row);
         assert!(target_index < v.top_physical_row + usize::from(v.dimensions.height).max(1));
+    }
+
+    #[test]
+    fn wrapping_geometry_reflow_keeps_structure_focus_visible() {
+        let mut v = viewer(&format!(
+            r#"{{"long":"{}","container":{{"value":1}},"tail":2}}"#,
+            "0123456789abcdefghijklmnopqrstuvwxyz".repeat(4)
+        ));
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 4,
+            },
+            true,
+        );
+        v.set_wrap_geometry(8, 0);
+        v.toggle_wrapping();
+
+        let long_node = v.flatjson[0].first_child().unwrap();
+        let container_node = v.flatjson[long_node].next_sibling.unwrap();
+        v.focus(container_node);
+        v.top_physical_row = 0;
+        v.sync_top_indices();
+
+        v.set_wrap_geometry(4, 0);
+
+        let height = usize::from(v.dimensions.height).max(1);
+        assert!(v.focused_physical_row() >= v.top_physical_row);
+        assert!(v.focused_physical_row() < v.top_physical_row + height);
     }
 
     fn wrapped_table_viewer() -> JsonViewer {
