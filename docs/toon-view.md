@@ -1,9 +1,9 @@
 ---
 type: Guide
 title: TOON document view
-description: Document layout, logical selection, collapse, and display extensions.
+description: Document layout, optional wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-10T22:25:27Z }
+generated: { by: codex/gpt-5.6-luna, at: 2026-09-11T02:30:26Z }
 ---
 
 # TOON document view
@@ -87,12 +87,19 @@ expanded TOON lines, so collapse leaves gaps. Values sharing a line share its
 address. Relative numbers count visible vertical motions. Root warning
 separators have absolute addresses but vertical navigation skips them.
 
-Long individual values and table rows scroll horizontally without wrapping.
-`,` and `.` scroll left and right by 10 terminal cells per press; a numeric
-prefix multiplies that distance.
-Resizing keeps the selected value while automatic array layouts adapt to the
-available width. Line addresses follow the resulting layout. Collapsed previews give up width before count and
-warning annotations; warnings remain reachable through horizontal scrolling.
+Expanded values and table rows scroll horizontally by default. Press Ctrl+L to
+toggle wrapping for the current session, starting off. Wrapped rows use
+terminal cells and keep a single logical line for navigation, numbering, and
+selection. Continuation rows have blank gutters. Explicit scrolling, wheel
+input, paging, and `zz`/`zt`/`zb` positioning use physical rows, so a value
+taller than the viewport can be read without moving focus. `,`, `.`, and `;`
+scroll collapsed previews and other unwrapped expanded lines; they do nothing
+on a wrapped expanded line. Collapsed previews stay on one row and retain
+horizontal scrolling. `,` and `.` move 10 terminal cells per press, multiplied
+by a numeric prefix. Resizing, gutter changes, and indentation changes rebuild
+the physical rows while keeping the selected value. Collapsed previews give up
+width before count and warning annotations; their warnings remain reachable
+through horizontal scrolling. Warnings on expanded wrapped lines scroll vertically.
 
 Line/Data modes, `--mode`, `-m`, interactive `m`, and matching-closing-delimiter
 actions have been removed. Use structural parent/child motions for containers.

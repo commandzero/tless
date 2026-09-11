@@ -8,6 +8,7 @@ Earlier upstream history is preserved below.
 ### Changed
 
 - **Breaking:** Default redirected output to TOON and validate and serialize all input formats. Use `-o json` to preserve JSON pipeline behavior or `-o yaml` for YAML serialization. Builds without TOON support require an explicit JSON or YAML output selection. [#7](https://github.com/commandzero/tless/issues/7).
+- Add session-only, off-by-default Ctrl+L wrapping for expanded TOON lines. Logical navigation remains line-based while scrolling, paging, and positioning use physical rows, and collapsed previews retain horizontal access.
 
 - Support terminal input and resize signals with high-numbered file descriptors; keep end-of-line scrolling inside the content at narrow widths and avoid copying all search matches on redraw.
 

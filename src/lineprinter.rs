@@ -116,11 +116,6 @@ pub fn paint(
         right,
         available,
     } = window;
-    let focused_spans: Vec<_> = line
-        .spans
-        .iter()
-        .filter(|span| span.node == focused.start)
-        .collect();
     if width == 0 {
         return Ok(());
     }
@@ -140,46 +135,14 @@ pub fn paint(
         if used + cells > available {
             break;
         }
-        let span = focused_spans
-            .iter()
-            .copied()
-            .find(|span| span.range.contains(&byte))
-            .or_else(|| line.spans.iter().find(|span| span.range.contains(&byte)));
-        let mut style = Style::default();
-        if let Some(span) = span {
-            style.fg = match span.role {
-                TokenRole::Key => terminal::CYAN,
-                TokenRole::String => terminal::GREEN,
-                TokenRole::Number => terminal::MAGENTA,
-                TokenRole::Boolean => terminal::BLUE,
-                TokenRole::Null => terminal::WHITE,
-                TokenRole::Warning => terminal::YELLOW,
-                TokenRole::Count | TokenRole::Preview => terminal::LIGHT_BLACK,
-                TokenRole::Structure => terminal::DEFAULT,
-            };
-            let annotation = matches!(
-                span.role,
-                TokenRole::Preview | TokenRole::Count | TokenRole::Warning
-            );
-            style.dimmed = span.role == TokenRole::Warning;
-            if focused.contains(&span.node) && !annotation {
-                style.fg = style.fg.bright();
-            }
-            let overlaps = |query: &Range<usize>| {
-                span.matching_ranges(query)
-                    .iter()
-                    .any(|range| range.start < byte + grapheme.len() && byte < range.end)
-            };
-            if matches.iter().any(overlaps) {
-                style.fg = terminal::YELLOW;
-                style.underlined = true;
-            }
-            if overlaps(current) {
-                style.fg = terminal::LIGHT_YELLOW;
-                style.underlined = true;
-            }
-        }
-        terminal.set_style(&style)?;
+        terminal.set_style(&grapheme_style(
+            line,
+            &focused,
+            byte,
+            grapheme.len(),
+            matches,
+            current,
+        ))?;
         terminal.write_str(grapheme)?;
         used += cells;
     }
@@ -188,6 +151,95 @@ pub fn paint(
         terminal.write_char('…')?;
     }
     Ok(())
+}
+
+/// Paint a precomputed wrap slice without horizontal clipping markers.
+pub fn paint_wrapped(
+    terminal: &mut impl Terminal,
+    line: &DisplayLine,
+    focused: Range<usize>,
+    row: &crate::wrapped_view::PhysicalRow,
+    width: usize,
+    matches: &[Range<usize>],
+    current: &Range<usize>,
+) -> std::fmt::Result {
+    if width == 0 {
+        return Ok(());
+    }
+    if row.placeholder {
+        terminal.set_style(&grapheme_style(
+            line,
+            &focused,
+            row.bytes.start,
+            row.bytes.len(),
+            matches,
+            current,
+        ))?;
+        terminal.write_char('…')?;
+    } else {
+        for (offset, grapheme) in line.text[row.bytes.clone()].grapheme_indices(true) {
+            terminal.set_style(&grapheme_style(
+                line,
+                &focused,
+                row.bytes.start + offset,
+                grapheme.len(),
+                matches,
+                current,
+            ))?;
+            terminal.write_str(grapheme)?;
+        }
+    }
+    terminal.reset_style()
+}
+
+fn grapheme_style(
+    line: &DisplayLine,
+    focused: &Range<usize>,
+    byte: usize,
+    byte_len: usize,
+    matches: &[Range<usize>],
+    current: &Range<usize>,
+) -> Style {
+    let span = line
+        .spans
+        .iter()
+        .find(|span| span.node == focused.start && span.range.contains(&byte))
+        .or_else(|| line.spans.iter().find(|span| span.range.contains(&byte)));
+    let mut style = Style::default();
+    if let Some(span) = span {
+        style.fg = match span.role {
+            TokenRole::Key => terminal::CYAN,
+            TokenRole::String => terminal::GREEN,
+            TokenRole::Number => terminal::MAGENTA,
+            TokenRole::Boolean => terminal::BLUE,
+            TokenRole::Null => terminal::WHITE,
+            TokenRole::Warning => terminal::YELLOW,
+            TokenRole::Count | TokenRole::Preview => terminal::LIGHT_BLACK,
+            TokenRole::Structure => terminal::DEFAULT,
+        };
+        let annotation = matches!(
+            span.role,
+            TokenRole::Preview | TokenRole::Count | TokenRole::Warning
+        );
+        style.dimmed = span.role == TokenRole::Warning;
+        if focused.contains(&span.node) && !annotation {
+            style.fg = style.fg.bright();
+        }
+        let overlaps = |query: &Range<usize>| {
+            span.matching_ranges(query)
+                .iter()
+                .any(|range| range.start < byte + byte_len && byte < range.end)
+        };
+        if matches.iter().any(overlaps) {
+            style.fg = terminal::YELLOW;
+            style.underlined = true;
+        }
+        if overlaps(current) {
+            style.fg = terminal::LIGHT_YELLOW;
+            style.underlined = true;
+        }
+    }
+    style
 }
 
 /// Reserve visible space for counts and the final warning before allocating preview cells.
@@ -233,6 +285,33 @@ pub fn fit_annotations(line: &DisplayLine, width: usize) -> std::borrow::Cow<'_,
     std::borrow::Cow::Owned(clipped)
 }
 
+/// Resolve only cells actually painted in this wrap slice. Padding at a wrap
+/// boundary must not select a value that begins on the following row.
+pub fn hit_test_wrapped(
+    line: &DisplayLine,
+    row: &crate::wrapped_view::PhysicalRow,
+    column: usize,
+) -> (usize, Option<usize>) {
+    let mut cells = 0;
+    let byte = if row.placeholder && column == 0 {
+        Some(row.bytes.start)
+    } else if row.placeholder {
+        None
+    } else {
+        line.text[row.bytes.clone()]
+            .grapheme_indices(true)
+            .find_map(|(byte, grapheme)| {
+                cells += UnicodeWidthStr::width(grapheme);
+                (cells > column).then_some(row.bytes.start + byte)
+            })
+    };
+    let span = byte.and_then(|byte| line.spans.iter().find(|span| span.range.contains(&byte)));
+    (
+        span.map_or(line.owner, |span| span.node),
+        span.and_then(|span| span.source.as_ref().map(|source| source.start)),
+    )
+}
+
 /// Resolve a terminal cell to its parsed owner and optional source-token anchor.
 pub fn hit_test(line: &DisplayLine, column: usize) -> (usize, Option<usize>) {
     let mut cells = 0;
@@ -275,6 +354,84 @@ mod tests {
         .unwrap();
         terminal.output().to_string()
     }
+    #[test]
+    fn wrapped_paint_preserves_graphemes_text_and_search_styles() {
+        let flat = parse_top_level_json(r#""ab界éNEEDLEzz""#.into()).unwrap();
+        let source = flat.1.find("NEEDLE").unwrap();
+        let query = source..source + 6;
+        let mut viewer = crate::viewer::JsonViewer::new(flat);
+        viewer.set_wrap_geometry(5, 0);
+        viewer.toggle_wrapping();
+        let mut joined = String::new();
+        let mut highlighted_rows = 0;
+        for index in 0..100 {
+            let Some(row) = viewer.screen_row(index) else {
+                break;
+            };
+            let line = &viewer.visible[row.logical_line].line;
+            let mut text = TextOnlyTerminal::new();
+            paint_wrapped(&mut text, line, 0..1, row, 5, &[], &(0..0)).unwrap();
+            assert!(UnicodeWidthStr::width(text.output()) <= 5);
+            assert!(!text.output().contains('…'));
+            joined.push_str(text.output());
+            let mut styled = VisibleEscapesTerminal::new(false, true);
+            paint_wrapped(
+                &mut styled,
+                line,
+                0..1,
+                row,
+                5,
+                std::slice::from_ref(&query),
+                &query,
+            )
+            .unwrap();
+            if styled.output().contains("_FG(LightYellow)__U_") {
+                highlighted_rows += 1;
+            }
+        }
+        assert_eq!(joined, viewer.visible[0].line.text);
+        assert!(highlighted_rows >= 2, "match spans multiple physical rows");
+    }
+
+    #[test]
+    fn wrapped_paint_uses_bounded_placeholders_and_zero_width() {
+        let mut viewer =
+            crate::viewer::JsonViewer::new(parse_top_level_json(r#""界a""#.into()).unwrap());
+        viewer.set_wrap_geometry(1, 0);
+        viewer.toggle_wrapping();
+        let row = viewer.screen_row(0).unwrap();
+        let line = &viewer.visible[0].line;
+        let mut terminal = TextOnlyTerminal::new();
+        paint_wrapped(&mut terminal, line, 0..1, row, 1, &[], &(0..0)).unwrap();
+        assert_eq!(terminal.output(), "…");
+        terminal.clear_output();
+        paint_wrapped(&mut terminal, line, 0..1, row, 0, &[], &(0..0)).unwrap();
+        assert_eq!(terminal.output(), "");
+    }
+
+    #[test]
+    fn wrap_padding_does_not_select_a_cell_on_the_next_row() {
+        let mut viewer = crate::viewer::JsonViewer::new(
+            parse_top_level_json(r#"[{"a":"abc","b":"界"}]"#.into()).unwrap(),
+        );
+        viewer.set_wrap_geometry(7, 0);
+        viewer.toggle_wrapping();
+        let row = viewer
+            .physical_rows
+            .iter()
+            .find(|row| row.first && viewer.visible[row.logical_line].line.text == "  abc,界")
+            .unwrap();
+        let line = &viewer.visible[row.logical_line].line;
+        assert_ne!(hit_test_wrapped(line, row, 2).0, line.owner);
+        assert_eq!(hit_test_wrapped(line, row, 6), (line.owner, None));
+        let continuation = viewer
+            .physical_rows
+            .iter()
+            .find(|next| next.logical_line == row.logical_line && !next.first)
+            .unwrap();
+        assert_ne!(hit_test_wrapped(line, continuation, 0).0, line.owner);
+    }
+
     #[test]
     fn reveal_window_reserves_only_actual_clipping_markers() {
         let flat = parse_top_level_json(r#"{"x":"aaaaaaaaaaaaaaaaaaaaaaaaaaZ"}"#.into()).unwrap();

@@ -36,6 +36,7 @@ mod toon_display;
 mod truncatedstrview;
 mod types;
 mod viewer;
+mod wrapped_view;
 mod yamlparser;
 
 use app::App;

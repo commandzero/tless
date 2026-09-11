@@ -87,7 +87,7 @@ Keeping hidden offsets was rejected because toggling off could unexpectedly hide
 ### Keep toggle state in the interactive session
 
 Dispatch Ctrl+L only in document input handling and clear any numeric prefix after one toggle.
-Use the existing message area to report `Line wrapping on` or `Line wrapping off`.
+Use the existing message area to report `Line wrapping on` or `Line wrapping off`, with a shorter label in narrow terminals.
 Returning from help preserves the document's setting.
 Prompt editors keep their own Ctrl+L handling.
 
