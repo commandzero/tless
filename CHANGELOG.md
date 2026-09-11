@@ -13,6 +13,7 @@ Earlier upstream history is preserved below.
 
 - Keep status-bar paths black when a theme uses reverse-video styling.
 - Highlight selected lines with xterm color 235 in 256-color builds and a dark-gray fallback in 16-color builds.
+- Color quoted-key delimiters as punctuation while retaining cyan for key text.
 
 ## [0.1.0] - 2026-09-10
 
