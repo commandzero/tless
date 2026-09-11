@@ -37,7 +37,9 @@ To install one, download the archive for your platform, extract it, and put the
 `tless` binary on your `PATH`:
 
 ```sh
-tar -xzf tless-vX.Y.Z-<rust-target-triple>.tar.gz
+archive="tless-vX.Y.Z-rust-target-triple.tar.gz" # replace with the downloaded filename
+tar -xzf "$archive"
+mkdir -p "$HOME/.local/bin"
 install -m 755 tless "$HOME/.local/bin/tless"
 ```
 
