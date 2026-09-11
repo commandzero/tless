@@ -562,12 +562,16 @@ fn input_limit_applies_to_stdin_and_files_without_partial_output() {
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("input exceeds"));
-    assert!(run(&["-o", "json", "--max-input-bytes", "3"], b"123")
-        .status
-        .success());
-    assert!(run(&["-o", "json", "--max-input-bytes", "0"], b"123")
-        .status
-        .success());
+    assert!(
+        run(&["-o", "json", "--max-input-bytes", "3"], b"123")
+            .status
+            .success()
+    );
+    assert!(
+        run(&["-o", "json", "--max-input-bytes", "0"], b"123")
+            .status
+            .success()
+    );
     let path = std::env::temp_dir().join(format!("tless-limit-{}.json", std::process::id()));
     std::fs::write(&path, b"123").unwrap();
     let output = run(&["--max-input-bytes", "2", path.to_str().unwrap()], b"");

@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-10T22:25:27Z }
+generated: { by: codex/gpt-6, at: 2026-09-11T00:29:19Z }
 ---
 
 # TOON acceptance checks
@@ -94,6 +94,5 @@ release checks above remain separate.
 ## Release checks
 
 Follow [the release checklist](release-checklist.md) for native packaging and
-supported-host checks. The inherited block 0.1.6 on macOS and xcb 0.8.2 on Linux
-emit Cargo future-compatibility notices on the development compiler. These are
-separate from current compiler and Clippy failures.
+supported-host checks. The arboard migration removes the former block 0.1.6 and
+xcb 0.8.2 dependencies and their future-compatibility notices.

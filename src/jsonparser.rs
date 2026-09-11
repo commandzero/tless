@@ -33,7 +33,9 @@ impl<'a> JsonParser<'a> {
         if self.peeked_token.is_some() {
             self.peeked_token.take().unwrap()
         } else {
-            self.tokenizer.next()
+            self.tokenizer
+                .next()
+                .map(|token| token.unwrap_or(JsonToken::Error))
         }
     }
 
@@ -48,7 +50,11 @@ impl<'a> JsonParser<'a> {
 
     fn peek_token_or_eof(&mut self) -> Option<JsonToken> {
         if self.peeked_token.is_none() {
-            self.peeked_token = Some(self.tokenizer.next());
+            self.peeked_token = Some(
+                self.tokenizer
+                    .next()
+                    .map(|token| token.unwrap_or(JsonToken::Error)),
+            );
         }
 
         self.peeked_token.unwrap()

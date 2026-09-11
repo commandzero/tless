@@ -113,7 +113,7 @@ Each release must pass native tests and an extracted-binary smoke test on all 4 
 These are release gates, not a claim that an unpublished release has passed them.
 Other Linux distributions and older operating systems are unverified.
 Windows and musl are not supported.
-Linux clipboard support requires X11 and libxcb; clipboard access also needs a usable display session.
+Linux clipboard access requires a usable X11 or XWayland display session.
 
 ## Command-line contract
 
@@ -219,13 +219,8 @@ Invalid UTF-8 is always an input error.
 Builds resolve the published codec through Cargo.lock, with its CLI features disabled.
 Keep `--locked` when building. The codec license is included in NOTICES.md.
 
-On Linux systems, X11 libraries are needed to build clipboard access if
-building from source. On Ubuntu you can install these using:
-
-```
-sudo apt-get install libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-```
-
+Clipboard access uses arboard with text support only. Linux builds no longer
+require libxcb development packages.
 
 ## Contribute and release
 

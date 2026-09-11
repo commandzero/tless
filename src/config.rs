@@ -75,7 +75,7 @@ impl Config {
                 return Err(format!(
                     "Unable to read config file {}: {error}",
                     path.display()
-                ))
+                ));
             }
         };
 
@@ -147,14 +147,14 @@ impl Config {
                 Yaml::Integer(index) => {
                     return Err(format!(
                         "palette index {index} for theme key '{key}' must be between 0 and 255"
-                    ))
+                    ));
                 }
                 Yaml::String(name) => parse_color(name)
                     .ok_or_else(|| format!("unknown color '{name}' for theme key '{key}'"))?,
                 _ => {
                     return Err(format!(
                         "color for '{key}' must be a name or an integer palette index from 0 to 255"
-                    ))
+                    ));
                 }
             };
             colors.push((theme_color, color));

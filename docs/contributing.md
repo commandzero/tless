@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
+generated: { by: codex/gpt-6, at: 2026-09-11T00:29:19Z }
 ---
 
 # Contributing
@@ -30,7 +30,7 @@ Do not remove behavior tests because a type check passes.
 ## Local checks
 
 Install rustup, Rust 1.97.1 with rustfmt and Clippy, ShellCheck, actionlint 1.7.12, okf 0.2.7, Node.js 20.19 or newer, and OpenSpec 1.11.0.
-Linux builds need libxcb-shape0-dev and libxcb-xfixes0-dev.
+Linux clipboard builds use arboard's Rust X11 backend and need no libxcb development packages.
 Scripts target Bash 3.2 and use language-native tools without requiring RTK.
 
 ```sh

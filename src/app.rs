@@ -1,14 +1,12 @@
-use std::error::Error;
 use std::fs::File;
 use std::io;
 use std::io::Write;
 
-use clipboard::{ClipboardContext, ClipboardProvider};
+use arboard::Clipboard;
 use rustyline::error::ReadlineError;
 use termion::event::Key;
 use termion::event::MouseButton::{Left, WheelDown, WheelUp};
 use termion::event::MouseEvent::Press;
-use termion::raw::RawTerminal;
 use termion::screen::{ToAlternateScreen, ToMainScreen};
 
 #[cfg(feature = "colorscheme")]
@@ -35,7 +33,7 @@ pub struct App {
     input_filename: String,
     search_state: SearchState,
     message: Option<(String, MessageSeverity)>,
-    clipboard_context: Result<ClipboardContext, Box<dyn Error>>,
+    clipboard_context: Result<Clipboard, arboard::Error>,
 }
 
 // State to determine how to process the next event input.
@@ -130,7 +128,7 @@ impl App {
         data: String,
         data_format: DataFormat,
         input_filename: String,
-        stdout: RawTerminal<Box<dyn Write>>,
+        stdout: crate::screenwriter::TerminalOutput,
     ) -> Result<App, String> {
         let flatjson = match Self::parse_input(data, data_format) {
             Ok(flatjson) => flatjson,
@@ -152,7 +150,7 @@ impl App {
             input_filename,
             search_state: SearchState::empty(),
             message: None,
-            clipboard_context: ClipboardProvider::new(),
+            clipboard_context: Clipboard::new(),
         })
     }
 
@@ -961,7 +959,7 @@ impl App {
                     ContentTarget::QueryPath => "query path",
                 };
 
-                if let Err(err) = clipboard.set_contents(content) {
+                if let Err(err) = clipboard.set_text(content) {
                     self.set_error_message(format!(
                         "Unable to copy {content_type} to clipboard: {err}"
                     ));

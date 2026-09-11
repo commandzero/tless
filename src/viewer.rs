@@ -1,5 +1,5 @@
 use crate::flatjson::{FlatJson, Index, OptionIndex};
-use crate::toon_display::{normalize_node, Layout, VisibleLine};
+use crate::toon_display::{Layout, VisibleLine, normalize_node};
 use crate::types::TTYDimensions;
 use std::collections::HashSet;
 #[cfg(test)]
@@ -674,7 +674,7 @@ impl OptionIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flatjson::{parse_top_level_json, parse_top_level_yaml, PathType};
+    use crate::flatjson::{PathType, parse_top_level_json, parse_top_level_yaml};
     fn viewer(input: &str) -> JsonViewer {
         JsonViewer::new(parse_top_level_json(input.into()).unwrap())
     }
@@ -832,10 +832,12 @@ mod tests {
         assert_eq!(v.visible[1].line.text, "  - .inf  # WARN Non-finite number");
         assert_eq!(v.layout.warnings.len(), 1);
         v.perform_action(Action::MoveLeft);
-        assert!(v.visible[0]
-            .line
-            .text
-            .contains("Contains 1 hidden warnings"));
+        assert!(
+            v.visible[0]
+                .line
+                .text
+                .contains("Contains 1 hidden warnings")
+        );
     }
 
     #[test]
@@ -1239,12 +1241,13 @@ mod tests {
             "shallow expansion restores nested collapse"
         );
         v.perform_action(Action::DeepExpandNodeAndSiblings);
-        assert!(v
-            .flatjson
-            .0
-            .iter()
-            .filter(|row| row.is_container())
-            .all(|row| row.is_expanded()));
+        assert!(
+            v.flatjson
+                .0
+                .iter()
+                .filter(|row| row.is_container())
+                .all(|row| row.is_expanded())
+        );
         assert_eq!(path(&v), ".c");
         assert!(v.index_of_focused_node_on_screen() < 3);
     }

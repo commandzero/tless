@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 use std::fmt::Write;
 
+use rustyline::Helper;
 use rustyline::completion::Completer;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
-use rustyline::Helper;
 
 use crate::terminal::{AnsiTerminal, Style, Terminal};
 
@@ -45,7 +45,12 @@ impl Highlighter for CommandLineHighlighter {
         Cow::Owned(self.styled(prompt))
     }
 
-    fn highlight_char(&self, _line: &str, _pos: usize) -> bool {
+    fn highlight_char(
+        &self,
+        _line: &str,
+        _pos: usize,
+        _kind: rustyline::highlight::CmdKind,
+    ) -> bool {
         true
     }
 }
@@ -83,7 +88,11 @@ mod tests {
                 highlighter.highlight(line, line.len()),
                 format!("{prefix}{line}")
             );
-            assert!(highlighter.highlight_char(line, line.len()));
+            assert!(highlighter.highlight_char(
+                line,
+                line.len(),
+                rustyline::highlight::CmdKind::Other
+            ));
         }
     }
 }

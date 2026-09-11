@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::io::Write as _;
 use std::ops::Range;
 
 use rustyline::Editor;
+use rustyline::history::DefaultHistory;
 use termion::raw::RawTerminal;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -23,9 +25,13 @@ use crate::truncatedstrview::{TruncatedStrSlice, TruncatedStrView};
 use crate::types::TTYDimensions;
 use crate::viewer::{Action, JsonViewer};
 
+pub type TerminalOutput = termion::input::MouseTerminal<
+    termion::cursor::HideCursor<termion::screen::AlternateScreen<RawTerminal<std::io::Stdout>>>,
+>;
+
 pub struct ScreenWriter {
-    pub stdout: RawTerminal<Box<dyn std::io::Write>>,
-    pub command_editor: Editor<CommandLineHighlighter>,
+    pub stdout: TerminalOutput,
+    pub command_editor: Editor<CommandLineHighlighter, DefaultHistory>,
     pub dimensions: TTYDimensions,
     pub terminal: AnsiTerminal,
     theme: Theme,
@@ -65,10 +71,10 @@ impl ScreenWriter {
     pub fn init(
         options: &Opt,
         theme: Theme,
-        stdout: RawTerminal<Box<dyn std::io::Write>>,
+        stdout: TerminalOutput,
         dimensions: TTYDimensions,
     ) -> Self {
-        let command_editor = Editor::new();
+        let command_editor = Editor::new().expect("Unable to initialize command input");
         #[cfg(feature = "colorscheme")]
         let mut command_editor = command_editor;
         #[cfg(feature = "colorscheme")]
@@ -616,15 +622,19 @@ mod tests {
             let mut terminal = AnsiTerminal::new(String::new());
             super::paint_document_row(&mut terminal, &theme, 1, width, true).unwrap();
             assert!(terminal.output().contains("\x1b[48;2;10;35;66m"));
-            assert!(terminal
-                .output()
-                .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize))));
+            assert!(
+                terminal
+                    .output()
+                    .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize)))
+            );
             terminal.clear_output();
             super::paint_document_row(&mut terminal, &theme, 1, width, false).unwrap();
             assert!(terminal.output().contains("\x1b[48;2;5;15;33m"));
-            assert!(terminal
-                .output()
-                .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize))));
+            assert!(
+                terminal
+                    .output()
+                    .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize)))
+            );
         }
     }
 

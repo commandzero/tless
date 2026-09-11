@@ -10,7 +10,7 @@ mod vim;
 #[cfg(feature = "colorscheme")]
 use crate::terminal::LIGHT_BLUE;
 use crate::terminal::{
-    Color, Style, BLUE, CYAN, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, MAGENTA, RED, WHITE,
+    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, MAGENTA, RED, Style, WHITE,
     YELLOW,
 };
 

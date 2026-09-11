@@ -6,7 +6,7 @@ use crate::lineprinter;
 use crate::yamlparser;
 
 #[cfg(feature = "sexp")]
-use crate::jsonstringunescaper::{unsafe_unescape_json_string, UnescapeError};
+use crate::jsonstringunescaper::{UnescapeError, unsafe_unescape_json_string};
 
 pub type Index = usize;
 
@@ -669,12 +669,8 @@ impl Value {
 
     fn set_collapsed(&mut self, val: bool) {
         match self {
-            Value::OpenContainer {
-                ref mut collapsed, ..
-            } => *collapsed = val,
-            Value::CloseContainer {
-                ref mut collapsed, ..
-            } => *collapsed = val,
+            Value::OpenContainer { collapsed, .. } => *collapsed = val,
+            Value::CloseContainer { collapsed, .. } => *collapsed = val,
             _ => {}
         }
     }

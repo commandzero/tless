@@ -358,11 +358,7 @@ pub fn hit_test(line: &DisplayLine, column: usize) -> (usize, Option<usize>) {
         .grapheme_indices(true)
         .find_map(|(byte, grapheme)| {
             cells += UnicodeWidthStr::width(grapheme);
-            if cells > column {
-                Some(byte)
-            } else {
-                None
-            }
+            if cells > column { Some(byte) } else { None }
         })
         .unwrap_or(line.text.len());
     let span = line.spans.iter().find(|span| span.range.contains(&byte));
@@ -596,11 +592,12 @@ mod tests {
         let flat = parse_top_level_yaml("value: .inf".into()).unwrap();
         let layout = Layout::canonical(&flat);
         let line = &layout.lines[0];
-        assert!(line
-            .spans
-            .iter()
-            .filter(|span| span.role == TokenRole::Warning)
-            .all(|span| span.source.is_none()));
+        assert!(
+            line.spans
+                .iter()
+                .filter(|span| span.role == TokenRole::Warning)
+                .all(|span| span.source.is_none())
+        );
         assert!(line.spans.iter().any(|span| span.source.is_some()));
         assert!(text(line, 200, 0).ends_with("# WARN Non-finite number"));
     }
