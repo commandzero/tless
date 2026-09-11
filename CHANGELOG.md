@@ -9,6 +9,11 @@ Earlier upstream history is preserved below.
 
 - Add session-only, off-by-default Ctrl+L wrapping for expanded TOON lines. Logical navigation remains line-based while scrolling, paging, and positioning use physical rows, and collapsed previews retain horizontal access.
 
+### Changed
+
+- Keep status-bar paths black when a theme uses reverse-video styling.
+- Highlight selected lines with xterm color 235 in 256-color builds and a dark-gray fallback in 16-color builds.
+
 ## [0.1.0] - 2026-09-10
 
 ### Changed
