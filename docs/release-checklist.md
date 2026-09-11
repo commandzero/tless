@@ -36,6 +36,8 @@ that the version is not already published. Set `publish = true` only in the
 reviewed release commit. After the tagged GitHub release is validated, publish
 that exact version with `cargo publish --locked`. Crates.io versions are
 immutable; a correction requires a new version and a new reviewed release.
+Record the successful package check, publish dry run, ownership review, and
+version-availability result in the release PR description.
 
 ## Build and verify
 
