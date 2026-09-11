@@ -1,6 +1,6 @@
 // Bundled Vim companion palette data. Do not edit.
 // Source palette revision: a96c3bc1f7f5ebb62643ae54ea8a1d2fa732aaf8.
-use super::{s, ThemeName, VimPalette};
+use super::{ThemeName, VimPalette, s};
 
 impl ThemeName {
     pub(in crate::theme) fn vim_palette(self) -> Option<&'static VimPalette> {

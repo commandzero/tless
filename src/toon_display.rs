@@ -1384,9 +1384,11 @@ mod tests {
             .find(|span| span.role == TokenRole::Preview)
             .unwrap();
         let source_start = flat.1.find("needle").unwrap();
-        assert!(!preview
-            .matching_ranges(&(source_start..source_start + 6))
-            .is_empty());
+        assert!(
+            !preview
+                .matching_ranges(&(source_start..source_start + 6))
+                .is_empty()
+        );
     }
     #[test]
     fn duplicate_decoded_keys_keep_identity() {
@@ -1445,7 +1447,10 @@ mod tests {
             r##"[6]: "# WARN Duplicate key",".inf","true","05","a,b","-x""##
         );
         let flat = yaml("- a: .inf\n- a: .nan\n");
-        assert_eq!(text(&flat),"[2]{a}:\n  .inf  # WARN Non-finite number at field \"a\"\n  .nan  # WARN Non-finite number at field \"a\"");
+        assert_eq!(
+            text(&flat),
+            "[2]{a}:\n  .inf  # WARN Non-finite number at field \"a\"\n  .nan  # WARN Non-finite number at field \"a\""
+        );
     }
     #[test]
     fn typed_recursive_keys_and_multiple_roots() {
@@ -1478,21 +1483,25 @@ mod tests {
             .unwrap();
         assert_eq!(key_span.source, flat[fields[0]].key_range);
         assert_eq!(&layout.lines[0].text[key_span.range.clone()], "a");
-        assert!(layout.lines[2]
-            .spans
-            .iter()
-            .any(|span| span.node == fields[0] && span.role == TokenRole::Warning));
+        assert!(
+            layout.lines[2]
+                .spans
+                .iter()
+                .any(|span| span.node == fields[0] && span.role == TokenRole::Warning)
+        );
         flat.collapse(rows[1]);
         let collapsed = layout.project(&flat);
         assert_eq!(collapsed[2].absolute, 2);
         assert!(!layout.nodes[rows[1]].collapsible);
         assert!(layout.nodes[0].collapsible);
         assert_eq!(collapsed[2].line.text, layout.lines[2].text);
-        assert!(collapsed[2]
-            .line
-            .spans
-            .iter()
-            .any(|span| span.node == fields[0]));
+        assert!(
+            collapsed[2]
+                .line
+                .spans
+                .iter()
+                .any(|span| span.node == fields[0])
+        );
         flat.expand(rows[1]);
         assert_eq!(layout.project(&flat)[2].line.text, layout.lines[2].text);
     }
@@ -1507,10 +1516,12 @@ mod tests {
         let layout = Layout::canonical(&flat);
         flat.collapse(1);
         let visible = layout.project(&flat);
-        assert!(visible[0]
-            .line
-            .text
-            .ends_with("# WARN Duplicate key; Contains 2 hidden warnings"));
+        assert!(
+            visible[0]
+                .line
+                .text
+                .ends_with("# WARN Duplicate key; Contains 2 hidden warnings")
+        );
         assert_eq!(layout.nodes[0].descendant_warnings, 4);
     }
     #[test]
@@ -1557,26 +1568,32 @@ mod tests {
         flat.collapse(1);
         let visible = layout.project(&flat);
         assert_eq!(visible[0].line.text, "tags[2]: 1,2");
-        assert!(visible[0]
-            .line
-            .spans
-            .iter()
-            .any(|s| s.role == TokenRole::Number));
-        assert!(!visible[0]
-            .line
-            .spans
-            .iter()
-            .any(|s| s.role == TokenRole::Preview));
+        assert!(
+            visible[0]
+                .line
+                .spans
+                .iter()
+                .any(|s| s.role == TokenRole::Number)
+        );
+        assert!(
+            !visible[0]
+                .line
+                .spans
+                .iter()
+                .any(|s| s.role == TokenRole::Preview)
+        );
         flat.expand(1);
         assert_eq!(layout.project(&flat)[0].line.text, layout.lines[0].text);
         let mut dup = json(r#"{"a":{"b":{"x":1,"x":2}}}"#);
         let l = Layout::canonical(&dup);
         dup.collapse(2);
         dup.collapse(1);
-        assert!(l.project(&dup)[0]
-            .line
-            .text
-            .contains("Contains 2 hidden warnings"));
+        assert!(
+            l.project(&dup)[0]
+                .line
+                .text
+                .contains("Contains 2 hidden warnings")
+        );
         dup.expand(1);
         assert!(dup[2].is_collapsed());
         assert_eq!(l.project(&dup).len(), 2);
@@ -1597,16 +1614,21 @@ mod tests {
             text(&flat),
             r#"? ["quote\"x","\\literal",{"a:b":[true,null,1]}]: value  # WARN Non-string key"#
         );
-        assert!(!Layout::canonical(&flat)
-            .warnings
-            .iter()
-            .any(|w| w.kind == WarningKind::NonCanonicalNumber));
+        assert!(
+            !Layout::canonical(&flat)
+                .warnings
+                .iter()
+                .any(|w| w.kind == WarningKind::NonCanonicalNumber)
+        );
     }
 
     #[test]
     fn list_first_field_inline_warnings_keep_element_locators() {
         let flat = yaml("- vals: [.inf, .nan]\n  nested: {}\n");
-        assert_eq!(text(&flat), "[1]:\n  - vals[2]: .inf,.nan  # WARN Non-finite number at [0]; Non-finite number at [1]\n    nested:");
+        assert_eq!(
+            text(&flat),
+            "[1]:\n  - vals[2]: .inf,.nan  # WARN Non-finite number at [0]; Non-finite number at [1]\n    nested:"
+        );
     }
 
     #[test]
@@ -1617,35 +1639,42 @@ mod tests {
         let projected = layout.project(&flat);
         let line = &projected[0].line;
         assert_eq!(line.text, "[5]: text,2,true,null,5");
-        assert!(!line
-            .spans
-            .iter()
-            .any(|span| span.role == TokenRole::Preview));
+        assert!(
+            !line
+                .spans
+                .iter()
+                .any(|span| span.role == TokenRole::Preview)
+        );
         for role in [
             TokenRole::String,
             TokenRole::Number,
             TokenRole::Boolean,
             TokenRole::Null,
         ] {
-            assert!(line
-                .spans
-                .iter()
-                .any(|span| span.role == role && span.source.is_some()));
+            assert!(
+                line.spans
+                    .iter()
+                    .any(|span| span.role == role && span.source.is_some())
+            );
         }
         let narrow = Layout::for_view(&flat, 10, &HashSet::from([0]));
-        assert!(narrow.project(&flat)[0]
-            .line
-            .spans
-            .iter()
-            .any(|span| span.role == TokenRole::Preview));
+        assert!(
+            narrow.project(&flat)[0]
+                .line
+                .spans
+                .iter()
+                .any(|span| span.role == TokenRole::Preview)
+        );
         let mut long = json("[1,2,3,4,5,6]");
         let layout = Layout::for_view(&long, 120, &HashSet::new());
         long.collapse(0);
-        assert!(layout.project(&long)[0]
-            .line
-            .spans
-            .iter()
-            .any(|span| span.role == TokenRole::Preview));
+        assert!(
+            layout.project(&long)[0]
+                .line
+                .spans
+                .iter()
+                .any(|span| span.role == TokenRole::Preview)
+        );
     }
 
     #[test]
@@ -1760,9 +1789,11 @@ mod tests {
         let mut flat = yaml(".inf: {a: .inf}");
         let layout = Layout::canonical(&flat);
         flat.collapse(1);
-        assert!(layout.project(&flat)[0]
-            .line
-            .text
-            .ends_with("# WARN Non-finite number; Non-string key; Contains 1 hidden warnings"));
+        assert!(
+            layout.project(&flat)[0]
+                .line
+                .text
+                .ends_with("# WARN Non-finite number; Non-string key; Contains 1 hidden warnings")
+        );
     }
 }

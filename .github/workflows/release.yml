@@ -19,7 +19,7 @@ jobs:
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
           sudo apt-get update
-          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev shellcheck
+          sudo apt-get install -y shellcheck
           cargo install okf --version 0.2.7 --locked
           GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -52,11 +52,6 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install 1.97.1 --profile minimal
-      - name: Install Linux clipboard dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev
       - name: Native behavior tests and extracted binary checks
         env:
           RELEASE_TARGET: ${{ matrix.target }}

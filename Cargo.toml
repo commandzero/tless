@@ -10,7 +10,7 @@ repository = "https://github.com/CommandZero/tless"
 homepage = "https://github.com/CommandZero/tless"
 documentation = "https://github.com/CommandZero/tless#readme"
 publish = false
-edition = "2018"
+edition = "2024"
 rust-version = "1.87"
 
 [package.metadata.toon]
@@ -25,22 +25,21 @@ sexp = []
 toon = ["dep:toon-format", "dep:serde_json"]
 
 [dependencies]
-logos = "0.12.0"
-unicode-width = "0.1.5"
-unicode-segmentation = "1.7.1"
-rustyline = "9.0.0"
-regex = "1.5"
-lazy_static = "1.4.0"
-termion = "1.5.6"
-signal-hook = "0.3.8"
+logos = "0.16.1"
+unicode-width = "0.2.2"
+unicode-segmentation = "1.13.3"
+rustyline = { version = "18.0.1", default-features = false }
+regex = "1.13.1"
+lazy_static = "1.5.0"
+termion = "4.0.6"
+signal-hook = "0.4.4"
 libc = "0.2"
-clap = { version = "4.0", features = ["derive"] }
-isatty = "0.1"
+clap = { version = "4.6.6", features = ["derive"] }
 libc-stdhandle = "0.1.0"
-yaml-rust = "0.4"
-clipboard = "0.5"
+yaml-rust = "0.4.5"
+arboard = { version = "3.6.1", default-features = false }
 toon-format = { version = "=0.5.0", default-features = false, optional = true }
-serde_json = { version = "=1.0.145", features = ["preserve_order"], optional = true }
+serde_json = { version = "=1.0.151", features = ["preserve_order"], optional = true }
 
 [dev-dependencies]
-indoc = "1.0"
+indoc = "2.0.7"

@@ -1,9 +1,9 @@
 use signal_hook::consts::SIGWINCH;
 use signal_hook::low_level::pipe;
-use termion::event::{parse_event, Event, Key, MouseEvent};
+use termion::event::{Event, Key, MouseEvent, parse_event};
 
 use std::io;
-use std::io::{stdin, Read, Stdin};
+use std::io::{Read, Stdin, stdin};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 
