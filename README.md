@@ -9,6 +9,11 @@ Expand and collapse data, navigate with vim-style keys, and search with regular 
 Press F1 or enter `:help` for in-app help.
 Every input uses one TOON document view, including JSON/YAML-only builds.
 See [the document view](docs/toon-view.md) for navigation and display warnings.
+Press Ctrl+L to toggle line wrapping for expanded values during the current
+session. Wrapping starts off. Structural navigation remains logical, while
+scrolling, paging, and `zz`/`zt`/`zb` positioning use physical rows. Continuation
+rows have blank gutters. Collapsed previews stay on one row with horizontal
+scrolling; `,`, `.`, and `;` do nothing on wrapped expanded lines.
 
 ## Install
 

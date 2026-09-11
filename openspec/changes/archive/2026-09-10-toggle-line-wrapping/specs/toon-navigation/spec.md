@@ -1,26 +1,4 @@
-# toon-navigation Specification
-
-## Purpose
-
-Keep every parsed value reachable and identifiable when TOON places multiple logical values on one display line or hides them through collapse.
-
-## Requirements
-
-### Requirement: Logical focus independent of lines
-
-The viewer SHALL distinguish container focus from child-value focus even when they share a display line. It SHALL support focus on individual inline-array elements, table row objects, and table cells without changing the TOON layout. A cell's path SHALL include its array index and field key. A duplicate occurrence SHALL retain a distinct selection identity even if its textual path equals another occurrence's path.
-
-#### Scenario: Table cell identity
-
-- **WHEN** a user focuses `Lin` in the second row of `users[2]{id,name}:`
-- **THEN** its path SHALL identify `users[1].name`
-- **AND** copying the selected value SHALL select the string `Lin`, not the row or column header
-
-#### Scenario: Duplicate occurrence identity
-
-- **WHEN** a user moves between duplicate `status` entries
-- **THEN** each entry SHALL remain independently selectable
-- **AND** status SHALL show `occurrence 1 of 2` or `occurrence 2 of 2` alongside its path
+## MODIFIED Requirements
 
 ### Requirement: Vertical and structural motion
 
@@ -94,15 +72,7 @@ Wrap toggles, resize, gutter or indentation changes, collapse, expansion, and vi
 - **THEN** that element SHALL remain selected
 - **AND** the viewer SHALL scroll as needed to keep its data span visible
 
-### Requirement: Numbered jumps follow TOON lines
-
-Absolute line jumps SHALL address the fully expanded TOON layout used by absolute gutters. A target hidden by collapse SHALL select the visible collapsed ancestor unless the command explicitly requests revealing the target. A jump to a separator SHALL select the following root. All values sharing a TOON line SHALL share its jump address; a line jump SHALL initially focus the line's owning node.
-
-#### Scenario: Jump into collapsed content
-
-- **WHEN** an absolute jump targets a line inside a collapsed object
-- **THEN** the normal jump SHALL focus the collapsed object
-- **AND** a reveal-target jump SHALL expand ancestors and focus the target line's owning node
+## ADDED Requirements
 
 ### Requirement: Physical viewport scrolling for wrapped lines
 

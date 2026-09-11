@@ -20,6 +20,7 @@ mod terminal_commands {
     use std::os::unix::io::{AsRawFd, FromRawFd};
     use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
+    use unicode_width::UnicodeWidthChar;
     static NEXT_SESSION: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     pub fn cursor_requests(output: &[u8], scanned: &mut usize) -> usize {
@@ -127,7 +128,7 @@ mod terminal_commands {
         let mut deadline = Instant::now() + Duration::from_secs(90);
         let mut output = Vec::new();
         let mut sent = false;
-        let mut keys = commands.bytes();
+        let mut keys = commands.bytes().peekable();
         let mut next_key_at = Instant::now();
         let mut waiting_for_prompt = None;
         let mut entering_command = false;
@@ -161,7 +162,9 @@ mod terminal_commands {
             }
             if let Some(start) = waiting_for_redraw {
                 let recent = String::from_utf8_lossy(&output[start..]);
-                if recent.contains("\x1b[?2004l") && recent.contains("tless-pty-") {
+                if recent.contains("\x1b[?2004l")
+                    && (recent.contains("tless-pty-") || recent.contains("\x1b[1;1H"))
+                {
                     waiting_for_redraw = None;
                 }
             }
@@ -189,7 +192,19 @@ mod terminal_commands {
                         entering_command = false;
                         waiting_for_redraw = Some(output.len());
                     }
-                    master.write_all(&[key]).unwrap();
+                    let mut input = vec![key];
+                    // Keep xterm mouse sequences together. Sending one byte
+                    // per tick can make termion see an incomplete CSI event
+                    // before the rest of the sequence reaches the PTY.
+                    if key == 0x1b && keys.peek() == Some(&b'[') {
+                        for next in keys.by_ref() {
+                            input.push(next);
+                            if input.len() > 2 && (next == b'~' || next.is_ascii_alphabetic()) {
+                                break;
+                            }
+                        }
+                    }
+                    master.write_all(&input).unwrap();
                     next_key_at = Instant::now()
                         + Duration::from_millis(if key == b':' || key == b'\n' { 50 } else { 10 });
                 }
@@ -213,6 +228,135 @@ mod terminal_commands {
             .unwrap()
             .replace_all(output, "")
             .into_owned()
+    }
+
+    // The PTY transcript contains cursor-addressed screen updates rather than
+    // newline-delimited output. Keep a small screen model here so rendering
+    // assertions can distinguish a continuation gutter from a later redraw.
+    fn rendered_rows(output: &str, width: u16, height: u16) -> Vec<String> {
+        let width = usize::from(width);
+        let height = usize::from(height);
+        let mut screen = vec![vec![' '; width]; height];
+        let mut row = 0usize;
+        let mut column = 0usize;
+        let mut saved = (0usize, 0usize);
+        let bytes = output.as_bytes();
+        let mut index = 0usize;
+
+        while index < bytes.len() {
+            match bytes[index] {
+                0x1b => {
+                    if bytes.get(index + 1) == Some(&b'[') {
+                        let mut end = index + 2;
+                        while end < bytes.len() && !(0x40..=0x7e).contains(&bytes[end]) {
+                            end += 1;
+                        }
+                        if end >= bytes.len() {
+                            break;
+                        }
+                        let params = String::from_utf8_lossy(&bytes[index + 2..end]);
+                        let mut numbers = params
+                            .trim_start_matches('?')
+                            .split(';')
+                            .map(|part| part.parse::<usize>().unwrap_or(0));
+                        let first = numbers.next().unwrap_or(0);
+                        let second = numbers.next().unwrap_or(0);
+                        match bytes[end] {
+                            b'H' | b'f' => {
+                                row = first.saturating_sub(1).min(height.saturating_sub(1));
+                                column = second.saturating_sub(1).min(width.saturating_sub(1));
+                            }
+                            b'G' | b'`' => {
+                                column = first.saturating_sub(1).min(width.saturating_sub(1));
+                            }
+                            b'A' => row = row.saturating_sub(first.max(1)),
+                            b'B' | b'e' => {
+                                row = row
+                                    .saturating_add(first.max(1))
+                                    .min(height.saturating_sub(1));
+                            }
+                            b'C' | b'a' => {
+                                column = column
+                                    .saturating_add(first.max(1))
+                                    .min(width.saturating_sub(1));
+                            }
+                            b'D' => column = column.saturating_sub(first.max(1)),
+                            b'J' => {
+                                if first == 2 || first == 3 {
+                                    for line in &mut screen {
+                                        line.fill(' ');
+                                    }
+                                } else if first == 0 {
+                                    for cell in screen[row][column..].iter_mut() {
+                                        *cell = ' ';
+                                    }
+                                }
+                            }
+                            b'K' => match first {
+                                1 => screen[row][..=column.min(width.saturating_sub(1))].fill(' '),
+                                2 => screen[row].fill(' '),
+                                _ => screen[row][column..].fill(' '),
+                            },
+                            b's' => saved = (row, column),
+                            b'u' => (row, column) = saved,
+                            _ => {}
+                        }
+                        index = end + 1;
+                        continue;
+                    }
+                    // OSC and other two-byte escapes do not paint cells. OSC
+                    // payloads end at BEL or ST; skipping the introducer is
+                    // enough for the terminal sequences emitted by tless.
+                    index = index.saturating_add(2);
+                }
+                b'\r' => {
+                    column = 0;
+                    index += 1;
+                }
+                b'\n' => {
+                    row = row.saturating_add(1).min(height.saturating_sub(1));
+                    index += 1;
+                }
+                0x08 => {
+                    column = column.saturating_sub(1);
+                    index += 1;
+                }
+                0x07 => index += 1,
+                _ if row >= height || column >= width => {
+                    if let Ok(text) = std::str::from_utf8(&bytes[index..]) {
+                        if let Some(ch) = text.chars().next() {
+                            index += ch.len_utf8();
+                        } else {
+                            index += 1;
+                        }
+                    } else {
+                        index += 1;
+                    }
+                }
+                _ => {
+                    let text = std::str::from_utf8(&bytes[index..]).unwrap_or("�");
+                    let ch = text.chars().next().unwrap_or('�');
+                    let cells = UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if cells > 0 {
+                        screen[row][column] = ch;
+                        for cell in screen[row]
+                            .iter_mut()
+                            .skip(column + 1)
+                            .take(cells.saturating_sub(1))
+                        {
+                            *cell = ' ';
+                        }
+                        column = column.saturating_add(cells).min(width);
+                    }
+                    index += ch.len_utf8();
+                }
+            }
+        }
+
+        screen
+            .into_iter()
+            .map(|line| line.into_iter().collect::<String>().trim_end().to_string())
+            .collect()
     }
 
     #[test]
@@ -300,6 +444,237 @@ mod terminal_commands {
             let output = strip_styles(&session_with_width(input, "q", None, width));
             assert!(output.contains(last), "{}", output);
         }
+    }
+
+    #[test]
+    fn wrapping_is_opt_in_and_numeric_prefix_toggles_once() {
+        let input = r#"{"long":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz","next":42}"#;
+
+        let off = rendered_rows(&session_with_width(input, "q", None, 35), 35, 24);
+        let unwrapped = off.iter().find(|row| row.contains("long:")).unwrap();
+        assert!(unwrapped.contains('…'), "unwrapped rows: {:?}", off);
+
+        for commands in ["\x0cq", "3\x0cq"] {
+            let output = session_with_width(input, commands, None, 35);
+            let rows = rendered_rows(&output, 35, 24);
+            let first = rows.iter().position(|row| row.contains("long:")).unwrap();
+            let next = rows.iter().position(|row| row.contains("next:")).unwrap();
+            assert!(
+                next > first + 1,
+                "wrapped rows for {:?}: {:?}",
+                commands,
+                rows
+            );
+            assert!(
+                rows.iter().any(|row| row.contains("Line wrapping on")),
+                "{:?}",
+                rows
+            );
+        }
+
+        let output = session_with_width(input, "\x0c\x0cq", None, 35);
+        let rows = rendered_rows(&output, 35, 24);
+        let unwrapped_again = rows.iter().find(|row| row.contains("long:")).unwrap();
+        assert!(
+            unwrapped_again.contains('…'),
+            "rows after disabling: {:?}",
+            rows
+        );
+        assert!(
+            rows.iter().any(|row| row.contains("Line wrapping off")),
+            "{:?}",
+            rows
+        );
+    }
+
+    #[test]
+    fn continuation_rows_keep_number_and_arrow_gutters_blank() {
+        let input = r#"{"long":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz","next":42}"#;
+        let output = session_with_width(input, ":set number\n\x0cq", None, 35);
+        let rows = rendered_rows(&output, 35, 24);
+        let first = rows.iter().position(|row| row.contains("long:")).unwrap();
+        let continuation = rows
+            .iter()
+            .skip(first + 1)
+            .take_while(|row| !row.contains("next:"))
+            .find(|row| !row.is_empty())
+            .unwrap();
+        let next = rows.iter().find(|row| row.contains("next:")).unwrap();
+
+        assert!(
+            rows[first].starts_with(" 1 "),
+            "first row: {:?}",
+            rows[first]
+        );
+        assert!(
+            continuation.len() >= 5,
+            "continuation row: {:?}",
+            continuation
+        );
+        assert!(
+            continuation[..3].chars().all(|cell| cell == ' '),
+            "continuation gutter: {:?}",
+            continuation
+        );
+        assert!(
+            continuation.chars().nth(3) == Some(' '),
+            "continuation arrow gutter: {:?}",
+            continuation
+        );
+        assert!(next.starts_with(" 2 "), "next row: {:?}", next);
+    }
+
+    #[test]
+    fn logical_motion_skips_wrapped_continuations() {
+        let input = r#"{"long":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz","next":42}"#;
+
+        let down = session_with_width(input, "l\x0cjq", None, 35);
+        assert!(
+            rendered_rows(&down, 35, 24)
+                .iter()
+                .any(|row| row.contains(".next")),
+            "{}",
+            down
+        );
+
+        let up = session_with_width(input, "l\x0cjkq", None, 35);
+        assert!(
+            rendered_rows(&up, 35, 24)
+                .iter()
+                .any(|row| row.contains(".long")),
+            "{}",
+            up
+        );
+    }
+
+    #[test]
+    fn active_scalar_search_stays_visible_after_wrapping_and_resize() {
+        let value = format!("{}NEEDLE", "a".repeat(120));
+        let input = format!(r#"{{"long":"{}"}}"#, value);
+        let output = session_with_width(&input, "/NEEDLE\n\x0c\x12pp q", None, 120);
+        let rows = rendered_rows(&output, 16, 8);
+
+        assert!(
+            rows[..6].iter().any(|row| row.contains("NEEDLE")),
+            "{:?}",
+            rows
+        );
+        assert!(rows.iter().any(|row| row.contains(".long")), "{:?}", rows);
+        assert!(
+            output.contains(&format!("\"{}\"\r\n\r\nPress any key to continue.", value)),
+            "{}",
+            output
+        );
+    }
+
+    #[test]
+    fn active_shared_header_search_stays_visible_after_wrapping_and_resize() {
+        let key = format!("field{}NEEDLE", "x".repeat(120));
+        let input = format!(r#"{{"rows":[{{"{}":"A"}},{{"{}":"B"}}]}}"#, key, key);
+        let output = session_with_width(&input, "/NEEDLE\n\x0c\x12pp q", None, 120);
+        let rows = rendered_rows(&output, 16, 8);
+
+        assert!(
+            rows[..6].iter().any(|row| row.contains("NEEDLE")),
+            "{:?}",
+            rows
+        );
+        assert!(
+            output.contains("\"A\"\r\n\r\nPress any key to continue."),
+            "{}",
+            output
+        );
+    }
+
+    #[test]
+    fn horizontal_scroll_is_inert_while_wrapped_and_returns_after_toggle_off() {
+        let input = r#""0123456789abcdefghijKLMNOPQRSTUVWXYZ0123456789abcdefghij""#;
+        let wrapped = rendered_rows(&session_with_width(input, "\x0c.q", None, 35), 35, 24);
+        assert!(
+            !wrapped[..22].iter().any(|row| row.contains('…')),
+            "wrapped rows: {:?}",
+            wrapped
+        );
+
+        let unwrapped = rendered_rows(&session_with_width(input, "\x0c.\x0c.q", None, 35), 35, 24);
+        assert!(
+            unwrapped[..22]
+                .iter()
+                .any(|row| row.contains("…abcdefghij")),
+            "unwrapped rows: {:?}",
+            unwrapped
+        );
+    }
+
+    #[test]
+    fn collapsed_preview_stays_on_one_row_when_wrapping_is_enabled() {
+        let input =
+            r#"{"container":{"alpha":"abcdefghijklmnopqrstuvwxyz","beta":"0123456789"},"after":3}"#;
+        let rows = rendered_rows(&session_with_width(input, "l\x0c q", None, 35), 35, 24);
+        let container_rows = rows[..22]
+            .iter()
+            .filter(|row| row.contains("container"))
+            .count();
+        assert_eq!(container_rows, 1, "collapsed rows: {:?}", rows);
+        assert!(rows.iter().any(|row| row.contains("after:")), "{:?}", rows);
+    }
+
+    #[test]
+    fn physical_scrolling_reaches_a_tall_wrapped_value() {
+        let input = format!(
+            r#"{{"long":"{}TAIL"}}"#,
+            "0123456789abcdefghijklmnopqrstuvwxyz".repeat(8)
+        );
+        // ^R resizes the isolated PTY to 16x8. The command sequence exercises
+        // both single-row scroll commands and full-page scrolling while the
+        // same logical value remains focused.
+        let wheel_down = "\x1b[<65;1;4M";
+        let wheel_up = "\x1b[<64;1;4M";
+        let commands = format!("l\x0c\x12{wheel_down}{wheel_down}{wheel_up}\x059\x06q");
+        let output = session_with_width(&input, &commands, None, 35);
+        let rows = rendered_rows(&output, 16, 8);
+        let tail_visible = rows
+            .windows(2)
+            .any(|pair| pair[0].ends_with("TAI") && pair[1].trim_start() == "L");
+        assert!(tail_visible, "{:?}", rows);
+        assert!(rows.iter().any(|row| row.contains(".long")), "{:?}", rows);
+    }
+
+    #[test]
+    fn mouse_continuation_cell_keeps_the_value_copy_target() {
+        let value = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let input = format!(r#"{{"first":1,"long":"{}"}}"#, value);
+        // Row four is a continuation after the 16-column resize. Column eight
+        // is in its document text, beyond the reserved gutter.
+        let click = "\x1b[<0;8;4M";
+        let output = session_with_width(&input, &format!("l\x0c\x12{click}pp q"), None, 35);
+        assert!(
+            output.contains(&format!("\"{}\"\r\n\r\nPress any key to continue.", value)),
+            "{}",
+            output
+        );
+    }
+
+    #[test]
+    fn deep_mouse_continuation_stays_visible_after_redraw() {
+        let value = format!("{}CLICKED", "abcdefghijklmnopqrstuvwxyz".repeat(8));
+        let input = format!(r#"{{"first":1,"long":"{}"}}"#, value);
+        // Scroll to the end, then click the bottom viewer row on a continuation.
+        let wheel_down = "\x1b[<65;1;4M";
+        let click = "\x1b[<0;8;6M";
+        let output = session_with_width(
+            &input,
+            &format!("l\x0c\x12{}{click}q", wheel_down.repeat(12)),
+            None,
+            35,
+        );
+        let rows = rendered_rows(&output, 16, 8);
+        assert!(
+            rows.windows(2)
+                .any(|pair| pair[0].contains("CLICKE") && pair[1].contains('D')),
+            "{:?}",
+            rows
+        );
     }
 
     #[test]
@@ -422,6 +797,34 @@ mod terminal_commands {
             );
             std::fs::remove_file(&target).unwrap();
         }
+    }
+
+    #[cfg(feature = "toon")]
+    #[test]
+    fn wrapping_does_not_change_toon_export_or_printed_value() {
+        let value = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let input = format!(r#"{{"long":"{}"}}"#, value);
+        let target =
+            std::env::temp_dir().join(format!("tless-wrapped-export-{}.toon", std::process::id()));
+        let output = session_with_width(
+            &input,
+            &format!("\x0c:wt {}\nq", target.display()),
+            None,
+            35,
+        );
+        assert!(output.contains("written"), "{}", output);
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            format!("long: {}", value)
+        );
+        std::fs::remove_file(&target).unwrap();
+
+        let output = session_with_width(&input, "l\x0clpt q", None, 35);
+        assert!(
+            output.contains(&format!("{}\r\n\r\nPress any key to continue.", value)),
+            "{}",
+            output
+        );
     }
 
     #[cfg(feature = "toon")]

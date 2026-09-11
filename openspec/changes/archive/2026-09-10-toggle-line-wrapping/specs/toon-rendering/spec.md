@@ -1,33 +1,4 @@
-# toon-rendering Specification
-
-## Purpose
-
-Provide one syntax-colored TOON document view with predictable collapse annotations, optional gutters, and stable layout across terminal sizes.
-
-## Requirements
-
-### Requirement: One rendering contract
-
-The viewer SHALL render every supported input format with the TOON 3.0 profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input parser and export feature selection SHALL retain their existing meaning.
-
-#### Scenario: Equivalent inputs
-
-- **WHEN** JSON, YAML, and TOON inputs produce equivalent parsed data
-- **THEN** their fully expanded document text SHALL match
-- **AND** input-format selectors SHALL NOT select a different rendering mode
-
-#### Scenario: Obsolete mode controls
-
-- **WHEN** a user passes `--mode` or `-m`
-- **THEN** argument parsing SHALL report an unsupported option
-- **AND** interactive `m` SHALL have no mode-switch action
-- **AND** current help SHALL NOT advertise alternate modes or closing-delimiter navigation
-
-#### Scenario: Minimal build
-
-- **WHEN** tless is built without default features and opens JSON
-- **THEN** the viewer SHALL still render TOON
-- **AND** disabled input or export features SHALL remain disabled
+## MODIFIED Requirements
 
 ### Requirement: Native TOON layout
 
@@ -60,48 +31,6 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 - **AND** the root SHALL stay expanded while its descendants support collapse
 - **AND** an empty root object SHALL display an empty document with its type available in application status
 
-### Requirement: Syntax styling
-
-Keys and table field names SHALL retain their source identities for search and navigation. Their colors SHALL follow the selected theme; the default SHALL give them the same syntax color, while Borealis SHALL use standard text color for field definitions. Strings, numbers, booleans, nulls, and structural syntax SHALL have distinguishable styles. Default terminal palette indexes SHALL be cyan 6 for keys, green 2 for strings, magenta 5 for numbers, blue 4 for booleans (brightening to 12 when selected), gray 7 for nulls, dark gray 8 for previews, and yellow 3 for warnings. The default status bar SHALL use a dark gray 8 background with black 0 text and a light gray 7 filename. In the default theme, all search matches, including the active match, SHALL be underlined. Default search matches SHALL use yellow 3 foreground and the active match SHALL use bright yellow 11 foreground, overriding value selection colors. The default theme SHALL NOT use reverse video for any element. TOON array counts SHALL use structural styling. Expanded data and complete inline primitive arrays of at most five elements that fit the terminal SHALL retain their data styling, including when collapsed. Only collapsed previews, object count annotations, and extension warning comments SHALL use subdued annotation styling. In the default theme these annotations SHALL remain subdued without focus highlighting or bold when their owning container is selected. Default previews and object counts SHALL use plain terminal color 8 without the dim attribute, matching the default line-number color.
-
-#### Scenario: Expanded primitive array
-
-- **WHEN** `values[3]: 1,true,hello` is expanded
-- **THEN** its values SHALL have number, boolean, and string styles
-- **AND** these values SHALL NOT be styled as a collapsed preview
-
-### Requirement: Collapse presentation
-
-Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Inline primitive arrays SHALL show `▸` by default; clicking their arrow or pressing Space SHALL expand them to multiline. Tabular rows SHALL NOT have collapse indicators or support row collapse; only their array parent SHALL be collapsible. Collapsing SHALL retain the container's header and replace multiline contents with a preview in document order. Complete inline primitive arrays with at most five elements that fit the terminal SHALL retain value syntax styling; other previews SHALL be subdued. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object SHALL show its immediate-entry count as `(N)`, such as `(1)` or `(7)`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no preview or object-count annotation.
-
-#### Scenario: Object and array collapse
-
-- **WHEN** `owner` has 2 immediate fields and `tags` has 3 items, and both are collapsed
-- **THEN** their lines SHALL retain `owner:` and `tags[3]:`
-- **AND** only `owner` SHALL receive `(2)`
-- **AND** object previews SHALL be subdued; a complete fitting inline primitive array SHALL retain value syntax styling
-
-#### Scenario: Tabular row collapse
-
-- **WHEN** a user collapses an object row in a table
-- **THEN** that row's values SHALL remain visible and unchanged
-- **AND** the row SHALL have no collapse indicator
-- **AND** the array parent SHALL retain its collapse control
-
-#### Scenario: Inline array collapse
-
-- **WHEN** a user collapses an inline primitive array
-- **THEN** the header SHALL remain and its complete values SHALL keep their syntax colors if there are at most five elements and the inline line fits the terminal
-- **AND** this SHALL also apply after explicitly expanding the array to multiline
-- **AND** larger or overflowing previews SHALL remain subdued
-- **AND** expanding it SHALL restore syntax-colored values in its chosen layout, with `l` or Right Arrow selecting multiline presentation
-
-#### Scenario: Collapse restoration
-
-- **WHEN** a collapsed ancestor is expanded again
-- **THEN** descendant collapse states SHALL be restored
-- **AND** the underlying data and layout choice SHALL be unchanged
-
 ### Requirement: Gutters and terminal width
 
 Optional absolute and relative line numbers SHALL remain available outside the document text with existing visibility defaults. Absolute numbers SHALL identify lines in the fully expanded TOON layout, beginning at 1; collapsed descendants SHALL produce gaps. Relative numbers SHALL count visible display-line motions. Automatic primitive-array layouts SHALL be recalculated on terminal-width or gutter-visibility changes while preserving logical selection and collapse states. Explicit multiline choices SHALL survive resize and collapse/reopen. Absolute addresses SHALL follow the current fully expanded layout. With wrapping disabled, long individual values and table rows SHALL use horizontal scrolling without soft wrapping. With wrapping enabled, expanded lines SHALL follow the optional line wrapping requirement. Continuation rows SHALL NOT add absolute addresses or relative motion distance. On lines using horizontal scrolling, `,` and `.` SHALL scroll left and right by ten terminal cells per press, multiplied by any numeric prefix and clamped at the line boundaries. Rendering SHALL escape control characters and respect terminal cell widths.
@@ -127,6 +56,18 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 - **AND** focus and search SHALL highlight existing spans without inserting text
 - **AND** default-theme focus SHALL use bright foreground colors instead of bold and SHALL apply on all visible physical rows belonging to the selected logical display line
 - **AND** default-theme line numbers and collapse arrows SHALL use dark gray ordinarily and light gray on the selected display line
+
+### Requirement: Theme selection background fills the row
+
+When a theme defines a distinct selection background, each visible physical row of the selected logical display line SHALL fill the terminal width with it, including indentation, spaces, gutters, and clipping markers. Themes without a distinct selection background SHALL retain their appearance. Search matches SHALL retain their theme search style over the row background.
+
+#### Scenario: Borealis selected row
+
+- **WHEN** a short document line is selected under Borealis
+- **THEN** the selection background SHALL extend through unused columns to the terminal edge
+- **AND** search spans SHALL retain their search background
+
+## ADDED Requirements
 
 ### Requirement: Optional line wrapping
 
@@ -175,13 +116,3 @@ Collapsed container lines, including their previews, counts, and warnings, SHALL
 - **THEN** primitive-array inline versus multiline choices and table structure SHALL remain unchanged
 - **AND** source escape sequences SHALL remain displayed escapes rather than interpreted control characters
 - **AND** copying, exporting, and redirected stdout SHALL contain no soft-wrap newlines or placeholders
-
-### Requirement: Theme selection background fills the row
-
-When a theme defines a distinct selection background, each visible physical row of the selected logical display line SHALL fill the terminal width with it, including indentation, spaces, gutters, and clipping markers. Themes without a distinct selection background SHALL retain their appearance. Search matches SHALL retain their theme search style over the row background.
-
-#### Scenario: Borealis selected row
-
-- **WHEN** a short document line is selected under Borealis
-- **THEN** the selection background SHALL extend through unused columns to the terminal edge
-- **AND** search spans SHALL retain their search background

@@ -235,6 +235,7 @@ impl App {
                 // Put this first so the current input state doesn't get reset
                 // when resizing the window.
                 WinChEvent => {
+                    jumped_to_search_match = self.search_state.active_search_state().is_some();
                     let dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
                     self.screen_writer.dimensions = dimensions;
                     Some(Action::ResizeViewerDimensions(
@@ -367,6 +368,28 @@ impl App {
                         Key::Down | Key::Char('j') | Key::Ctrl('n') | Key::Char('\n') => {
                             let lines = self.parse_input_buffer_as_number();
                             Some(Action::MoveDown(lines))
+                        }
+                        Key::Ctrl('l') => {
+                            self.viewer.toggle_wrapping();
+                            self.screen_writer.reset_horizontal_offsets(&self.viewer);
+                            let state = if self.viewer.wrapping_enabled {
+                                "on"
+                            } else {
+                                "off"
+                            };
+                            let mut message = if self.screen_writer.dimensions.width >= 17 {
+                                format!("Line wrapping {state}")
+                            } else if self.screen_writer.dimensions.width >= 12 {
+                                format!("Wrapping {state}")
+                            } else {
+                                state.to_string()
+                            };
+                            message.truncate(usize::from(self.screen_writer.dimensions.width));
+                            self.set_info_message(message);
+                            if self.search_state.active_search_state().is_some() {
+                                jumped_to_search_match = true;
+                            }
+                            None
                         }
                         Key::Ctrl('e') => {
                             let lines = self.parse_input_buffer_as_number();
@@ -580,13 +603,28 @@ impl App {
 
             if let Some(action) = action {
                 self.viewer.perform_action(action);
+                if self.viewer.wrapping_enabled
+                    && matches!(
+                        action,
+                        Action::ScrollUp(_)
+                            | Action::ScrollDown(_)
+                            | Action::PageUp(_)
+                            | Action::PageDown(_)
+                            | Action::JumpUp(_)
+                            | Action::JumpDown(_)
+                            | Action::MoveFocusedLineToTop
+                            | Action::MoveFocusedLineToCenter
+                            | Action::MoveFocusedLineToBottom
+                            | Action::FocusNodeAt { .. }
+                            | Action::NoOp
+                    )
+                {
+                    self.screen_writer.accept_viewport_focus(&self.viewer);
+                }
             }
 
             if jumped_to_search_match {
-                self.screen_writer.scroll_line_to_search_match(
-                    &self.viewer,
-                    self.search_state.current_match_range(),
-                );
+                self.reveal_current_match();
             } else {
                 // Check whether we're still actively searching. If the cursor moves,
                 // we're no longer actively searching. If the focused row was expanded
@@ -607,13 +645,36 @@ impl App {
         }
     }
 
+    fn reveal_current_match(&mut self) {
+        let range = self.search_state.current_match_range();
+        // Reflow can move a table key back to its shared header. Restore the
+        // source anchor before resolving the match to physical rows.
+        self.viewer.perform_action(Action::FocusNode {
+            node: self.viewer.focused_node,
+            source: Some(range.start),
+        });
+        self.screen_writer
+            .scroll_line_to_search_match(&mut self.viewer, range);
+    }
+
     fn draw_screen(&mut self) {
+        let generation = self.viewer.layout_generation;
+        let previous_dimensions = self.viewer.dimensions;
         self.viewer.set_viewport(
             self.screen_writer.dimensions.without_status_bar(),
             self.screen_writer.show_line_numbers || self.screen_writer.show_relative_line_numbers,
         );
+        let reflow = self.screen_writer.sync_wrap_geometry(&mut self.viewer)
+            || generation != self.viewer.layout_generation
+            || previous_dimensions.height != self.viewer.dimensions.height;
+        if reflow {
+            self.screen_writer.invalidate_focus();
+            if self.search_state.active_search_state().is_some() {
+                self.reveal_current_match();
+            }
+        }
         self.screen_writer.print(
-            &self.viewer,
+            &mut self.viewer,
             &self.input_buffer,
             &self.input_filename,
             &self.search_state,

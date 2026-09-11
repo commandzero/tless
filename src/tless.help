@@ -73,6 +73,12 @@
 
                                     [1mSCROLLING[0m
 
+  ^l        Toggle wrapping for expanded TOON lines for this session (off by
+             default). Logical movement stays line-based; scrolling and paging
+             use physical rows. Continuation rows have blank gutters. Collapsed
+             previews remain one row with horizontal scrolling. Horizontal
+             scrolling commands do nothing on wrapped expanded lines.
+
   ^e        *  Scroll down one line (or [4mN[0m lines).
   ^y        *  Scroll up   one line (or [4mN[0m lines).
 

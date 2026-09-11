@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-11T00:29:19Z }
+generated: { by: codex/gpt-6, at: 2026-09-11T05:42:30Z }
 ---
 
 # TOON acceptance checks
@@ -87,7 +87,17 @@ release checks above remain separate.
 6. Scroll long values and warnings horizontally. Include wide and combining
    Unicode and escaped controls. Confirm clipping does not split terminal cells
    and narrowing the window does not change a table to a list.
-7. Confirm `--mode` and `-m` fail with argument errors, `m` does not switch
+7. At 30 columns, confirm expanded long values and table rows start unwrapped.
+   Press Ctrl+L and confirm expanded rows wrap at terminal-cell boundaries,
+   first rows keep their numbers and arrows, continuation rows have blank
+   gutters, and collapsed previews stay on one row. Use up/down to move
+   by logical entries. Use scrolling, paging, and wheel input to read every row
+   of a value taller than the viewport while keeping it selected. Check
+   `zz`/`zt`/`zb` positioning. Confirm `,`,
+   `.`, and `;` are inert on wrapped expanded lines, work again after toggling
+   wrapping off, and that resize, gutter, and indentation changes preserve the
+   selected value after reflow.
+8. Confirm `--mode` and `-m` fail with argument errors, `m` does not switch
    modes, and help has no closing-delimiter controls. Confirm JSON and standard
    TOON exports contain no generated annotations and keep codec behavior.
 

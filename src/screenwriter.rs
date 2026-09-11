@@ -40,7 +40,7 @@ pub struct ScreenWriter {
     pub show_relative_line_numbers: bool,
 
     indentation_reduction: u16,
-    last_focus: Option<(usize, usize, u16)>,
+    last_focus: Option<(usize, usize, u16, usize)>,
     layout_generation: usize,
     horizontal_offsets: HashMap<Index, usize>,
 }
@@ -108,7 +108,7 @@ impl ScreenWriter {
 
     pub fn print(
         &mut self,
-        viewer: &JsonViewer,
+        viewer: &mut JsonViewer,
         input_buffer: &[u8],
         input_filename: &str,
         search_state: &SearchState,
@@ -126,15 +126,20 @@ impl ScreenWriter {
         }
     }
 
-    pub fn print_viewer(&mut self, viewer: &JsonViewer, search_state: &SearchState) {
+    pub fn print_viewer(&mut self, viewer: &mut JsonViewer, search_state: &SearchState) {
         self.sync_layout(viewer);
         let focus = (
             viewer.focused_node,
             viewer.absolute_anchor_line,
             self.dimensions.width,
+            viewer.physical_generation,
         );
         if self.last_focus != Some(focus) {
-            self.reveal_focused_span(viewer);
+            if search_state.active_search_state().is_some() {
+                self.scroll_line_to_search_match(viewer, search_state.current_match_range());
+            } else {
+                self.reveal_focused_span(viewer);
+            }
             self.last_focus = Some(focus);
         }
         match self.print_screen_impl(viewer, search_state) {
@@ -177,6 +182,37 @@ impl ScreenWriter {
         }
     }
 
+    pub fn sync_wrap_geometry(&self, viewer: &mut JsonViewer) -> bool {
+        let width =
+            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
+        viewer.set_wrap_geometry(width, usize::from(self.indentation_reduction) * 2)
+    }
+
+    /// Explicit viewport scrolling has already chosen its physical position.
+    pub fn accept_viewport_focus(&mut self, viewer: &JsonViewer) {
+        self.last_focus = Some((
+            viewer.focused_node,
+            viewer.absolute_anchor_line,
+            self.dimensions.width,
+            viewer.physical_generation,
+        ));
+    }
+
+    pub fn invalidate_focus(&mut self) {
+        self.last_focus = None;
+    }
+
+    pub fn reset_horizontal_offsets(&mut self, viewer: &JsonViewer) {
+        self.horizontal_offsets.retain(|absolute, _| {
+            viewer
+                .layout
+                .lines
+                .get(*absolute)
+                .is_some_and(|line| viewer.flatjson[line.owner].is_collapsed())
+        });
+        self.last_focus = None;
+    }
+
     fn number_width(&self, viewer: &JsonViewer) -> usize {
         if self.show_line_numbers || self.show_relative_line_numbers {
             viewer.layout.lines.len().to_string().len().max(2) + 1
@@ -197,10 +233,25 @@ impl ScreenWriter {
     }
 
     pub fn mouse_action(&self, viewer: &JsonViewer, row: u16, column: u16) -> Action {
-        let index = (viewer.top_visible_line + usize::from(row.saturating_sub(1)))
-            .min(viewer.visible.len() - 1);
+        let Some(physical) = viewer.screen_row(usize::from(row.saturating_sub(1))) else {
+            return Action::NoOp;
+        };
+        let index = physical.logical_line;
         let number_width = self.number_width(viewer);
         let column = usize::from(column.saturating_sub(1));
+        if !physical.first && column < number_width + 2 {
+            return Action::NoOp;
+        }
+        if viewer.is_wrapped_line(index) && column >= number_width + 2 {
+            let line = &viewer.visible[index].line;
+            let (node, source) =
+                lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
+            return Action::FocusNodeAt {
+                node,
+                source,
+                display_range: (physical.bytes.start, physical.bytes.end),
+            };
+        }
         if column >= number_width && column < number_width + 2 {
             Action::ClickArrow(row)
         } else {
@@ -231,15 +282,15 @@ impl ScreenWriter {
         let focused = viewer.focused_line_index();
         let number_width = self.number_width(viewer);
         for screen in 0..viewer.dimensions.height {
-            let index = viewer.top_visible_line + usize::from(screen);
+            let physical = viewer.screen_row(usize::from(screen));
             paint_document_row(
                 &mut self.terminal,
                 &self.theme,
                 screen + 1,
                 self.dimensions.width,
-                index == focused && viewer.visible.get(index).is_some(),
+                physical.is_some_and(|row| row.logical_line == focused),
             )?;
-            let Some(visible) = viewer.visible.get(index) else {
+            let Some(physical) = physical else {
                 self.terminal.set_style(
                     &self
                         .theme
@@ -248,6 +299,8 @@ impl ScreenWriter {
                 self.terminal.write_char('~')?;
                 continue;
             };
+            let index = physical.logical_line;
+            let visible = &viewer.visible[index];
             let line = &visible.line;
             if number_width > 0 {
                 let relative = viewer.visible[index.min(focused)..index.max(focused)]
@@ -270,7 +323,11 @@ impl ScreenWriter {
                     },
                     index == focused,
                 ))?;
-                let label = format!("{:>width$} ", number, width = number_width - 1);
+                let label = if physical.first {
+                    format!("{:>width$} ", number, width = number_width - 1)
+                } else {
+                    " ".repeat(number_width)
+                };
                 self.terminal
                     .write_str(&label[..label.len().min(usize::from(self.dimensions.width))])?;
             }
@@ -287,29 +344,25 @@ impl ScreenWriter {
                 },
                 index == focused,
             ))?;
-            let arrow = if viewer.layout.nodes[line.owner].collapsible && !line.separator {
-                if viewer.flatjson[line.owner].is_collapsed()
-                    || viewer.layout.nodes[line.owner].inline_array
+            let arrow =
+                if physical.first && viewer.layout.nodes[line.owner].collapsible && !line.separator
                 {
-                    '▸'
+                    if viewer.flatjson[line.owner].is_collapsed()
+                        || viewer.layout.nodes[line.owner].inline_array
+                    {
+                        '▸'
+                    } else {
+                        '▾'
+                    }
                 } else {
-                    '▾'
-                }
-            } else {
-                ' '
-            };
+                    ' '
+                };
             self.terminal.write_char(arrow)?;
             if available == 1 {
                 continue;
             }
             self.terminal.write_char(' ')?;
-            let viewport = self.line_viewport(visible);
-            let fitted = if viewport.horizontal_offset == 0 {
-                lp::fit_annotations(line, available - 2 + viewport.removed_indentation)
-            } else {
-                std::borrow::Cow::Borrowed(line)
-            };
-            let focused_range = if index == focused {
+            let focused_nodes = if index == focused {
                 viewer.focused_node..match viewer.flatjson[viewer.focused_node].pair_index() {
                     crate::flatjson::OptionIndex::Index(end) => end + 1,
                     _ => viewer.focused_node + 1,
@@ -317,12 +370,42 @@ impl ScreenWriter {
             } else {
                 0..0
             };
+            if viewer.is_wrapped_line(index) {
+                #[cfg(feature = "colorscheme")]
+                lp::paint_wrapped_themed(
+                    &mut self.terminal,
+                    &self.theme,
+                    line,
+                    focused_nodes,
+                    physical,
+                    available - 2,
+                    matches,
+                    &current,
+                )?;
+                #[cfg(not(feature = "colorscheme"))]
+                lp::paint_wrapped(
+                    &mut self.terminal,
+                    line,
+                    focused_nodes,
+                    physical,
+                    available - 2,
+                    matches,
+                    &current,
+                )?;
+                continue;
+            }
+            let viewport = self.line_viewport(visible);
+            let fitted = if viewport.horizontal_offset == 0 {
+                lp::fit_annotations(line, available - 2 + viewport.removed_indentation)
+            } else {
+                std::borrow::Cow::Borrowed(line)
+            };
             #[cfg(feature = "colorscheme")]
             lp::paint_themed(
                 &mut self.terminal,
                 &self.theme,
                 &fitted,
-                focused_range,
+                focused_nodes,
                 viewport,
                 available - 2,
                 matches,
@@ -332,7 +415,7 @@ impl ScreenWriter {
             lp::paint(
                 &mut self.terminal,
                 &fitted,
-                focused_range,
+                focused_nodes,
                 viewport,
                 available - 2,
                 matches,
@@ -512,7 +595,7 @@ impl ScreenWriter {
         self.indentation_reduction = self.indentation_reduction.saturating_sub(1)
     }
 
-    fn reveal_focused_span(&mut self, viewer: &JsonViewer) {
+    fn reveal_focused_span(&mut self, viewer: &mut JsonViewer) {
         let line = &viewer.visible[viewer.focused_line_index()].line;
         if let Some(span) = line
             .spans
@@ -523,7 +606,11 @@ impl ScreenWriter {
         }
     }
 
-    fn reveal_byte_range(&mut self, viewer: &JsonViewer, range: Range<usize>) {
+    fn reveal_byte_range(&mut self, viewer: &mut JsonViewer, range: Range<usize>) {
+        if viewer.is_wrapped_line(viewer.focused_line_index()) {
+            viewer.reveal_byte_range(range);
+            return;
+        }
         let line = &viewer.visible[viewer.focused_line_index()].line;
         let start_byte = line
             .text
@@ -559,6 +646,9 @@ impl ScreenWriter {
     }
 
     fn scroll_focused_line(&mut self, viewer: &JsonViewer, count: usize, right: bool) {
+        if viewer.is_wrapped_line(viewer.focused_line_index()) {
+            return;
+        }
         let absolute = viewer.absolute_anchor_line;
         let line = &viewer.visible[viewer.focused_line_index()];
         let width = self.line_viewport(line).content_width(&line.line);
@@ -571,6 +661,9 @@ impl ScreenWriter {
     }
 
     pub fn scroll_focused_line_to_an_end(&mut self, viewer: &JsonViewer) {
+        if viewer.is_wrapped_line(viewer.focused_line_index()) {
+            return;
+        }
         let absolute = viewer.absolute_anchor_line;
         let line = &viewer.visible[viewer.focused_line_index()];
         let width = self.line_viewport(line).content_width(&line.line);
@@ -581,7 +674,7 @@ impl ScreenWriter {
         *offset = if *offset < end { end } else { 0 };
     }
 
-    pub fn scroll_line_to_search_match(&mut self, viewer: &JsonViewer, range: Range<usize>) {
+    pub fn scroll_line_to_search_match(&mut self, viewer: &mut JsonViewer, range: Range<usize>) {
         self.sync_layout(viewer);
         let line = &viewer.visible[viewer.focused_line_index()].line;
         let target = line
@@ -597,6 +690,7 @@ impl ScreenWriter {
                 viewer.focused_node,
                 viewer.absolute_anchor_line,
                 self.dimensions.width,
+                viewer.physical_generation,
             ));
         }
     }

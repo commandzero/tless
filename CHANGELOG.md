@@ -5,6 +5,10 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+### Added
+
+- Add session-only, off-by-default Ctrl+L wrapping for expanded TOON lines. Logical navigation remains line-based while scrolling, paging, and positioning use physical rows, and collapsed previews retain horizontal access.
+
 ## [0.1.0] - 2026-09-10
 
 ### Changed
@@ -12,6 +16,7 @@ Earlier upstream history is preserved below.
 - Move the crate to Rust 2024 edition while retaining Rust 1.87 as the minimum compiler.
 - Upgrade dependencies and replace the clipboard backend with arboard, removing the macOS `block` and Linux `xcb` future-compatibility warnings and the libxcb development-package requirement. Rust 1.87 remains supported.
 - **Breaking:** Default redirected output to TOON and validate and serialize all input formats. Use `-o json` to preserve JSON pipeline behavior or `-o yaml` for YAML serialization. Builds without TOON support require an explicit JSON or YAML output selection. [#7](https://github.com/commandzero/tless/issues/7).
+
 - Support terminal input and resize signals with high-numbered file descriptors; keep end-of-line scrolling inside the content at narrow widths and avoid copying all search matches on redraw.
 - Stop `J` at the last sibling instead of jumping back to its parent.
 - Render collapsed previews and object counts in plain terminal color 8 without extra dimming.
