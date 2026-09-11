@@ -33,6 +33,14 @@ brew install tless
 ```
 
 Prebuilt binaries will be available on the [releases page](https://github.com/CommandZero/tless/releases) after publication.
+To install one, download the archive for your platform, extract it, and put the
+`tless` binary on your `PATH`:
+
+```sh
+tar -xzf tless-vX.Y.Z-<rust-target-triple>.tar.gz
+install -m 755 tless "$HOME/.local/bin/tless"
+```
+
 The codec comes from crates.io.
 
 The executable is `tless`. Update scripts and aliases that should use this fork.

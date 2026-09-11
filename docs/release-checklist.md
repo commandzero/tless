@@ -27,6 +27,16 @@ generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
 6. Merge after CI and review. Tag that main-branch commit as `vX.Y.Z` or
    `vX.Y.Z-rc.N`. Push the new tag only when the release proposal is accepted.
 
+## Registry publication plan
+
+The CommandZero maintainers own the `tless` package on crates.io. Before enabling
+publication in a release PR, review package ownership and the package contents,
+run `cargo package --locked` and `cargo publish --dry-run --locked`, and confirm
+that the version is not already published. Set `publish = true` only in the
+reviewed release commit. After the tagged GitHub release is validated, publish
+that exact version with `cargo publish --locked`. Crates.io versions are
+immutable; a correction requires a new version and a new reviewed release.
+
 ## Build and verify
 
 The tag workflow validates tag, manifest, lockfile, curated notes, clean source,
