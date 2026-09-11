@@ -22,17 +22,15 @@ tless data.toon
 producer | tless --toon
 ```
 
-The independent tless release history starts at 0.1.0.
-After v0.1.0 is published and the tap formula lands, install the release with
-Cargo or Homebrew:
+The independent tless release history starts at 0.1.0. Install the latest
+release with Cargo or Homebrew:
 
 ```sh
 cargo install tless --locked
-brew tap commandzero/tools
-brew install tless
+brew install commandzero/tools/tless
 ```
 
-Prebuilt binaries will be available on the [releases page](https://github.com/CommandZero/tless/releases) after publication.
+Prebuilt binaries are available on the [releases page](https://github.com/CommandZero/tless/releases).
 To install one, download the archive for your platform, extract it, and put the
 `tless` binary on your `PATH`:
 
