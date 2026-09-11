@@ -23,7 +23,8 @@ producer | tless --toon
 ```
 
 The independent tless release history starts at 0.1.0.
-Install the published release with Cargo or Homebrew:
+After v0.1.0 is published and the tap formula lands, install the release with
+Cargo or Homebrew:
 
 ```sh
 cargo install tless --locked
@@ -31,7 +32,7 @@ brew tap commandzero/tools
 brew install tless
 ```
 
-Prebuilt binaries are available on the [releases page](https://github.com/CommandZero/tless/releases).
+Prebuilt binaries will be available on the [releases page](https://github.com/CommandZero/tless/releases) after publication.
 The codec comes from crates.io.
 
 The executable is `tless`. Update scripts and aliases that should use this fork.
