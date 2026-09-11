@@ -7,7 +7,7 @@ generated: { by: codex/gpt-6, at: 2026-09-07T18:22:11Z }
 ---
 
 This historical review describes the removed codec patch. See
-[published codec behavior](../toon-codec.md) for the current contract.
+[published codec behavior](../../../../../docs/toon-codec.md) for the current contract.
 
 # Review of add-toon-support
 

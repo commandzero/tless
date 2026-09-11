@@ -16,12 +16,16 @@ Validate the complete bundle with `scripts/validate-docs.sh` locally and in CI.
 3. [Published TOON codec](toon-codec.md) describes conversion behavior and known limitations.
 4. [TOON acceptance](toon-acceptance.md) maps automated and manual validation.
 5. [TOON document view](toon-view.md) explains layout, selection, warnings, and export boundaries.
+6. [Vim companion palettes](vim-themes.md) records the 28 bundled Vim palettes.
 
-## Design history
+## Specifications
 
-1. [Search](design/search.md) preserves upstream design notes.
-2. [Rendering](design/rendering.md) preserves upstream design notes.
-3. [Historical TOON implementation review](design/toon-review.md) preserves the earlier patch review.
+[Color themes](../openspec/specs/color-themes/spec.md) defines theme selection,
+configuration, and built-in palettes, including Borealis.
+[TOON rendering](../openspec/specs/toon-rendering/spec.md),
+[navigation](../openspec/specs/toon-navigation/spec.md), and
+[display extensions](../openspec/specs/toon-display-extensions/spec.md) define
+current viewer behavior.
 
-Historical design notes are not current requirements. See the repository README
-and implementation for current behavior.
+The [archived color-themes change](../openspec/changes/archive/2026-09-10-color-themes/proposal.md)
+records the migration and preserves the former design notes as historical sources.

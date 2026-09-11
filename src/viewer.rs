@@ -1,7 +1,7 @@
 use crate::flatjson::{FlatJson, Index, OptionIndex};
-use crate::toon_display::{normalize_node, Layout, VisibleLine};
+use crate::toon_display::{Layout, VisibleLine, normalize_node};
 use crate::types::TTYDimensions;
-use crate::wrapped_view::{build_physical_rows, PhysicalRow};
+use crate::wrapped_view::{PhysicalRow, build_physical_rows};
 use std::collections::HashSet;
 use std::ops::Range;
 #[cfg(test)]
@@ -1031,7 +1031,7 @@ impl OptionIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flatjson::{parse_top_level_json, parse_top_level_yaml, PathType};
+    use crate::flatjson::{PathType, parse_top_level_json, parse_top_level_yaml};
     fn viewer(input: &str) -> JsonViewer {
         JsonViewer::new(parse_top_level_json(input.into()).unwrap())
     }
@@ -1189,10 +1189,12 @@ mod tests {
         assert_eq!(v.visible[1].line.text, "  - .inf  # WARN Non-finite number");
         assert_eq!(v.layout.warnings.len(), 1);
         v.perform_action(Action::MoveLeft);
-        assert!(v.visible[0]
-            .line
-            .text
-            .contains("Contains 1 hidden warnings"));
+        assert!(
+            v.visible[0]
+                .line
+                .text
+                .contains("Contains 1 hidden warnings")
+        );
     }
 
     #[test]
@@ -1596,12 +1598,13 @@ mod tests {
             "shallow expansion restores nested collapse"
         );
         v.perform_action(Action::DeepExpandNodeAndSiblings);
-        assert!(v
-            .flatjson
-            .0
-            .iter()
-            .filter(|row| row.is_container())
-            .all(|row| row.is_expanded()));
+        assert!(
+            v.flatjson
+                .0
+                .iter()
+                .filter(|row| row.is_container())
+                .all(|row| row.is_expanded())
+        );
         assert_eq!(path(&v), ".c");
         assert!(v.index_of_focused_node_on_screen() < 3);
     }
@@ -1688,15 +1691,16 @@ mod tests {
         let display = span.matching_ranges(&span.source.clone().unwrap())[0].clone();
         v.reveal_byte_range(display.clone());
         assert_eq!(v.focused_node, node);
-        assert!(v
-            .physical_rows
-            .iter()
-            .enumerate()
-            .any(|(index, row)| row.logical_line == v.focused_line_index()
-                && row.bytes.start <= display.start
-                && display.start < row.bytes.end
-                && index >= v.top_physical_row
-                && index < v.top_physical_row + usize::from(v.dimensions.height).max(1)));
+        assert!(
+            v.physical_rows
+                .iter()
+                .enumerate()
+                .any(|(index, row)| row.logical_line == v.focused_line_index()
+                    && row.bytes.start <= display.start
+                    && display.start < row.bytes.end
+                    && index >= v.top_physical_row
+                    && index < v.top_physical_row + usize::from(v.dimensions.height).max(1))
+        );
         v.set_wrap_geometry(4, 0);
         assert_eq!(v.focused_node, node);
     }
@@ -1725,9 +1729,10 @@ mod tests {
         v.perform_action(Action::ScrollDown(1));
         v.perform_action(Action::PageDown(9));
         assert_eq!(v.focused_node, long);
-        assert!(v
-            .screen_row(0)
-            .is_some_and(|row| row.bytes.contains(&row.bytes.end.saturating_sub(1))));
+        assert!(
+            v.screen_row(0)
+                .is_some_and(|row| row.bytes.contains(&row.bytes.end.saturating_sub(1)))
+        );
     }
     #[test]
     fn repositioning_uses_a_match_continuation_and_keeps_it_selected() {

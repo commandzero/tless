@@ -7,11 +7,16 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenRole {
     Key,
+    FieldDefinition,
     String,
     Number,
     Boolean,
     Null,
-    Structure,
+    ArrayIndex,
+    PrimitiveTrailingComma,
+    ContainerDelimiter,
+    EmptyContainer,
+    Punctuation,
     Warning,
     Preview,
     Count,
@@ -28,6 +33,13 @@ pub struct Span {
 pub struct SourceMap {
     pub source: Range<usize>,
     pub display: Range<usize>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Preview {
+    text: String,
+    source: Option<Range<usize>>,
+    source_map: Vec<SourceMap>,
 }
 
 impl Span {
@@ -113,7 +125,7 @@ pub struct Layout {
     pub nodes: Vec<NodeLayout>,
     pub warnings: Vec<Warning>,
     own_warnings: Vec<Vec<WarningKind>>,
-    previews: Vec<String>,
+    previews: Vec<Preview>,
     keys: Vec<Option<String>>,
     scalars: Vec<String>,
     line_containers: Vec<Vec<usize>>,
@@ -199,7 +211,7 @@ impl Layout {
             nodes: vec![NodeLayout::default(); n],
             warnings: vec![],
             own_warnings: vec![vec![]; n],
-            previews: vec![String::new(); n],
+            previews: vec![Preview::default(); n],
             keys: vec![None; n],
             scalars: vec![String::new(); n],
             line_containers: vec![],
@@ -333,7 +345,7 @@ impl Layout {
             if result.nodes[i].collapsible && !flat[i].is_closing_of_container() {
                 result.line_containers[result.nodes[i].line].push(i);
             }
-            if result.previews[i].is_empty() && flat[i].is_opening_of_container() {
+            if result.previews[i].text.is_empty() && flat[i].is_opening_of_container() {
                 result.previews[i] = result.preview(flat, i);
             }
         }
@@ -341,17 +353,21 @@ impl Layout {
             result.annotate(flat, line_idx);
             let line = &mut result.lines[line_idx];
             for span in &mut line.spans {
-                if matches!(span.role, TokenRole::Key | TokenRole::String) {
+                if matches!(
+                    span.role,
+                    TokenRole::Key | TokenRole::FieldDefinition | TokenRole::String
+                ) {
                     if let Some(source) = &span.source {
                         let row = &flat[span.node];
-                        let parsed = if span.role == TokenRole::Key {
-                            match &row.key_value {
-                                Some(KeyValue::String(text)) => Some(text.as_str()),
-                                _ => None,
-                            }
-                        } else {
-                            row.string_value.as_deref()
-                        };
+                        let parsed =
+                            if matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition) {
+                                match &row.key_value {
+                                    Some(KeyValue::String(text)) => Some(text.as_str()),
+                                    _ => None,
+                                }
+                            } else {
+                                row.string_value.as_deref()
+                            };
                         let raw = &flat.1[source.clone()];
                         if raw.starts_with('"') {
                             span.source_map = string_source_map(
@@ -468,7 +484,7 @@ impl Layout {
         let kids = children(flat, node);
         let mut line = DisplayLine::new(node, "  ".repeat(depth));
         if list {
-            line.token("-", node, TokenRole::Structure, None);
+            line.token("-", node, TokenRole::ContainerDelimiter, None);
         }
         let object = matches!(flat[node].value, Value::EmptyObject)
             || (flat[node].is_opening_of_container() && !flat[node].is_array());
@@ -488,7 +504,7 @@ impl Layout {
                         first.spans.push(Span {
                             range: position..position + 1,
                             node,
-                            role: TokenRole::Structure,
+                            role: TokenRole::ContainerDelimiter,
                             source: None,
                             source_map: vec![],
                         });
@@ -513,7 +529,7 @@ impl Layout {
                 line.token(
                     &format!("[{}]", kids.len()),
                     node,
-                    TokenRole::Structure,
+                    TokenRole::ArrayIndex,
                     None,
                 );
                 if table {
@@ -526,16 +542,16 @@ impl Layout {
                     }
                     let table_fields: Vec<_> =
                         kids.iter().map(|&row| children(flat, row)).collect();
-                    line.token("{", node, TokenRole::Structure, None);
+                    line.token("{", node, TokenRole::ContainerDelimiter, None);
                     for (column, &field) in table_fields[0].iter().enumerate() {
                         if column != 0 {
-                            line.token(",", node, TokenRole::Structure, None);
+                            line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
                         }
                         let begin = line.text.len();
                         line.token(
                             &self.key(flat, field),
                             field,
-                            TokenRole::Key,
+                            TokenRole::FieldDefinition,
                             flat[field].key_range.clone(),
                         );
                         let range = begin..line.text.len();
@@ -544,15 +560,24 @@ impl Layout {
                             line.spans.push(Span {
                                 range: range.clone(),
                                 node: other,
-                                role: TokenRole::Key,
+                                role: TokenRole::FieldDefinition,
                                 source: flat[other].key_range.clone(),
                                 source_map: vec![],
                             });
                         }
                     }
-                    line.token("}", node, TokenRole::Structure, None);
+                    line.token("}", node, TokenRole::ContainerDelimiter, None);
                 }
-                line.token(":", node, TokenRole::Structure, None);
+                line.token(
+                    ":",
+                    node,
+                    if kids.is_empty() {
+                        TokenRole::EmptyContainer
+                    } else {
+                        TokenRole::Punctuation
+                    },
+                    None,
+                );
                 self.nodes[node].header_end = line.text.len();
                 let inline_width = UnicodeWidthStr::width(line.text.as_str())
                     + kids
@@ -572,7 +597,7 @@ impl Layout {
                     }
                     for (index, &child) in kids.iter().enumerate() {
                         if index != 0 {
-                            line.token(",", node, TokenRole::Structure, None);
+                            line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
                         }
                         self.nodes[child].line = start;
                         self.nodes[child].extent = start..start + 1;
@@ -590,7 +615,12 @@ impl Layout {
                             self.nodes[row].header_end = row_line.text.len();
                             for (column, child) in children(flat, row).into_iter().enumerate() {
                                 if column != 0 {
-                                    row_line.token(",", row, TokenRole::Structure, None);
+                                    row_line.token(
+                                        ",",
+                                        row,
+                                        TokenRole::PrimitiveTrailingComma,
+                                        None,
+                                    );
                                 }
                                 self.nodes[child].line = idx;
                                 self.nodes[child].extent = idx..idx + 1;
@@ -605,7 +635,7 @@ impl Layout {
                     }
                 }
             } else if object {
-                line.token(":", node, TokenRole::Structure, None);
+                line.token(":", node, TokenRole::Punctuation, None);
                 self.nodes[node].header_end = line.text.len();
                 self.lines.push(line);
                 for &child in &kids {
@@ -613,7 +643,7 @@ impl Layout {
                 }
             } else {
                 if flat[node].key_range.is_some() {
-                    line.token(": ", node, TokenRole::Structure, None);
+                    line.token(": ", node, TokenRole::Punctuation, None);
                 }
                 self.value_token(flat, &mut line, node);
                 self.nodes[node].header_end = line.text.len();
@@ -623,32 +653,48 @@ impl Layout {
         self.nodes[node].extent = start..self.lines.len();
         self.previews[node] = self.preview(flat, node);
     }
-    fn preview(&self, flat: &FlatJson, node: usize) -> String {
-        let mut preview = String::new();
+    fn preview(&self, flat: &FlatJson, node: usize) -> Preview {
+        let mut preview = Preview {
+            source: Some(flat[node].range.clone()),
+            ..Preview::default()
+        };
         for child in children(flat, node) {
-            if !preview.is_empty() {
-                preview.push_str(if flat[node].is_array() { "," } else { "; " });
+            if !preview.text.is_empty() {
+                preview_append(
+                    &mut preview,
+                    if flat[node].is_array() { "," } else { "; " },
+                    None,
+                );
             }
             if !flat[node].is_array() {
                 // The key is already cached; truncate before copying into the preview.
                 if let Some(key) = &self.keys[child] {
-                    append_preview(&mut preview, &quote_key(bounded_prefix(key, 256)));
+                    preview_append(
+                        &mut preview,
+                        &quote_key(bounded_prefix(key, 256)),
+                        flat[child].key_range.clone(),
+                    );
                 }
-                append_preview(&mut preview, ": ");
+                preview_append(&mut preview, ": ", None);
             }
             if scalar(flat, child) {
-                append_preview(&mut preview, &self.scalars[child]);
+                preview_append(
+                    &mut preview,
+                    &self.scalars[child],
+                    Some(flat[child].range.clone()),
+                );
             } else if flat[child].is_array() || matches!(flat[child].value, Value::EmptyArray) {
-                append_preview(
+                preview_append(
                     &mut preview,
                     &format!("[{}]: …", self.nodes[child].entry_count),
+                    Some(flat[child].range.clone()),
                 );
             } else {
-                append_preview(&mut preview, "…");
+                preview_append(&mut preview, "…", Some(flat[child].range.clone()));
             }
-            if preview.len() >= 256 {
-                if !preview.ends_with('…') {
-                    preview.push('…');
+            if preview.text.len() >= 256 {
+                if !preview.text.ends_with('…') {
+                    preview_append(&mut preview, "…", Some(flat[child].range.clone()));
                 }
                 break;
             }
@@ -662,7 +708,10 @@ impl Layout {
         let mut ids: Vec<_> = self.lines[line]
             .spans
             .iter()
-            .filter(|s| s.role != TokenRole::Key || self.nodes[s.node].line == line)
+            .filter(|s| {
+                !matches!(s.role, TokenRole::Key | TokenRole::FieldDefinition)
+                    || self.nodes[s.node].line == line
+            })
             .map(|s| s.node)
             .collect();
         ids.push(self.lines[line].owner);
@@ -718,7 +767,11 @@ impl Layout {
             line.token(
                 if index == 0 { " " } else { "," },
                 node,
-                TokenRole::Structure,
+                if index == 0 {
+                    TokenRole::Punctuation
+                } else {
+                    TokenRole::PrimitiveTrailingComma
+                },
                 None,
             );
             let original = &self.lines[self.nodes[child].line];
@@ -801,13 +854,28 @@ impl Layout {
                         UnicodeWidthStr::width(warning.as_str()),
                     ) {
                         line = inline;
-                    } else if !self.previews[node].is_empty() {
-                        line.token(
-                            &format!(" {}", self.previews[node]),
+                    } else if !self.previews[node].text.is_empty() {
+                        let preview = &self.previews[node];
+                        let start = line.text.len();
+                        let rendered = format!(" {}", preview.text);
+                        line.text.push_str(&rendered);
+                        let display_offset = start + 1;
+                        let source_map = preview
+                            .source_map
+                            .iter()
+                            .map(|map| SourceMap {
+                                source: map.source.clone(),
+                                display: display_offset + map.display.start
+                                    ..display_offset + map.display.end,
+                            })
+                            .collect();
+                        line.spans.push(Span {
+                            range: start..line.text.len(),
                             node,
-                            TokenRole::Preview,
-                            None,
-                        );
+                            role: TokenRole::Preview,
+                            source: preview.source.clone(),
+                            source_map,
+                        });
                     }
                     if !messages.is_empty() {
                         line.token(&warning, node, TokenRole::Warning, None);
@@ -1125,14 +1193,63 @@ fn bounded_prefix(text: &str, limit: usize) -> &str {
     }
     &text[..end]
 }
-fn append_preview(preview: &mut String, text: &str) {
-    let remaining = 256usize.saturating_sub(preview.len());
+
+fn truncate_preview(preview: &mut Preview, limit: usize) {
+    let end = bounded_prefix(&preview.text, limit).len();
+    preview.text.truncate(end);
+    for map in &mut preview.source_map {
+        map.display.end = map.display.end.min(end);
+    }
+    preview
+        .source_map
+        .retain(|map| map.display.start < map.display.end);
+}
+
+fn append_ellipsis(preview: &mut Preview, source: Option<Range<usize>>) {
+    const LIMIT: usize = 256;
+    const ELLIPSIS_LEN: usize = '…'.len_utf8();
+    truncate_preview(preview, LIMIT - ELLIPSIS_LEN);
+    let start = preview.text.len();
+    preview.text.push('…');
+    if let Some(source) = source {
+        preview.source_map.push(SourceMap {
+            source,
+            display: start..preview.text.len(),
+        });
+    }
+}
+
+fn preview_append(preview: &mut Preview, text: &str, source: Option<Range<usize>>) {
+    const LIMIT: usize = 256;
+    const ELLIPSIS_LEN: usize = '…'.len_utf8();
+    let remaining = LIMIT.saturating_sub(preview.text.len());
     if remaining == 0 {
+        if !text.is_empty() {
+            append_ellipsis(preview, source);
+        }
         return;
     }
-    preview.push_str(bounded_prefix(text, remaining));
-    if text.len() > remaining {
-        preview.push('…');
+    let start = preview.text.len();
+    let limit = if text.len() > remaining {
+        (LIMIT - ELLIPSIS_LEN).saturating_sub(start)
+    } else {
+        remaining
+    };
+    let part = bounded_prefix(text, limit);
+    preview.text.push_str(part);
+    if part.len() < text.len() {
+        append_ellipsis(preview, None);
+        if let Some(source) = source {
+            preview.source_map.push(SourceMap {
+                source,
+                display: start.min(LIMIT - ELLIPSIS_LEN)..preview.text.len(),
+            });
+        }
+    } else if let Some(source) = source {
+        preview.source_map.push(SourceMap {
+            source,
+            display: start..preview.text.len(),
+        });
     }
 }
 
@@ -1229,6 +1346,50 @@ mod tests {
             "[1]:\n  - rows[2]{id}:\n      1\n      2\n    x: true"
         );
     }
+
+    #[test]
+    fn structural_tokens_keep_their_theme_roles() {
+        let flat = json(r#"{"values":[1,2],"rows":[{"a":1},{"a":2}],"empty":[]}"#);
+        let layout = Layout::canonical(&flat);
+        let roles: Vec<_> = layout
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(|span| span.role))
+            .collect();
+        assert!(roles.contains(&TokenRole::ArrayIndex));
+        assert!(roles.contains(&TokenRole::PrimitiveTrailingComma));
+        assert!(roles.contains(&TokenRole::ContainerDelimiter));
+        assert!(roles.contains(&TokenRole::EmptyContainer));
+        assert!(roles.contains(&TokenRole::Punctuation));
+    }
+
+    #[test]
+    fn collapsed_preview_maps_searches_to_generated_text() {
+        let mut flat = json(r#"{"obj":{"needle":"value","other":1}}"#);
+        let layout = Layout::canonical(&flat);
+        let object = children(&flat, 0)
+            .into_iter()
+            .find(|&node| flat[node].key_range.is_some())
+            .unwrap();
+        flat.collapse(object);
+        let line = layout
+            .project(&flat)
+            .into_iter()
+            .find(|line| line.line.owner == object)
+            .unwrap()
+            .line;
+        let preview = line
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::Preview)
+            .unwrap();
+        let source_start = flat.1.find("needle").unwrap();
+        assert!(
+            !preview
+                .matching_ranges(&(source_start..source_start + 6))
+                .is_empty()
+        );
+    }
     #[test]
     fn duplicate_decoded_keys_keep_identity() {
         let flat = json(r#"{"box":{"a":1,"\u0061":2}}"#);
@@ -1286,7 +1447,10 @@ mod tests {
             r##"[6]: "# WARN Duplicate key",".inf","true","05","a,b","-x""##
         );
         let flat = yaml("- a: .inf\n- a: .nan\n");
-        assert_eq!(text(&flat),"[2]{a}:\n  .inf  # WARN Non-finite number at field \"a\"\n  .nan  # WARN Non-finite number at field \"a\"");
+        assert_eq!(
+            text(&flat),
+            "[2]{a}:\n  .inf  # WARN Non-finite number at field \"a\"\n  .nan  # WARN Non-finite number at field \"a\""
+        );
     }
     #[test]
     fn typed_recursive_keys_and_multiple_roots() {
@@ -1312,25 +1476,32 @@ mod tests {
         let key_span = layout.lines[0]
             .spans
             .iter()
-            .find(|span| span.node == fields[0] && span.role == TokenRole::Key)
+            .find(|span| {
+                span.node == fields[0]
+                    && matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition)
+            })
             .unwrap();
         assert_eq!(key_span.source, flat[fields[0]].key_range);
         assert_eq!(&layout.lines[0].text[key_span.range.clone()], "a");
-        assert!(layout.lines[2]
-            .spans
-            .iter()
-            .any(|span| span.node == fields[0] && span.role == TokenRole::Warning));
+        assert!(
+            layout.lines[2]
+                .spans
+                .iter()
+                .any(|span| span.node == fields[0] && span.role == TokenRole::Warning)
+        );
         flat.collapse(rows[1]);
         let collapsed = layout.project(&flat);
         assert_eq!(collapsed[2].absolute, 2);
         assert!(!layout.nodes[rows[1]].collapsible);
         assert!(layout.nodes[0].collapsible);
         assert_eq!(collapsed[2].line.text, layout.lines[2].text);
-        assert!(collapsed[2]
-            .line
-            .spans
-            .iter()
-            .any(|span| span.node == fields[0]));
+        assert!(
+            collapsed[2]
+                .line
+                .spans
+                .iter()
+                .any(|span| span.node == fields[0])
+        );
         flat.expand(rows[1]);
         assert_eq!(layout.project(&flat)[2].line.text, layout.lines[2].text);
     }
@@ -1345,10 +1516,12 @@ mod tests {
         let layout = Layout::canonical(&flat);
         flat.collapse(1);
         let visible = layout.project(&flat);
-        assert!(visible[0]
-            .line
-            .text
-            .ends_with("# WARN Duplicate key; Contains 2 hidden warnings"));
+        assert!(
+            visible[0]
+                .line
+                .text
+                .ends_with("# WARN Duplicate key; Contains 2 hidden warnings")
+        );
         assert_eq!(layout.nodes[0].descendant_warnings, 4);
     }
     #[test]
@@ -1377,6 +1550,15 @@ mod tests {
         assert!(visible[0].line.text.len() < 280);
         assert!(visible[0].line.text.ends_with('…'));
     }
+
+    #[test]
+    fn bounded_preview_marks_truncation_with_little_room_left() {
+        let mut preview = Preview::default();
+        preview_append(&mut preview, &"x".repeat(254), None);
+        preview_append(&mut preview, "longer", None);
+        assert_eq!(preview.text.len(), 256);
+        assert!(preview.text.ends_with('…'));
+    }
     #[test]
     fn mappings_and_collapse_restore() {
         let mut flat = json(r#"{"tags":[1,2],"rows":[{"a":3},{"a":4}],"obj":{"x":{"y":5}}}"#);
@@ -1386,26 +1568,32 @@ mod tests {
         flat.collapse(1);
         let visible = layout.project(&flat);
         assert_eq!(visible[0].line.text, "tags[2]: 1,2");
-        assert!(visible[0]
-            .line
-            .spans
-            .iter()
-            .any(|s| s.role == TokenRole::Number));
-        assert!(!visible[0]
-            .line
-            .spans
-            .iter()
-            .any(|s| s.role == TokenRole::Preview));
+        assert!(
+            visible[0]
+                .line
+                .spans
+                .iter()
+                .any(|s| s.role == TokenRole::Number)
+        );
+        assert!(
+            !visible[0]
+                .line
+                .spans
+                .iter()
+                .any(|s| s.role == TokenRole::Preview)
+        );
         flat.expand(1);
         assert_eq!(layout.project(&flat)[0].line.text, layout.lines[0].text);
         let mut dup = json(r#"{"a":{"b":{"x":1,"x":2}}}"#);
         let l = Layout::canonical(&dup);
         dup.collapse(2);
         dup.collapse(1);
-        assert!(l.project(&dup)[0]
-            .line
-            .text
-            .contains("Contains 2 hidden warnings"));
+        assert!(
+            l.project(&dup)[0]
+                .line
+                .text
+                .contains("Contains 2 hidden warnings")
+        );
         dup.expand(1);
         assert!(dup[2].is_collapsed());
         assert_eq!(l.project(&dup).len(), 2);
@@ -1426,16 +1614,21 @@ mod tests {
             text(&flat),
             r#"? ["quote\"x","\\literal",{"a:b":[true,null,1]}]: value  # WARN Non-string key"#
         );
-        assert!(!Layout::canonical(&flat)
-            .warnings
-            .iter()
-            .any(|w| w.kind == WarningKind::NonCanonicalNumber));
+        assert!(
+            !Layout::canonical(&flat)
+                .warnings
+                .iter()
+                .any(|w| w.kind == WarningKind::NonCanonicalNumber)
+        );
     }
 
     #[test]
     fn list_first_field_inline_warnings_keep_element_locators() {
         let flat = yaml("- vals: [.inf, .nan]\n  nested: {}\n");
-        assert_eq!(text(&flat), "[1]:\n  - vals[2]: .inf,.nan  # WARN Non-finite number at [0]; Non-finite number at [1]\n    nested:");
+        assert_eq!(
+            text(&flat),
+            "[1]:\n  - vals[2]: .inf,.nan  # WARN Non-finite number at [0]; Non-finite number at [1]\n    nested:"
+        );
     }
 
     #[test]
@@ -1446,35 +1639,42 @@ mod tests {
         let projected = layout.project(&flat);
         let line = &projected[0].line;
         assert_eq!(line.text, "[5]: text,2,true,null,5");
-        assert!(!line
-            .spans
-            .iter()
-            .any(|span| span.role == TokenRole::Preview));
+        assert!(
+            !line
+                .spans
+                .iter()
+                .any(|span| span.role == TokenRole::Preview)
+        );
         for role in [
             TokenRole::String,
             TokenRole::Number,
             TokenRole::Boolean,
             TokenRole::Null,
         ] {
-            assert!(line
-                .spans
-                .iter()
-                .any(|span| span.role == role && span.source.is_some()));
+            assert!(
+                line.spans
+                    .iter()
+                    .any(|span| span.role == role && span.source.is_some())
+            );
         }
         let narrow = Layout::for_view(&flat, 10, &HashSet::from([0]));
-        assert!(narrow.project(&flat)[0]
-            .line
-            .spans
-            .iter()
-            .any(|span| span.role == TokenRole::Preview));
+        assert!(
+            narrow.project(&flat)[0]
+                .line
+                .spans
+                .iter()
+                .any(|span| span.role == TokenRole::Preview)
+        );
         let mut long = json("[1,2,3,4,5,6]");
         let layout = Layout::for_view(&long, 120, &HashSet::new());
         long.collapse(0);
-        assert!(layout.project(&long)[0]
-            .line
-            .spans
-            .iter()
-            .any(|span| span.role == TokenRole::Preview));
+        assert!(
+            layout.project(&long)[0]
+                .line
+                .spans
+                .iter()
+                .any(|span| span.role == TokenRole::Preview)
+        );
     }
 
     #[test]
@@ -1487,7 +1687,7 @@ mod tests {
             .line
             .spans
             .iter()
-            .filter(|span| span.role == TokenRole::Key)
+            .filter(|span| matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition))
             .collect();
         assert_eq!(keys.len(), 2);
         assert_ne!(keys[0].node, keys[1].node);
@@ -1589,9 +1789,11 @@ mod tests {
         let mut flat = yaml(".inf: {a: .inf}");
         let layout = Layout::canonical(&flat);
         flat.collapse(1);
-        assert!(layout.project(&flat)[0]
-            .line
-            .text
-            .ends_with("# WARN Non-finite number; Non-string key; Contains 1 hidden warnings"));
+        assert!(
+            layout.project(&flat)[0]
+                .line
+                .text
+                .ends_with("# WARN Non-finite number; Non-string key; Contains 1 hidden warnings")
+        );
     }
 }

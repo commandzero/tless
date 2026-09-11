@@ -27,13 +27,99 @@ tless data.toon
 producer | tless --toon
 ```
 
-The independent tless release history starts at 0.1.0.
-Binary downloads will appear on the [releases page](https://github.com/CommandZero/tless/releases) after validation and maintainer publication.
-No crates.io or Homebrew installation for this fork is advertised yet.
-The codec comes from crates.io. Registry publication of tless remains a separate release decision.
+The independent tless release history starts at 0.1.0. Install the latest
+release with Cargo or Homebrew:
+
+```sh
+cargo install tless --locked
+brew install commandzero/tools/tless
+```
+
+Prebuilt binaries are available on the [releases page](https://github.com/CommandZero/tless/releases).
+To install one, download the archive for your platform, extract it, and put the
+`tless` binary on your `PATH`:
+
+```sh
+archive="tless-vX.Y.Z-<target-triple>.tar.gz" # replace with the downloaded filename
+tar -xzf "$archive"
+mkdir -p "$HOME/.local/bin"
+install -m 755 tless "$HOME/.local/bin/tless"
+```
+
+The codec comes from crates.io.
 
 The executable is `tless`. Update scripts and aliases that should use this fork.
 The upstream `jless` executable can remain installed alongside it.
+
+## Color themes
+
+Theme support is included in the default build. Build or install it explicitly
+with:
+
+```sh
+cargo build --release --features colorscheme
+cargo install --path . --features colorscheme
+```
+
+The `--no-default-features` build omits `--theme` and the theme configuration
+file. JSON and YAML viewing remain available in both builds.
+
+Use `--theme <name>` to select a built-in or configured theme. Without that
+option, `colorscheme` in the configuration selects the startup theme, otherwise
+`default` is used. While viewing a document, enter `:colorscheme <name>` to
+switch themes without changing your position or search.
+The former `classic` name remains accepted as a compatibility alias for
+`default`.
+
+The `borealis` theme uses the Borealis dark-mode CSS palette with RGB colors.
+It requires a true-color terminal. Use `tless --theme borealis data.json` or
+`:colorscheme borealis`. See [the palette mapping](openspec/specs/color-themes/spec.md#requirement-borealis-palette-and-source-fidelity).
+
+Vim companions use the original Vim scheme name, with Vim's `default` scheme
+exposed as `vim`:
+
+```sh
+tless --theme desert data.json
+tless --theme peachpuff data.json
+tless --theme catppuccin data.json
+```
+
+These palettes require a 256-color terminal. See the
+[Vim palette audit and gallery](docs/vim-themes.md) for all 28 schemes.
+
+Define named themes in `$XDG_CONFIG_HOME/tless/config.yaml`. If
+`XDG_CONFIG_HOME` is unset, tless uses `$HOME/.config/tless/config.yaml`.
+See [examples/config.yaml](examples/config.yaml) for a complete example.
+
+```yaml
+colorscheme: navy
+themes:
+  navy:
+    object-key: blue
+    object-key-focused: light-blue
+    string: cyan
+    status-bar-background: 18
+    status-bar-foreground: cyan
+  ocean:
+    object-key: cyan
+    string: light-blue
+    status-bar-background: 17
+    status-bar-foreground: light-cyan
+```
+
+Custom themes inherit the default styles for omitted keys. Theme keys include
+`document-foreground`, `document-background`, `null`, `boolean`, `number`,
+`string`, `empty-container`, `object-key`, `object-key-focused`, `array-index`,
+`punctuation`, `punctuation-comma-trailing`, `container-delimiter`,
+`container-delimiter-focused`, `ellipsis`, `preview-text`, `preview-count`,
+`line-number`, `line-number-focused`, `row-marker-empty`,
+`indicator-truncation`, `status-bar`, `status-text`, `status-bar-foreground`,
+`status-bar-background`, `command-line-foreground`, `command-line-background`,
+`message-info`, `message-warning`, `message-error`, `search-match`,
+`search-match-preview`, and `search-match-current`.
+
+Colors may be named ANSI colors or integer values from `0` through `255` for
+the ANSI 256-color palette.
 
 ## Platform contract
 
@@ -48,7 +134,7 @@ Each release must pass native tests and an extracted-binary smoke test on all 4 
 These are release gates, not a claim that an unpublished release has passed them.
 Other Linux distributions and older operating systems are unverified.
 Windows and musl are not supported.
-Linux clipboard support requires X11 and libxcb; clipboard access also needs a usable display session.
+Linux clipboard access requires a usable X11 or XWayland display session.
 
 ## Command-line contract
 
@@ -108,7 +194,7 @@ An output error can leave a partial payload in the downstream consumer.
 Build from this checkout to enable TOON input and canonical output:
 
 ```sh
-cargo install --path . --locked --features toon
+cargo install --path . --locked
 tless data.toon
 producer | tless --toon
 ```
@@ -154,13 +240,8 @@ Invalid UTF-8 is always an input error.
 Builds resolve the published codec through Cargo.lock, with its CLI features disabled.
 Keep `--locked` when building. The codec license is included in NOTICES.md.
 
-On Linux systems, X11 libraries are needed to build clipboard access if
-building from source. On Ubuntu you can install these using:
-
-```
-sudo apt-get install libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-```
-
+Clipboard access uses arboard with text support only. Linux builds no longer
+require libxcb development packages.
 
 ## Contribute and release
 

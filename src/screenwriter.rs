@@ -1,28 +1,40 @@
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::io::Write as _;
 use std::ops::Range;
 
 use rustyline::Editor;
+use rustyline::history::DefaultHistory;
 use termion::raw::RawTerminal;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::MAX_BUFFER_SIZE;
+#[cfg(feature = "colorscheme")]
+use crate::commandline::CommandLineHighlighter;
+#[cfg(not(feature = "colorscheme"))]
+type CommandLineHighlighter = ();
 use crate::flatjson::{Index, PathType};
 use crate::lineprinter as lp;
 use crate::options::Opt;
 use crate::search::SearchState;
-use crate::terminal;
-use crate::terminal::{AnsiTerminal, Terminal};
+use crate::terminal::{AnsiTerminal, Color, Terminal};
+pub use crate::theme::MessageSeverity;
+use crate::theme::{StyleRole, StyleState, Theme};
 use crate::truncatedstrview::{TruncatedStrSlice, TruncatedStrView};
 use crate::types::TTYDimensions;
 use crate::viewer::{Action, JsonViewer};
 
+pub type TerminalOutput = termion::input::MouseTerminal<
+    termion::cursor::HideCursor<termion::screen::AlternateScreen<RawTerminal<std::io::Stdout>>>,
+>;
+
 pub struct ScreenWriter {
-    pub stdout: RawTerminal<Box<dyn std::io::Write>>,
-    pub command_editor: Editor<()>,
+    pub stdout: TerminalOutput,
+    pub command_editor: Editor<CommandLineHighlighter, DefaultHistory>,
     pub dimensions: TTYDimensions,
     pub terminal: AnsiTerminal,
+    theme: Theme,
 
     pub show_line_numbers: bool,
     pub show_relative_line_numbers: bool,
@@ -33,36 +45,48 @@ pub struct ScreenWriter {
     horizontal_offsets: HashMap<Index, usize>,
 }
 
-pub enum MessageSeverity {
-    Info,
-    Warn,
-    Error,
-}
-
-impl MessageSeverity {
-    pub fn color(&self) -> terminal::Color {
-        match self {
-            MessageSeverity::Info => terminal::WHITE,
-            MessageSeverity::Warn => terminal::YELLOW,
-            MessageSeverity::Error => terminal::RED,
-        }
-    }
-}
-
 const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
+
+fn paint_document_row(
+    terminal: &mut dyn Terminal,
+    theme: &Theme,
+    row: u16,
+    width: u16,
+    focused: bool,
+) -> std::fmt::Result {
+    terminal.position_cursor(1, row)?;
+    let style = theme.row_style(focused);
+    terminal.set_style(&style)?;
+    terminal.clear_line()?;
+    if style.bg != Color::Default {
+        for _ in 0..width {
+            terminal.write_char(' ')?;
+        }
+        terminal.write_char('\r')?;
+    }
+    Ok(())
+}
 
 impl ScreenWriter {
     pub fn init(
         options: &Opt,
-        stdout: RawTerminal<Box<dyn std::io::Write>>,
-        command_editor: Editor<()>,
+        theme: Theme,
+        stdout: TerminalOutput,
         dimensions: TTYDimensions,
     ) -> Self {
+        let command_editor = Editor::new().expect("Unable to initialize command input");
+        #[cfg(feature = "colorscheme")]
+        let mut command_editor = command_editor;
+        #[cfg(feature = "colorscheme")]
+        command_editor.set_helper(Some(CommandLineHighlighter::new(
+            theme.style(StyleRole::StatusText, StyleState::main()),
+        )));
         ScreenWriter {
             stdout,
             command_editor,
             dimensions,
             terminal: AnsiTerminal::new(String::new()),
+            theme,
             show_line_numbers: options.show_line_numbers,
             show_relative_line_numbers: options.show_relative_line_numbers,
             indentation_reduction: 0,
@@ -70,6 +94,16 @@ impl ScreenWriter {
             layout_generation: 0,
             horizontal_offsets: HashMap::new(),
         }
+    }
+
+    #[cfg(feature = "colorscheme")]
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+        self.command_editor
+            .set_helper(Some(CommandLineHighlighter::new(
+                theme.style(StyleRole::StatusText, StyleState::main()),
+            )));
+        let _ = self.terminal.reset_style();
     }
 
     pub fn print(
@@ -248,11 +282,20 @@ impl ScreenWriter {
         let focused = viewer.focused_line_index();
         let number_width = self.number_width(viewer);
         for screen in 0..viewer.dimensions.height {
-            self.terminal.position_cursor(1, screen + 1)?;
-            self.terminal.clear_line()?;
-            self.terminal.reset_style()?;
-            let Some(physical) = viewer.screen_row(usize::from(screen)) else {
-                self.terminal.set_fg(terminal::LIGHT_BLACK)?;
+            let physical = viewer.screen_row(usize::from(screen));
+            paint_document_row(
+                &mut self.terminal,
+                &self.theme,
+                screen + 1,
+                self.dimensions.width,
+                physical.is_some_and(|row| row.logical_line == focused),
+            )?;
+            let Some(physical) = physical else {
+                self.terminal.set_style(
+                    &self
+                        .theme
+                        .style(StyleRole::EmptyRowMarker, StyleState::main()),
+                )?;
                 self.terminal.write_char('~')?;
                 continue;
             };
@@ -271,11 +314,15 @@ impl ScreenWriter {
                 } else {
                     visible.absolute + 1
                 };
-                self.terminal.set_fg(if index == focused {
-                    terminal::WHITE
-                } else {
-                    terminal::LIGHT_BLACK
-                })?;
+                self.terminal.set_style(&self.theme.style_on_row(
+                    StyleRole::LineNumber,
+                    if index == focused {
+                        StyleState::main().focused()
+                    } else {
+                        StyleState::main()
+                    },
+                    index == focused,
+                ))?;
                 let label = if physical.first {
                     format!("{:>width$} ", number, width = number_width - 1)
                 } else {
@@ -288,12 +335,15 @@ impl ScreenWriter {
             if available == 0 {
                 continue;
             }
-            self.terminal.reset_style()?;
-            self.terminal.set_fg(if index == focused {
-                terminal::WHITE
-            } else {
-                terminal::LIGHT_BLACK
-            })?;
+            self.terminal.set_style(&self.theme.style_on_row(
+                StyleRole::ContainerDelimiter,
+                if index == focused {
+                    StyleState::main().focused()
+                } else {
+                    StyleState::main()
+                },
+                index == focused,
+            ))?;
             let arrow =
                 if physical.first && viewer.layout.nodes[line.owner].collapsible && !line.separator
                 {
@@ -321,6 +371,18 @@ impl ScreenWriter {
                 0..0
             };
             if viewer.is_wrapped_line(index) {
+                #[cfg(feature = "colorscheme")]
+                lp::paint_wrapped_themed(
+                    &mut self.terminal,
+                    &self.theme,
+                    line,
+                    focused_nodes,
+                    physical,
+                    available - 2,
+                    matches,
+                    &current,
+                )?;
+                #[cfg(not(feature = "colorscheme"))]
                 lp::paint_wrapped(
                     &mut self.terminal,
                     line,
@@ -338,6 +400,18 @@ impl ScreenWriter {
             } else {
                 std::borrow::Cow::Borrowed(line)
             };
+            #[cfg(feature = "colorscheme")]
+            lp::paint_themed(
+                &mut self.terminal,
+                &self.theme,
+                &fitted,
+                focused_nodes,
+                viewport,
+                available - 2,
+                matches,
+                &current,
+            )?;
+            #[cfg(not(feature = "colorscheme"))]
             lp::paint(
                 &mut self.terminal,
                 &fitted,
@@ -377,11 +451,8 @@ impl ScreenWriter {
         self.terminal
             .position_cursor(1, self.dimensions.height.saturating_sub(1).max(1))?;
         self.terminal.clear_line()?;
-        self.terminal.set_style(&terminal::Style {
-            fg: terminal::BLACK,
-            bg: terminal::LIGHT_BLACK,
-            ..terminal::Style::default()
-        })?;
+        self.terminal
+            .set_style(&self.theme.style(StyleRole::StatusBar, StyleState::main()))?;
         // Need to print a line to ensure the entire bar with the path to
         // the node and the filename is highlighted.
         for _ in 0..self.dimensions.width {
@@ -417,12 +488,15 @@ impl ScreenWriter {
         self.terminal.clear_line()?;
 
         if let Some((contents, severity)) = message {
-            self.terminal.set_style(&terminal::Style {
-                fg: severity.color(),
-                ..terminal::Style::default()
-            })?;
+            self.terminal.set_style(
+                &self
+                    .theme
+                    .style(StyleRole::Message(*severity), StyleState::main()),
+            )?;
             self.terminal.write_str(contents)?;
         } else if search_state.showing_matches() {
+            self.terminal
+                .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()))?;
             self.terminal
                 .write_char(search_state.direction.prompt_char())?;
             self.terminal.write_str(&search_state.search_term)?;
@@ -442,6 +516,8 @@ impl ScreenWriter {
                 write!(self.terminal, " {wrapped_char} {match_tracker}")?;
             }
         } else {
+            self.terminal
+                .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()))?;
             write!(self.terminal, ":")?;
         }
 
@@ -474,11 +550,9 @@ impl ScreenWriter {
         let space_available_for_filename =
             width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
-        let status_style = terminal::Style {
-            fg: terminal::BLACK,
-            bg: terminal::LIGHT_BLACK,
-            ..terminal::Style::default()
-        };
+        let mut status_style = self.theme.style(StyleRole::StatusBar, StyleState::main());
+        status_style.fg = crate::terminal::BLACK;
+        status_style.inverted = false;
 
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
@@ -496,10 +570,11 @@ impl ScreenWriter {
 
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
-            self.terminal.set_style(&terminal::Style {
-                fg: terminal::WHITE,
-                ..status_style
-            })?;
+            self.terminal.set_style(
+                &self
+                    .theme
+                    .style(StyleRole::StatusPathBase, StyleState::main()),
+            )?;
 
             let truncated_slice = TruncatedStrSlice {
                 s: filename,
@@ -630,6 +705,32 @@ fn end_scroll_offset(width: usize, available: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::end_scroll_offset;
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn selected_row_fill_covers_width_and_clears_when_focus_moves() {
+        use crate::terminal::{AnsiTerminal, Terminal};
+        use crate::theme::{Theme, ThemeName};
+        let theme = Theme::built_in(ThemeName::Borealis);
+        for width in [0, 1, 40] {
+            let mut terminal = AnsiTerminal::new(String::new());
+            super::paint_document_row(&mut terminal, &theme, 1, width, true).unwrap();
+            assert!(terminal.output().contains("\x1b[48;2;10;35;66m"));
+            assert!(
+                terminal
+                    .output()
+                    .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize)))
+            );
+            terminal.clear_output();
+            super::paint_document_row(&mut terminal, &theme, 1, width, false).unwrap();
+            assert!(terminal.output().contains("\x1b[48;2;5;15;33m"));
+            assert!(
+                terminal
+                    .output()
+                    .ends_with(&format!("\x1b[2K{}\r", " ".repeat(width as usize)))
+            );
+        }
+    }
 
     #[test]
     fn end_scroll_stays_inside_content_at_narrow_widths() {

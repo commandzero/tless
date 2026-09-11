@@ -1,8 +1,14 @@
+#![allow(dead_code)]
+
 use std::fmt::{Result, Write};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Color {
     C16(u8),
+    #[cfg(feature = "colorscheme")]
+    C256(u8),
+    #[cfg(feature = "colorscheme")]
+    Rgb(u8, u8, u8),
     Default,
 }
 
@@ -10,6 +16,8 @@ impl Color {
     pub fn bright(self) -> Self {
         match self {
             Color::C16(index @ 0..=7) => Color::C16(index + 8),
+            #[cfg(feature = "colorscheme")]
+            Color::C256(index) => Color::C256(index),
             Color::C16(8) | Color::Default => LIGHT_WHITE,
             color => color,
         }
@@ -29,13 +37,13 @@ pub const LIGHT_BLACK: Color = Color::C16(8);
 // pub const LIGHT_RED: Color = Color::C16(9);
 // pub const LIGHT_GREEN: Color = Color::C16(10);
 pub const LIGHT_YELLOW: Color = Color::C16(11);
-// pub const LIGHT_BLUE: Color = Color::C16(12);
+pub const LIGHT_BLUE: Color = Color::C16(12);
 // pub const LIGHT_MAGENTA: Color = Color::C16(13);
-// pub const LIGHT_CYAN: Color = Color::C16(14);
 pub const LIGHT_WHITE: Color = Color::C16(15);
+pub const LIGHT_CYAN: Color = Color::C16(14);
 pub const DEFAULT: Color = Color::Default;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Style {
     pub fg: Color,
     pub bg: Color,
@@ -155,6 +163,10 @@ impl Terminal for AnsiTerminal {
         if self.style.fg != color {
             match color {
                 Color::C16(c) => write!(self, "\x1b[38;5;{c}m")?,
+                #[cfg(feature = "colorscheme")]
+                Color::C256(c) => write!(self, "\x1b[38;5;{c}m")?,
+                #[cfg(feature = "colorscheme")]
+                Color::Rgb(r, g, b) => write!(self, "\x1b[38;2;{r};{g};{b}m")?,
                 Color::Default => write!(self, "\x1b[39m")?,
             }
             self.style.fg = color;
@@ -166,6 +178,10 @@ impl Terminal for AnsiTerminal {
         if self.style.bg != color {
             match color {
                 Color::C16(c) => write!(self, "\x1b[48;5;{c}m")?,
+                #[cfg(feature = "colorscheme")]
+                Color::C256(c) => write!(self, "\x1b[48;5;{c}m")?,
+                #[cfg(feature = "colorscheme")]
+                Color::Rgb(r, g, b) => write!(self, "\x1b[48;2;{r};{g};{b}m")?,
                 Color::Default => write!(self, "\x1b[49m")?,
             }
             self.style.bg = color;
@@ -236,6 +252,24 @@ impl Terminal for AnsiTerminal {
 
 #[cfg(test)]
 pub mod test {
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn rgb_colors_transition_to_indexed_and_reset() -> std::fmt::Result {
+        let mut terminal = AnsiTerminal::new(String::new());
+        terminal.set_fg(Color::Rgb(69, 168, 255))?;
+        terminal.set_bg(Color::Rgb(5, 15, 33))?;
+        terminal.set_fg(Color::Rgb(69, 168, 255))?;
+        terminal.set_fg(Color::C256(123))?;
+        terminal.set_bg(Color::Default)?;
+        terminal.reset_style()?;
+        assert_eq!(
+            terminal.output(),
+            "\x1b[38;2;69;168;255m\x1b[48;2;5;15;33m\x1b[38;5;123m\x1b[49m\x1b[0m"
+        );
+        assert_eq!(terminal.style, Style::default());
+        Ok(())
+    }
+
     use super::*;
 
     const COLOR_NAMES: [&str; 16] = [
@@ -261,6 +295,10 @@ pub mod test {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 Color::C16(c) => write!(f, "{}", COLOR_NAMES.get(*c as usize).unwrap_or(&"?")),
+                #[cfg(feature = "colorscheme")]
+                Color::C256(c) => write!(f, "C256({c})"),
+                #[cfg(feature = "colorscheme")]
+                Color::Rgb(r, g, b) => write!(f, "Rgb({r},{g},{b})"),
                 Color::Default => write!(f, "Default"),
             }
         }

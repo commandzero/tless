@@ -28,3 +28,9 @@ Follow-up verification found half-page scrolling could change focus while the se
 - `git diff --check` passed. The existing `block v0.1.6` dependency emits Cargo’s future-incompatibility notice; no dependency changes were made.
 
 Terminal integration tests ran with pseudoterminal access. Release-only manual platform acceptance remains part of the release checklist.
+
+## Integration with main
+
+Merged the published 0.1.0 release, Rust 2024 dependency updates, and configurable themes from main. Wrapping remains unreleased. Wrapped painting shares the theme-aware token style resolver with unwrapped painting; each selected physical row receives the theme selection background, including blank continuation gutters. The rendering delta now scopes its original palette assertions to the default theme, consistent with the merged theme contract. A regression covers continuation backgrounds and cross-row search styling under Borealis and Vim themes.
+
+Merge validation passed: full preflight, strict OpenSpec gate, documentation validation, and all five feature profiles on Rust 1.97.1 and Rust 1.87.0. The final compiler matrices ran sequentially, each with 924 passing test executions and no failures or ignored tests.

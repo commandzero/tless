@@ -282,10 +282,12 @@ mod tests {
         let text = "x".repeat(4096);
         let result = rows(&text, 1, 0);
         assert_eq!(result.len(), text.len());
-        assert!(result
-            .iter()
-            .enumerate()
-            .all(|(index, row)| { row.bytes == (index..index + 1) && row.cell_start == index }));
+        assert!(
+            result
+                .iter()
+                .enumerate()
+                .all(|(index, row)| { row.bytes == (index..index + 1) && row.cell_start == index })
+        );
         assert!(result.first().is_some_and(|row| row.first));
         assert!(result.iter().skip(1).all(|row| !row.first));
     }
