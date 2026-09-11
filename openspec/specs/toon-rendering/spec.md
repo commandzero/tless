@@ -8,7 +8,7 @@ Provide one syntax-colored TOON document view with predictable collapse annotati
 
 ### Requirement: One rendering contract
 
-The viewer SHALL render every supported input format with the TOON 3.0 profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input parser and export feature selection SHALL retain their existing meaning.
+The viewer SHALL render every supported input format with the TOON 3.0 profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering, and TOON input and export SHALL be available in every build profile. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
 
 #### Scenario: Equivalent inputs
 
@@ -27,7 +27,7 @@ The viewer SHALL render every supported input format with the TOON 3.0 profile: 
 
 - **WHEN** tless is built without default features and opens JSON
 - **THEN** the viewer SHALL still render TOON
-- **AND** disabled input or export features SHALL remain disabled
+- **AND** TOON input, export, and interactive commands SHALL remain available
 
 ### Requirement: Native TOON layout
 
