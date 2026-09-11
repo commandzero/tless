@@ -505,7 +505,7 @@ mod tests {
     use crate::flatjson::{parse_top_level_json, parse_top_level_yaml};
     use crate::terminal::test::{TextOnlyTerminal, VisibleEscapesTerminal};
     use crate::theme::Theme;
-    use crate::toon_display::Layout;
+    use crate::toon_display::{Layout, Span};
     fn text(line: &DisplayLine, width: usize, offset: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();
         paint(
@@ -723,6 +723,40 @@ mod tests {
         assert!(terminal.output().contains("_BG(LightBlack)_"));
     }
 
+    fn assert_quoted_key_styles(line: &DisplayLine, key: &Span) {
+        let theme = Theme::default();
+        let opening = grapheme_style(
+            Some(&theme),
+            line,
+            &(usize::MAX..usize::MAX),
+            key.range.start,
+            1,
+            &[],
+            &(0..0),
+        );
+        let interior = grapheme_style(
+            Some(&theme),
+            line,
+            &(usize::MAX..usize::MAX),
+            key.range.start + 1,
+            1,
+            &[],
+            &(0..0),
+        );
+        let closing = grapheme_style(
+            Some(&theme),
+            line,
+            &(usize::MAX..usize::MAX),
+            key.range.end - 1,
+            1,
+            &[],
+            &(0..0),
+        );
+        assert_eq!(opening.fg, crate::terminal::DEFAULT);
+        assert_eq!(interior.fg, crate::terminal::CYAN);
+        assert_eq!(closing.fg, crate::terminal::DEFAULT);
+    }
+
     #[test]
     fn quoted_key_delimiters_use_punctuation_style() {
         let flat = parse_top_level_json(r#"{"needs quotes":1}"#.into()).unwrap();
@@ -734,36 +768,20 @@ mod tests {
             .find(|span| span.role == TokenRole::Key)
             .unwrap();
         assert_eq!(&line.text[key.range.clone()], r#""needs quotes""#);
-        let opening = grapheme_style(
-            Some(&Theme::default()),
-            line,
-            &(usize::MAX..usize::MAX),
-            key.range.start,
-            1,
-            &[],
-            &(0..0),
-        );
-        let interior = grapheme_style(
-            Some(&Theme::default()),
-            line,
-            &(usize::MAX..usize::MAX),
-            key.range.start + 1,
-            1,
-            &[],
-            &(0..0),
-        );
-        let closing = grapheme_style(
-            Some(&Theme::default()),
-            line,
-            &(usize::MAX..usize::MAX),
-            key.range.end - 1,
-            1,
-            &[],
-            &(0..0),
-        );
-        assert_eq!(opening.fg, crate::terminal::DEFAULT);
-        assert_eq!(interior.fg, crate::terminal::CYAN);
-        assert_eq!(closing.fg, crate::terminal::DEFAULT);
+        assert_quoted_key_styles(line, key);
+
+        let flat =
+            parse_top_level_json(r#"{"rows":[{"needs quotes":1},{"needs quotes":2}]}"#.into())
+                .unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[0];
+        let field = line
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::FieldDefinition)
+            .unwrap();
+        assert_eq!(&line.text[field.range.clone()], r#""needs quotes""#);
+        assert_quoted_key_styles(line, field);
     }
 
     #[test]
