@@ -693,6 +693,26 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "colorscheme"))]
+    fn selected_row_fallback_background_reaches_document_text() {
+        let flat = parse_top_level_json(r#"{"value":"text"}"#.into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint_themed(
+            &mut terminal,
+            &crate::theme::Theme::default(),
+            &layout.lines[0],
+            0..1,
+            LineViewport::new(&layout.lines[0], 0, 0),
+            100,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        assert!(terminal.output().contains("_BG(LightBlack)_"));
+    }
+
+    #[test]
     #[cfg(feature = "colorscheme")]
     fn borealis_table_fields_and_punctuation_use_plain_text() {
         let flat = parse_top_level_json(r#"{"rows":[{"field":1,"name":true}]}"#.into()).unwrap();

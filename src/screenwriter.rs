@@ -380,20 +380,9 @@ impl ScreenWriter {
                 0..0
             };
             if viewer.is_wrapped_line(index) {
-                #[cfg(feature = "colorscheme")]
                 lp::paint_wrapped_themed(
                     &mut self.terminal,
                     &self.theme,
-                    line,
-                    focused_nodes,
-                    physical,
-                    available - 2,
-                    matches,
-                    &current,
-                )?;
-                #[cfg(not(feature = "colorscheme"))]
-                lp::paint_wrapped(
-                    &mut self.terminal,
                     line,
                     focused_nodes,
                     physical,
@@ -409,20 +398,9 @@ impl ScreenWriter {
             } else {
                 std::borrow::Cow::Borrowed(line)
             };
-            #[cfg(feature = "colorscheme")]
             lp::paint_themed(
                 &mut self.terminal,
                 &self.theme,
-                &fitted,
-                focused_nodes,
-                viewport,
-                available - 2,
-                matches,
-                &current,
-            )?;
-            #[cfg(not(feature = "colorscheme"))]
-            lp::paint(
-                &mut self.terminal,
                 &fitted,
                 focused_nodes,
                 viewport,

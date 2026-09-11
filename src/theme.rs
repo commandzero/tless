@@ -520,10 +520,17 @@ impl Theme {
         if focused {
             let focus = self.style(StyleRole::ObjectKey, StyleState::main().focused());
             let focus_background = if focus.inverted { focus.fg } else { focus.bg };
-            row.bg = if focus_background == Color::Default {
+            row.bg = if self.name == ThemeName::Default
+                && focus_background == Color::Default
+                && row.bg == Color::Default
+            {
                 LINE_HIGHLIGHT
             } else {
-                focus_background
+                if focus_background == Color::Default {
+                    row.bg
+                } else {
+                    focus_background
+                }
             };
         }
         row
@@ -1171,6 +1178,21 @@ mod tests {
                 .bg,
             LINE_HIGHLIGHT
         );
+
+        #[cfg(feature = "colorscheme")]
+        {
+            assert_eq!(
+                Theme::built_in(ThemeName::Cyan).row_style(true).bg,
+                Color::Default
+            );
+            assert_eq!(
+                Theme::default()
+                    .with_color(ThemeColor::DocumentBackground, Color::C256(17))
+                    .row_style(true)
+                    .bg,
+                Color::C256(17)
+            );
+        }
     }
 
     #[test]
