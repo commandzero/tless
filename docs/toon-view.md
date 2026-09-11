@@ -32,9 +32,10 @@ no synthetic header. An empty root has a blank selectable row and its type in
 status. Root objects remain expanded.
 
 Line numbers and collapse arrows use dark gray, changing to light gray on the
-selected line. The selected line uses xterm color 235 as its background, with
-dark gray as the fallback when 256-color support is unavailable. Focus uses bright syntax colors
-instead of bold text, and stays on the selected display line when a container
+selected line. The default theme uses xterm color 235 as its selected-line
+background, with dark gray as the fallback when 256-color support is unavailable;
+themes with their own selection backgrounds retain them. Focus uses bright syntax
+colors instead of bold text, and stays on the selected display line when a container
 has visible descendants. Inline elements and table cells keep individual focus.
 
 Default syntax colors use terminal palette indexes: keys cyan (6), strings green
