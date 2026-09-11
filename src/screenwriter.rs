@@ -212,7 +212,11 @@ impl ScreenWriter {
             let line = &viewer.visible[index].line;
             let (node, source) =
                 lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
-            return Action::FocusNode { node, source };
+            return Action::FocusNodeAt {
+                node,
+                source,
+                display_range: (physical.bytes.start, physical.bytes.end),
+            };
         }
         if column >= number_width && column < number_width + 2 {
             Action::ClickArrow(row)

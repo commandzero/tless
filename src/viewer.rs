@@ -105,7 +105,9 @@ impl JsonViewer {
     }
 
     fn rebuild_physical_rows(&mut self) {
-        let previous_top = self.top_logical_line();
+        let previous_top = self
+            .top_visible_line
+            .min(self.visible.len().saturating_sub(1));
         let eligible: Vec<_> = (0..self.visible.len())
             .map(|line| self.wrap_eligible(line))
             .collect();
@@ -121,12 +123,10 @@ impl JsonViewer {
         self.wrapped_lines = eligible;
         let height = usize::from(self.dimensions.height).max(1);
         let last_top = self.physical_rows.len().saturating_sub(height);
-        self.top_physical_row = self
+        let first_row = self
             .physical_rows
-            .iter()
-            .position(|row| row.logical_line == previous_top)
-            .unwrap_or(0)
-            .min(last_top);
+            .partition_point(|row| row.logical_line < previous_top);
+        self.top_physical_row = first_row.min(last_top);
         self.sync_top_indices();
     }
 
@@ -371,15 +371,26 @@ impl JsonViewer {
     }
 
     fn refresh_projection(&mut self) {
+        let previous_top_absolute = self
+            .visible
+            .get(self.top_logical_line())
+            .map(|line| line.absolute);
         self.focus_byte_range = None;
         self.visible = self.layout.project(&self.flatjson);
         let recovered = self.flatjson.first_visible_ancestor(self.focused_node);
         if recovered != self.focused_node {
             self.focus(recovered);
         }
-        self.top_visible_line = self
-            .top_visible_line
-            .min(self.visible.len().saturating_sub(1));
+        self.top_visible_line = previous_top_absolute
+            .and_then(|absolute| {
+                self.visible
+                    .iter()
+                    .position(|line| line.absolute == absolute)
+            })
+            .unwrap_or_else(|| {
+                self.top_visible_line
+                    .min(self.visible.len().saturating_sub(1))
+            });
         self.rebuild_physical_rows();
     }
 
@@ -387,6 +398,8 @@ impl JsonViewer {
         if self.wrapping_enabled {
             let index = self.focused_physical_row();
             let height = usize::from(self.dimensions.height).max(1);
+            let last_top = self.physical_rows.len().saturating_sub(height);
+            self.top_physical_row = self.top_physical_row.min(last_top);
             let padding = usize::from(self.scrolloff_setting).min((height - 1) / 2);
             if index < self.top_physical_row.saturating_add(padding) {
                 self.top_physical_row = index.saturating_sub(padding);
@@ -394,7 +407,7 @@ impl JsonViewer {
                 self.top_physical_row = index
                     .saturating_add(padding + 1)
                     .saturating_sub(height)
-                    .min(self.physical_rows.len().saturating_sub(height));
+                    .min(last_top);
             }
             self.sync_top_indices();
             return;
@@ -584,14 +597,11 @@ impl JsonViewer {
             let focused = self.focused_line_index();
             let focused_first = self
                 .physical_rows
-                .iter()
-                .position(|row| row.logical_line == focused)
-                .unwrap_or(0);
-            let focused_last = self
+                .partition_point(|row| row.logical_line < focused);
+            let focused_end = self
                 .physical_rows
-                .iter()
-                .rposition(|row| row.logical_line == focused)
-                .unwrap_or(focused_first);
+                .partition_point(|row| row.logical_line <= focused);
+            let focused_last = focused_end.saturating_sub(1);
             if focused_last < self.top_physical_row
                 || focused_first >= self.top_physical_row.saturating_add(height)
             {
@@ -803,6 +813,14 @@ impl JsonViewer {
                 }
             }
             Action::FocusNode { node, source } => self.reveal(node, source),
+            Action::FocusNodeAt {
+                node,
+                source,
+                display_range,
+            } => {
+                self.reveal(node, source);
+                self.focus_byte_range = Some(display_range.0..display_range.1);
+            }
             Action::ScrollUp(n) => {
                 self.scroll(n, false);
                 track = false;
@@ -967,6 +985,11 @@ pub enum Action {
     FocusNode {
         node: Index,
         source: Option<usize>,
+    },
+    FocusNodeAt {
+        node: Index,
+        source: Option<usize>,
+        display_range: (usize, usize),
     },
 
     PageUp(usize),
@@ -1772,6 +1795,107 @@ mod tests {
             .len()
             .saturating_sub(usize::from(v.dimensions.height).max(1));
         assert!(v.top_physical_row <= last_top);
+    }
+
+    #[test]
+    fn wrapped_height_resize_clamps_the_existing_origin() {
+        let mut v = viewer(&format!(
+            r#"{{"long":"{}","tail":42}}"#,
+            "0123456789abcdefghijklmnopqrstuvwxyz".repeat(4)
+        ));
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 3,
+            },
+            true,
+        );
+        v.set_wrap_geometry(8, 0);
+        v.toggle_wrapping();
+        v.perform_action(Action::FocusBottom);
+        assert!(v.top_physical_row > 0);
+
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 20,
+            },
+            true,
+        );
+
+        let last_top = v
+            .physical_rows
+            .len()
+            .saturating_sub(usize::from(v.dimensions.height).max(1));
+        assert!(v.top_physical_row <= last_top);
+    }
+
+    #[test]
+    fn projection_reflow_preserves_the_top_line_identity() {
+        let mut v = viewer(
+            r#"{"box":{"long":"0123456789abcdefghijklmnopqrstuvwxyz0123456789"},"tail1":1,"tail2":2,"tail3":3,"tail4":4,"tail5":5,"tail6":6}"#,
+        );
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 4,
+            },
+            true,
+        );
+        v.set_wrap_geometry(8, 0);
+        v.toggle_wrapping();
+
+        let box_node = v.flatjson[0].first_child().unwrap();
+        let tail_node = v.flatjson[box_node].next_sibling.unwrap();
+        let tail_absolute = v.layout.nodes[tail_node].line;
+        let tail_line = v
+            .visible
+            .iter()
+            .position(|line| line.absolute == tail_absolute)
+            .unwrap();
+        v.top_visible_line = tail_line;
+        v.top_physical_row = v
+            .physical_rows
+            .partition_point(|row| row.logical_line < tail_line);
+        v.collapse(box_node, true);
+        v.refresh_projection();
+
+        assert_eq!(v.visible[v.top_visible_line].absolute, tail_absolute);
+    }
+
+    #[test]
+    fn wrapped_mouse_focus_keeps_the_clicked_continuation_visible() {
+        let mut v = viewer(&format!(
+            r#"{{"long":"{}","tail":42}}"#,
+            "0123456789abcdefghijklmnopqrstuvwxyz".repeat(4)
+        ));
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 4,
+            },
+            true,
+        );
+        v.set_wrap_geometry(8, 0);
+        v.toggle_wrapping();
+        let (target_index, target) = v
+            .physical_rows
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, row)| !row.first)
+            .map(|(index, row)| (index, row.clone()))
+            .unwrap();
+        let line = &v.visible[target.logical_line].line;
+        let (node, source) = crate::lineprinter::hit_test_wrapped(line, &target, 0);
+        v.perform_action(Action::FocusNodeAt {
+            node,
+            source,
+            display_range: (target.bytes.start, target.bytes.end),
+        });
+
+        assert!(target_index >= v.top_physical_row);
+        assert!(target_index < v.top_physical_row + usize::from(v.dimensions.height).max(1));
     }
 
     fn wrapped_table_viewer() -> JsonViewer {
