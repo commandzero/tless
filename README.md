@@ -148,7 +148,7 @@ tless --max-input-bytes 1073741824 large.json
 
 A missing filename or `-` reads stdin. `-i <format>` or `--input-format <format>`
 overrides filename detection; supported values are `json`, `yaml`, and `toon` in
-the default build.
+all builds, including `--no-default-features` builds.
 With non-terminal stdout, including pipes and redirected files, output defaults to
 standard TOON. Select `-o json`, `-o yaml`, or `-o toon` with the `--output-format` flag.
 The `--input-format` option selects parsing independently; `--output-format` does not force machine mode

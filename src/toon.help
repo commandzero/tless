@@ -2,7 +2,7 @@
 TOON 3.0
 
   Open .toon files or use --input-format toon for standard input. TOON is shown using the
-  existing JSON Line/Data views. Searches use normalized JSON text.
+  document view. Searches use normalized JSON text.
 
   yt                  Copy the complete focused value as canonical TOON.
   pt                  Print the complete focused value as canonical TOON.
@@ -15,6 +15,6 @@ TOON 3.0
   256 nested containers. Numbers that would lose decimal precision are rejected.
   Whole-document output requires one root; yt and pt can select one subtree.
   Existing JSON write/copy/print commands keep their existing output format.
-  Non-terminal output passes selected TOON input through unchanged.
+  Non-terminal output parses and re-encodes TOON input; it does not pass through unchanged.
 
   toon-spec: 3.0. TOON 4.x syntax is not supported.
