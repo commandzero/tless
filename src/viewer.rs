@@ -421,6 +421,7 @@ impl JsonViewer {
                 .saturating_sub(height)
                 .min(self.visible.len().saturating_sub(height));
         }
+        self.sync_top_indices();
     }
 
     fn vertical(&mut self, count: usize, down: bool) {
@@ -1932,6 +1933,45 @@ mod tests {
         let height = usize::from(v.dimensions.height).max(1);
         assert!(v.focused_physical_row() >= v.top_physical_row);
         assert!(v.focused_physical_row() < v.top_physical_row + height);
+    }
+
+    #[test]
+    fn direct_unwrapped_reflows_keep_viewport_indices_synchronized() {
+        let input = format!(
+            "{{{}}}",
+            (0..20)
+                .map(|i| format!("\"key{i}\":{i}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let mut v = viewer(&input);
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 4,
+            },
+            true,
+        );
+        let last_owner = v.visible.last().unwrap().line.owner;
+        v.focus(last_owner);
+        v.top_visible_line = 0;
+        v.top_physical_row = 0;
+        v.set_wrap_geometry(8, 2);
+        assert_eq!(
+            v.top_physical_row,
+            v.top_visible_line
+                .min(v.physical_rows.len().saturating_sub(1))
+        );
+
+        v.toggle_wrapping();
+        v.top_visible_line = 0;
+        v.top_physical_row = 0;
+        v.toggle_wrapping();
+        assert_eq!(
+            v.top_physical_row,
+            v.top_visible_line
+                .min(v.physical_rows.len().saturating_sub(1))
+        );
     }
 
     fn wrapped_table_viewer() -> JsonViewer {
