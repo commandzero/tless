@@ -56,8 +56,8 @@ check() {
 smoke() {
     local binary=$1
     [[ "$("$binary" --version)" == "tless $version" ]] || fail 'binary version mismatch'
-    [[ "$(printf '42' | "$binary" --json -)" == '42' ]] || fail 'JSON smoke test failed'
-    [[ "$(printf 'name: Ada' | "$binary" --toon -)" == 'name: Ada' ]] || fail 'TOON smoke test failed'
+    [[ "$(printf '42' | "$binary" --input json -)" == '42' ]] || fail 'JSON smoke test failed'
+    [[ "$(printf 'name: Ada' | "$binary" --input toon -)" == 'name: Ada' ]] || fail 'TOON smoke test failed'
     if printf '123' | "$binary" --max-input-bytes 2 - >/dev/null 2>&1; then
         fail 'input limit smoke test failed'
     fi

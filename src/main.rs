@@ -145,7 +145,7 @@ fn get_input_and_filename(opt: &Opt) -> io::Result<(String, String)> {
     let mut input_string = String::new();
     let filename;
 
-    match &opt.input {
+    match &opt.file {
         None => {
             if io::stdin().is_terminal() {
                 eprintln!("Missing filename (\"tless --help\" for help)");
@@ -203,7 +203,7 @@ fn determine_data_format(
         Some("toon") => Ok(DataFormat::Toon),
         #[cfg(not(feature = "toon"))]
         Some("toon") => Err(
-            "This binary was built without TOON support; rebuild with --features toon, or force --json/--yaml.",
+            "This binary was built without TOON support; rebuild with --features toon, or use --input json/--input yaml.",
         ),
         _ => Ok(DataFormat::Json),
     }

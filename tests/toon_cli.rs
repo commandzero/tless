@@ -35,7 +35,7 @@ mod terminal_commands {
     #[test]
     fn output_selection_leaves_terminal_view_and_json_print_unchanged() {
         for option in ["--output=json", "--output=yaml", "--output=toon"] {
-            let output = session_with_format(r#"{"a":1}"#, "lpp q", Some(option));
+            let output = session_with_width(r#"{"a":1}"#, "lpp q", Some(option), 120);
             assert!(strip_styles(&output).contains("a: 1"));
             assert!(output.contains("1\r\n\r\nPress any key to continue."));
         }
@@ -57,7 +57,8 @@ mod terminal_commands {
     }
 
     fn session_with_format(input: &str, commands: &str, format: Option<&str>) -> String {
-        session_with_width(input, commands, format, 120)
+        let format_arg = format.map(|format| format!("--input={format}"));
+        session_with_width(input, commands, format_arg.as_deref(), 120)
     }
 
     fn session_with_width(input: &str, commands: &str, format: Option<&str>, width: u16) -> String {
@@ -364,11 +365,11 @@ mod terminal_commands {
         let json =
             r#"{"tags":["rust","cli"],"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#;
         let yaml = "tags: [rust, cli]\nusers:\n  - {id: 1, name: Ada}\n  - {id: 2, name: Lin}\n";
-        let mut cases = vec![(json, None), (yaml, Some("--yaml"))];
+        let mut cases = vec![(json, None), (yaml, Some("yaml"))];
         if cfg!(feature = "toon") {
             cases.push((
                 "tags[2]: rust,cli\nusers[2]{id,name}:\n  1,Ada\n  2,Lin",
-                Some("--toon"),
+                Some("toon"),
             ));
         }
         for (input, format) in cases {
@@ -777,7 +778,7 @@ mod terminal_commands {
     #[test]
     fn writes_toon_from_yaml_and_toon_inputs_without_changing_json_commands() {
         let target = std::env::temp_dir().join(format!("tless-formats-{}.out", std::process::id()));
-        for format in ["--yaml", "--toon"] {
+        for format in ["yaml", "toon"] {
             let output = session_with_format(
                 "a: 1",
                 &format!(":writetoon {}\nq", target.display()),
@@ -898,7 +899,11 @@ fn toon_extension_is_detected_and_explicit_json_overrides_it() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("without TOON support"));
     }
     assert_eq!(
-        run(&["--json", "-o", "json", path.to_str().unwrap()], b"").stdout,
+        run(
+            &["--input", "json", "-o", "json", path.to_str().unwrap()],
+            b""
+        )
+        .stdout,
         b"42\n"
     );
     std::fs::remove_file(path).unwrap();
@@ -908,7 +913,7 @@ fn toon_extension_is_detected_and_explicit_json_overrides_it() {
 #[test]
 fn toon_pipeline_validates_before_output() {
     let input = "\u{feff}items[99]: a,b\r\n  \r\n".as_bytes();
-    let output = run(&["--toon"], input);
+    let output = run(&["--input", "toon"], input);
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("Unable to parse input"));
@@ -927,7 +932,7 @@ fn output_io_failure_exits_nonzero() {
     reader.shutdown(Shutdown::Both).unwrap();
     drop(reader);
     let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
-        .arg("--toon")
+        .args(["--input", "toon"])
         .stdin(Stdio::piped())
         .stdout(OwnedFd::from(writer))
         .stderr(Stdio::piped())
@@ -942,10 +947,13 @@ fn output_io_failure_exits_nonzero() {
 #[cfg(feature = "toon")]
 #[test]
 fn format_conflicts_and_invalid_utf8_fail_without_output() {
-    for args in [&["--toon", "--json"][..], &["--toon", "--yaml"][..]] {
+    for args in [
+        &["--input", "toon", "--input", "json"][..],
+        &["--input", "toon", "--input", "yaml"][..],
+    ] {
         assert!(!run(args, b"").status.success());
     }
-    let output = run(&["--toon"], &[0xff]);
+    let output = run(&["--input", "toon"], &[0xff]);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("Unable to get input"));
@@ -955,8 +963,11 @@ fn format_conflicts_and_invalid_utf8_fail_without_output() {
 #[cfg(not(feature = "toon"))]
 #[test]
 fn disabled_build_omits_toon_option_and_help() {
-    assert!(!run(&["--toon"], b"").status.success());
-    assert!(!String::from_utf8_lossy(&run(&["--help"], b"").stdout).contains("--toon"));
+    assert!(!run(&["--input", "toon"], b"").status.success());
+    let help_output = run(&["--help"], b"");
+    let help = String::from_utf8_lossy(&help_output.stdout);
+    assert!(help.contains("--input <FORMAT>"));
+    assert!(!help.contains("--toon"));
 }
 
 #[test]
@@ -994,6 +1005,16 @@ fn version_help_and_usage_error_follow_cli_contract() {
     assert_eq!(invalid.status.code(), Some(2));
     assert!(invalid.stdout.is_empty());
     assert!(!invalid.stderr.is_empty());
+}
+
+#[test]
+fn input_format_uses_one_option() {
+    let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
+    assert!(help.contains("--input <FORMAT>"));
+    for legacy in ["--json", "--yaml", "--toon"] {
+        let output = run(&[legacy], b"");
+        assert_eq!(output.status.code(), Some(2), "{legacy}");
+    }
 }
 
 #[test]

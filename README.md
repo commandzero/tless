@@ -24,7 +24,7 @@ cargo install --path . --locked
 tless data.json
 tless data.yaml
 tless data.toon
-producer | tless --toon
+producer | tless --input toon
 ```
 
 The independent tless release history starts at 0.1.0. Install the latest
@@ -141,21 +141,22 @@ Linux clipboard access requires a usable X11 or XWayland display session.
 ```sh
 tless --help
 tless --version
-printf '{"answer":42}' | tless --json -
+printf '{"answer":42}' | tless --input json -
 tless --max-input-bytes 1073741824 large.json
 ```
 
-A missing filename or `-` reads stdin. Format flags override filename detection.
+A missing filename or `-` reads stdin. `--input <format>` overrides filename
+detection; supported values are `json`, `yaml`, and `toon` in the default build.
 With non-terminal stdout, including pipes and redirected files, output defaults to
 standard TOON. Select `-o json`, `-o yaml`, or `-o toon` with the `--output` flag.
-Input flags select parsing independently; `--output` does not force machine mode
+The `--input` option selects parsing independently; `--output` does not force machine mode
 when stdout is a terminal or change interactive copy/write commands.
 
 ```sh
 cat file.json | tless | cat                 # TOON output
 cat file.json | tless -o json | consumer    # preserve JSON pipeline behavior
-tless --yaml -o yaml file.yaml > normalized.yaml
-tless --toon --output=json file.toon > converted.json
+tless --input yaml -o yaml file.yaml > normalized.yaml
+tless --input toon --output=json file.toon > converted.json
 ```
 
 Every input is parsed and reserialized, including matching input/output formats.
@@ -196,16 +197,16 @@ Build from this checkout to enable TOON input and canonical output:
 ```sh
 cargo install --path . --locked
 tless data.toon
-producer | tless --toon
+producer | tless --input toon
 ```
 
 The `toon` Cargo feature is enabled by default. Use `--no-default-features`
 for a JSON/YAML-only source build. It can be combined with `sexp`.
-Disabled builds omit interactive TOON commands and the `--toon` input option;
+Disabled builds omit interactive TOON commands and reject `--input toon`;
 opening a `.toon` filename explains how to enable support. All builds recognize
 the three output values. Without `toon`, default or explicit TOON machine output
 fails with a diagnostic; select `-o json` or `-o yaml`. The interactive view
-remains available. `--json` and `--yaml` override filename detection.
+remains available. `--input json` and `--input yaml` override filename detection.
 
 This implementation targets `toon-spec: 3.0`, not TOON 4.x. It uses strict
 two-space decoding with literal dotted keys and supports declared comma, tab,
