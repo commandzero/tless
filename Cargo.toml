@@ -15,14 +15,12 @@ rust-version = "1.87"
 
 [package.metadata.toon]
 spec = "3.0"
-feature = "toon"
 codec = "toon-format 0.5.0 from crates.io"
 
 [features]
-default = ["toon", "colorscheme"]
+default = ["colorscheme"]
 colorscheme = []
 sexp = []
-toon = ["dep:toon-format", "dep:serde_json"]
 
 [dependencies]
 logos = "0.16.1"
@@ -38,8 +36,8 @@ clap = { version = "4.6.6", features = ["derive"] }
 libc-stdhandle = "0.1.0"
 yaml-rust = "0.4.5"
 arboard = { version = "3.6.1", default-features = false }
-toon-format = { version = "=0.5.0", default-features = false, optional = true }
-serde_json = { version = "=1.0.151", features = ["preserve_order"], optional = true }
+toon-format = { version = "=0.5.0", default-features = false }
+serde_json = { version = "=1.0.151", features = ["preserve_order"] }
 
 [dev-dependencies]
 indoc = "2.0.7"

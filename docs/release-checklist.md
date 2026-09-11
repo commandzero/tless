@@ -16,7 +16,7 @@ generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
    release date. Leave an Unreleased section and update comparison links.
    Release notes come from that curated section, not generated commit summaries.
 3. Review compatibility and upgrade instructions. Version 0.1.0 migrates jless
-   to tless and enables TOON by default. Its input cap is 512 MiB and can be removed
+   to tless and makes TOON support mandatory. Its input cap is 512 MiB and can be removed
    with `--max-input-bytes 0`. Its binary support floors are macOS 15 and Ubuntu 24.04.
 4. Recheck CommandZero/homebrew-tools and any installer consumers. Coordinate their
    URL construction before advertising a new distribution channel. No existing
@@ -53,7 +53,8 @@ Each has a SHA-256 sidecar containing the hash and archive basename.
 The archive root contains tless, LICENSE.md,
 NOTICES.md, and BUILD-INFO.txt.
 Build metadata records tag, commit, compiler, features, target, host, and support floor.
-The release feature set is the manifest default, TOON enabled and S-expression disabled.
+The release feature set is the manifest default, with TOON always enabled and
+S-expression disabled.
 
 For a local native packaging check, run:
 

@@ -35,10 +35,7 @@ fn selectors_and_conversion_matrix() {
         success(&["-i", "json", "-o", "json"], "{\"a\":1}"),
         "{\n  \"a\": 1\n}\n"
     );
-    let mut inputs = vec![("json", "{\"a\":1}"), ("yaml", "a: 1")];
-    if cfg!(feature = "toon") {
-        inputs.push(("toon", "a: 1\n"));
-    }
+    let inputs = vec![("json", "{\"a\":1}"), ("yaml", "a: 1"), ("toon", "a: 1\n")];
     for (format, input) in inputs {
         assert_eq!(
             success(&["--input-format", format, "-o", "json"], input),
@@ -51,13 +48,11 @@ fn selectors_and_conversion_matrix() {
             ),
             "---\n{\n  \"a\": 1\n}\n"
         );
-        if cfg!(feature = "toon") {
-            assert_eq!(success(&["--input-format", format], input), "a: 1");
-            assert_eq!(
-                success(&["--input-format", format, "--output-format=toon"], input),
-                "a: 1"
-            );
-        }
+        assert_eq!(success(&["--input-format", format], input), "a: 1");
+        assert_eq!(
+            success(&["--input-format", format, "--output-format=toon"], input),
+            "a: 1"
+        );
     }
     for args in [
         &["-o"][..],
@@ -207,23 +202,6 @@ fn file_detection_and_override_do_not_select_output() {
     std::fs::remove_file(path).unwrap();
 }
 
-#[cfg(not(feature = "toon"))]
-#[test]
-fn disabled_toon_output_is_actionable_without_fallback() {
-    for args in [&[][..], &["-o", "toon"]] {
-        let output = run(args, "{}");
-        assert_eq!(output.status.code(), Some(1));
-        assert!(output.stdout.is_empty());
-        let error = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            error.contains("--features toon")
-                && error.contains("-o json")
-                && error.contains("-o yaml")
-        );
-    }
-}
-
-#[cfg(feature = "toon")]
 #[test]
 fn toon_export_contract_and_failures() {
     let escaped_json = r#"{"a\"\\\n":"x\"\\\t\n","nested":[true,null,{"b":"c"}]}"#;

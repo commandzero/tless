@@ -36,7 +36,6 @@ mod screenwriter;
 mod search;
 mod terminal;
 mod theme;
-#[cfg(feature = "toon")]
 mod toon;
 mod toon_display;
 mod truncatedstrview;
@@ -199,12 +198,7 @@ fn determine_data_format(
         .and_then(std::ffi::OsStr::to_str)
     {
         Some("yml") | Some("yaml") => Ok(DataFormat::Yaml),
-        #[cfg(feature = "toon")]
         Some("toon") => Ok(DataFormat::Toon),
-        #[cfg(not(feature = "toon"))]
-        Some("toon") => Err(
-            "This binary was built without TOON support; rebuild with --features toon, or use --input-format json/--input-format yaml.",
-        ),
         _ => Ok(DataFormat::Json),
     }
 }

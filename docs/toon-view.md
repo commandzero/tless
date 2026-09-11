@@ -10,7 +10,7 @@ generated: { by: codex/gpt-5.6-luna, at: 2026-09-11T02:30:26Z }
 
 The interactive viewer renders JSON, YAML, and TOON through the same TOON 3.0
 profile, using 2-space indentation, commas, and no key folding. Rendering works
-in every build. The optional `toon` feature controls input and standard export.
+in every build. TOON input and standard export are included in every build.
 
 Object fields keep their parsed order. Primitive arrays with at most five
 elements share a line when the entire line fits the terminal, including its

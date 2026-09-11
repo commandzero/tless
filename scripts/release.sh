@@ -9,7 +9,7 @@ cargo_path=$(rustup which --toolchain "$toolchain" cargo)
 PATH="$(dirname "$cargo_path"):$PATH"
 export PATH
 targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu)
-release_features=toon,colorscheme
+release_features=colorscheme
 
 fail() { echo "$*" >&2; exit 1; }
 

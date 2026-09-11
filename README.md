@@ -7,7 +7,8 @@ This is an independent fork of [jless](https://github.com/PaulJuliusMartinez/jle
 
 Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
 Press F1 or enter `:help` for in-app help.
-Every input uses one TOON document view, including JSON/YAML-only builds.
+Every input uses one TOON document view, with JSON and YAML inputs supported
+alongside TOON.
 See [the document view](docs/toon-view.md) for navigation and display warnings.
 Press Ctrl+L to toggle line wrapping for expanded values during the current
 session. Wrapping starts off. Structural navigation remains logical, while
@@ -62,7 +63,7 @@ cargo install --path . --features colorscheme
 ```
 
 The `--no-default-features` build omits `--theme` and the theme configuration
-file. JSON and YAML viewing remain available in both builds.
+file. TOON, JSON, and YAML viewing remain available in both builds.
 
 Use `--theme <name>` to select a built-in or configured theme. Without that
 option, `colorscheme` in the configuration selects the startup theme, otherwise
@@ -193,7 +194,7 @@ An output error can leave a partial payload in the downstream consumer.
 
 ## TOON support
 
-Build from this checkout to enable TOON input and canonical output:
+TOON input and canonical output are included in every build:
 
 ```sh
 cargo install --path . --locked
@@ -201,13 +202,10 @@ tless data.toon
 producer | tless --input-format toon
 ```
 
-The `toon` Cargo feature is enabled by default. Use `--no-default-features`
-for a JSON/YAML-only source build. It can be combined with `sexp`.
-Disabled builds omit interactive TOON commands and reject `--input-format toon`;
-opening a `.toon` filename explains how to enable support. All builds recognize
-the three output values. Without `toon`, default or explicit TOON machine output
-fails with a diagnostic; select `-o json` or `-o yaml`. The interactive view
-remains available. `--input-format json` and `--input-format yaml` override filename detection.
+TOON support cannot be disabled. `--no-default-features` only omits the
+colorscheme feature and can still be combined with `sexp`. All builds recognize
+the three input and output values, and `--input-format json` or
+`--input-format yaml` override filename detection.
 
 This implementation targets `toon-spec: 3.0`, not TOON 4.x. It uses strict
 two-space decoding with literal dotted keys and supports declared comma, tab,

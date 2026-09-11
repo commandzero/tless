@@ -6,7 +6,6 @@ use clap::{ArgAction, Parser, ValueEnum};
 pub enum DataFormat {
     Json,
     Yaml,
-    #[cfg(feature = "toon")]
     Toon,
 }
 
@@ -29,7 +28,7 @@ pub struct Opt {
     #[arg(value_name = "FILE")]
     pub file: Option<PathBuf>,
 
-    /// Format for non-terminal stdout. TOON requires a toon-enabled build.
+    /// Format for non-terminal stdout. TOON is available in every build.
     /// Input format and interactive commands are unchanged.
     #[arg(
         short = 'o',
@@ -89,14 +88,7 @@ pub struct Opt {
     pub scrolloff: u16,
 
     /// Parse input as FORMAT, regardless of file extension.
-    #[cfg_attr(
-        feature = "toon",
-        doc = "Supported formats are json, yaml, and toon (with TOON support enabled)."
-    )]
-    #[cfg_attr(
-        not(feature = "toon"),
-        doc = "Supported formats are json and yaml; toon requires a TOON-enabled build."
-    )]
+    /// Supported formats are json, yaml, and toon.
     #[arg(
         short = 'i',
         long = "input-format",

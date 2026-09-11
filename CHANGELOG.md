@@ -15,6 +15,7 @@ Earlier upstream history is preserved below.
 - Highlight selected lines with xterm color 235 in 256-color builds and a dark-gray fallback in 16-color builds.
 - Color quoted-key delimiters as punctuation while retaining cyan for key text.
 - **Breaking:** Replace the `--json`, `--yaml`, and `--toon` input flags with `-i <format>`/`--input-format <format>`, using `json`, `yaml`, or `toon`. Rename the long output option to `--output-format` while retaining `-o`. Update scripts and aliases that select an input or output format.
+- **Breaking:** Remove the optional `toon` Cargo feature. TOON parsing, export, and interactive commands are now included in every build.
 
 ## [0.1.0] - 2026-09-10
 
