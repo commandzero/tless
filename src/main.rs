@@ -19,6 +19,10 @@ use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 
 mod app;
+#[cfg(feature = "colorscheme")]
+mod commandline;
+#[cfg(feature = "colorscheme")]
+mod config;
 mod flatjson;
 mod input;
 mod jsonparser;
@@ -30,6 +34,7 @@ mod output;
 mod screenwriter;
 mod search;
 mod terminal;
+mod theme;
 #[cfg(feature = "toon")]
 mod toon;
 mod toon_display;
@@ -39,7 +44,11 @@ mod viewer;
 mod yamlparser;
 
 use app::App;
+#[cfg(feature = "colorscheme")]
+use config::Config;
 use options::{DataFormat, Opt};
+#[cfg(not(feature = "colorscheme"))]
+use theme::Theme;
 
 fn main() {
     let opt = Opt::parse();
@@ -68,6 +77,20 @@ fn main() {
         std::process::exit(0);
     }
 
+    #[cfg(feature = "colorscheme")]
+    let (config, theme) = match Config::load().and_then(|config| {
+        let theme = config.resolve_startup(opt.theme.as_deref())?;
+        Ok((config, theme))
+    }) {
+        Ok(selection) => selection,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+    };
+    #[cfg(not(feature = "colorscheme"))]
+    let theme = Theme::default();
+
     // We use freopen to remap /dev/tty to STDIN so that rustyline works when
     // JSON input is provided via STDIN. rustyline gets initialized when we
     // create the App, so by putting this before creating the app, we make
@@ -79,7 +102,16 @@ fn main() {
     ))) as Box<dyn std::io::Write>;
     let raw_stdout = stdout.into_raw_mode().unwrap();
 
-    let mut app = match App::new(&opt, input_string, data_format, input_filename, raw_stdout) {
+    let mut app = match App::new(
+        &opt,
+        theme,
+        #[cfg(feature = "colorscheme")]
+        config,
+        input_string,
+        data_format,
+        input_filename,
+        raw_stdout,
+    ) {
         Ok(jl) => jl,
         Err(err) => {
             eprintln!("{err}");

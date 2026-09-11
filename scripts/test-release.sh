@@ -21,7 +21,7 @@ for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu 
     chmod +x "$fixture/stage/tless"
     cp LICENSE.md "$fixture/stage/LICENSE.md"
     cp NOTICES.md "$fixture/stage/NOTICES.md"
-    printf 'tag=v%s\ntarget=%s\ncommit=%s\nfeatures=toon\nsource_dirty=false\n' "$version" "$target" "$commit" > "$fixture/stage/BUILD-INFO.txt"
+    printf 'tag=v%s\ntarget=%s\ncommit=%s\nfeatures=toon,colorscheme\nsource_dirty=false\n' "$version" "$target" "$commit" > "$fixture/stage/BUILD-INFO.txt"
     archive="tless-v$version-$target.tar.gz"
     tar -czf "$fixture/assets/$archive" -C "$fixture/stage" tless LICENSE.md NOTICES.md BUILD-INFO.txt
     (cd "$fixture/assets"; shasum -a 256 "$archive" > "$archive.sha256")

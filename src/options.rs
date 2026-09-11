@@ -37,6 +37,11 @@ pub struct Opt {
     #[arg(long, default_value_t = 536_870_912)]
     pub max_input_bytes: u64,
 
+    /// Built-in or configured theme name. Overrides colorscheme in config.yaml.
+    #[cfg(feature = "colorscheme")]
+    #[arg(long)]
+    pub theme: Option<String>,
+
     // This godforsaken configuration to get both --line-numbers and --no-line-numbers to
     // work (with --line-numbers as the default) and --relative-line-numbers and
     // --no-relative-line-numbers to work (with --no-relative-line-numbers as the default)
@@ -89,6 +94,31 @@ pub struct Opt {
     #[cfg(feature = "toon")]
     #[arg(long = "toon", group = "data-format", display_order = 1000)]
     pub toon: bool,
+}
+
+#[cfg(all(test, feature = "colorscheme"))]
+mod colorscheme_tests {
+    use clap::Parser;
+
+    use super::Opt;
+
+    #[test]
+    fn absent_theme_defers_to_configuration() {
+        assert_eq!(Opt::try_parse_from(["tless"]).unwrap().theme, None);
+    }
+
+    #[test]
+    fn accepts_named_themes() {
+        for name in ["default", "vim", "delek"] {
+            assert_eq!(
+                Opt::try_parse_from(["tless", "--theme", name])
+                    .unwrap()
+                    .theme
+                    .as_deref(),
+                Some(name)
+            );
+        }
+    }
 }
 
 impl Opt {

@@ -26,6 +26,7 @@ tests() {
     cargo test --locked --no-default-features
     cargo test --locked
     cargo test --locked --no-default-features --features sexp
+    cargo test --locked --no-default-features --features colorscheme
     cargo test --locked --all-features
 }
 

@@ -1,5 +1,6 @@
 //! Cell-aware painting of mapped TOON tokens. Generated annotations have no search source.
-use crate::terminal::{self, Style, Terminal};
+use crate::terminal::{Style, Terminal};
+use crate::theme::{DisplayContext, JsonValueKind, SearchState, StyleRole, StyleState, Theme};
 use crate::toon_display::{DisplayLine, TokenRole};
 use regex::Regex;
 use std::ops::Range;
@@ -100,8 +101,48 @@ struct PaintWindow {
     available: usize,
 }
 
+#[allow(dead_code)]
 pub fn paint(
     terminal: &mut impl Terminal,
+    line: &DisplayLine,
+    focused: Range<usize>,
+    viewport: LineViewport,
+    width: usize,
+    matches: &[Range<usize>],
+    current: &Range<usize>,
+) -> std::fmt::Result {
+    paint_impl(
+        terminal, None, line, focused, viewport, width, matches, current,
+    )
+}
+
+#[allow(dead_code, clippy::too_many_arguments)]
+pub fn paint_themed(
+    terminal: &mut impl Terminal,
+    theme: &Theme,
+    line: &DisplayLine,
+    focused: Range<usize>,
+    viewport: LineViewport,
+    width: usize,
+    matches: &[Range<usize>],
+    current: &Range<usize>,
+) -> std::fmt::Result {
+    paint_impl(
+        terminal,
+        Some(theme),
+        line,
+        focused,
+        viewport,
+        width,
+        matches,
+        current,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_impl(
+    terminal: &mut impl Terminal,
+    theme: Option<&Theme>,
     line: &DisplayLine,
     focused: Range<usize>,
     viewport: LineViewport,
@@ -124,8 +165,13 @@ pub fn paint(
     if width == 0 {
         return Ok(());
     }
+    let focused_row = !focused.is_empty();
+    let row_style = theme.map_or_else(Style::default, |theme| theme.row_style(focused_row));
+    let ellipsis_style = theme.map_or_else(Style::default, |theme| {
+        theme.style_on_row(StyleRole::Ellipsis, StyleState::main(), focused_row)
+    });
     if left > 0 {
-        terminal.reset_style()?;
+        terminal.set_style(&ellipsis_style)?;
         terminal.write_char('…')?;
     }
     let mut column = 0;
@@ -145,48 +191,104 @@ pub fn paint(
             .copied()
             .find(|span| span.range.contains(&byte))
             .or_else(|| line.spans.iter().find(|span| span.range.contains(&byte)));
-        let mut style = Style::default();
+        let mut style = row_style;
         if let Some(span) = span {
-            style.fg = match span.role {
-                TokenRole::Key => terminal::CYAN,
-                TokenRole::String => terminal::GREEN,
-                TokenRole::Number => terminal::MAGENTA,
-                TokenRole::Boolean => terminal::BLUE,
-                TokenRole::Null => terminal::WHITE,
-                TokenRole::Warning => terminal::YELLOW,
-                TokenRole::Count | TokenRole::Preview => terminal::LIGHT_BLACK,
-                TokenRole::Structure => terminal::DEFAULT,
-            };
             let annotation = matches!(
                 span.role,
                 TokenRole::Preview | TokenRole::Count | TokenRole::Warning
             );
-            style.dimmed = span.role == TokenRole::Warning;
-            if focused.contains(&span.node) && !annotation {
-                style.fg = style.fg.bright();
-            }
+            let role = match span.role {
+                TokenRole::Key => StyleRole::ObjectKey,
+                TokenRole::FieldDefinition => StyleRole::FieldDefinition,
+                TokenRole::String => StyleRole::JsonValue(JsonValueKind::String),
+                TokenRole::Number => StyleRole::JsonValue(JsonValueKind::Number),
+                TokenRole::Boolean => StyleRole::JsonValue(JsonValueKind::Boolean),
+                TokenRole::Null => StyleRole::JsonValue(JsonValueKind::Null),
+                TokenRole::ArrayIndex => StyleRole::ArrayIndex,
+                TokenRole::PrimitiveTrailingComma => StyleRole::PrimitiveTrailingComma,
+                TokenRole::ContainerDelimiter => StyleRole::ContainerDelimiter,
+                TokenRole::EmptyContainer => StyleRole::JsonValue(JsonValueKind::EmptyObject),
+                TokenRole::Punctuation => StyleRole::Punctuation,
+                TokenRole::Warning => StyleRole::Message(crate::theme::MessageSeverity::Warn),
+                TokenRole::Preview => StyleRole::PreviewText,
+                TokenRole::Count => StyleRole::PreviewCount,
+            };
+            let focus = if focused.contains(&span.node) && !annotation {
+                crate::theme::FocusState::Row
+            } else {
+                crate::theme::FocusState::None
+            };
             let overlaps = |query: &Range<usize>| {
                 span.matching_ranges(query)
                     .iter()
                     .any(|range| range.start < byte + grapheme.len() && byte < range.end)
             };
-            if matches.iter().any(overlaps) {
-                style.fg = terminal::YELLOW;
-                style.underlined = true;
-            }
-            if overlaps(current) {
-                style.fg = terminal::LIGHT_YELLOW;
-                style.underlined = true;
+            let search = if overlaps(current) {
+                SearchState::CurrentMatch
+            } else if matches.iter().any(overlaps) {
+                SearchState::Match
+            } else {
+                SearchState::None
+            };
+            style = if let Some(theme) = theme {
+                theme.style_on_row(
+                    role,
+                    StyleState {
+                        focus,
+                        search,
+                        context: if span.role == TokenRole::Preview {
+                            DisplayContext::Preview
+                        } else {
+                            DisplayContext::Main
+                        },
+                    },
+                    !focused.is_empty(),
+                )
+            } else {
+                let mut style = Style::default();
+                style.fg = match span.role {
+                    TokenRole::Key | TokenRole::FieldDefinition => crate::terminal::CYAN,
+                    TokenRole::String => crate::terminal::GREEN,
+                    TokenRole::Number => crate::terminal::MAGENTA,
+                    TokenRole::Boolean => crate::terminal::BLUE,
+                    TokenRole::Null => crate::terminal::WHITE,
+                    TokenRole::Warning => crate::terminal::YELLOW,
+                    TokenRole::Count | TokenRole::Preview => crate::terminal::LIGHT_BLACK,
+                    TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
+                        crate::terminal::LIGHT_BLACK
+                    }
+                    TokenRole::PrimitiveTrailingComma | TokenRole::Punctuation => {
+                        crate::terminal::DEFAULT
+                    }
+                    TokenRole::EmptyContainer => crate::terminal::WHITE,
+                };
+                style.dimmed = span.role == TokenRole::Warning;
+                if focused.contains(&span.node) && !annotation {
+                    style.fg = style.fg.bright();
+                }
+                if matches.iter().any(overlaps) {
+                    style.fg = crate::terminal::YELLOW;
+                    style.underlined = true;
+                }
+                if overlaps(current) {
+                    style.fg = crate::terminal::LIGHT_YELLOW;
+                    style.underlined = true;
+                }
+                style
+            };
+            if span.role == TokenRole::Warning {
+                style.dimmed = true;
             }
         }
         terminal.set_style(&style)?;
         terminal.write_str(grapheme)?;
         used += cells;
     }
-    terminal.reset_style()?;
     if right > 0 && left + used < width {
+        terminal.set_style(&ellipsis_style)?;
         terminal.write_char('…')?;
     }
+    terminal.reset_style()?;
     Ok(())
 }
 
@@ -224,6 +326,21 @@ pub fn fit_annotations(line: &DisplayLine, width: usize) -> std::borrow::Cow<'_,
     clipped.text.replace_range(range.clone(), &replacement);
     for span in &mut clipped.spans {
         if span.range == range {
+            for map in &mut span.source_map {
+                let start = map
+                    .display
+                    .start
+                    .saturating_sub(range.start)
+                    .min(replacement.len());
+                let end = map
+                    .display
+                    .end
+                    .saturating_sub(range.start)
+                    .min(replacement.len());
+                map.display = range.start + start..range.start + end;
+            }
+            span.source_map
+                .retain(|map| map.display.start < map.display.end);
             span.range.end = span.range.start + replacement.len();
         } else if span.range.start >= range.end {
             span.range.start = span.range.start - range.end + range.start + replacement.len();
@@ -260,6 +377,8 @@ mod tests {
     use super::*;
     use crate::flatjson::{parse_top_level_json, parse_top_level_yaml};
     use crate::terminal::test::{TextOnlyTerminal, VisibleEscapesTerminal};
+    #[cfg(feature = "colorscheme")]
+    use crate::theme::Theme;
     use crate::toon_display::Layout;
     fn text(line: &DisplayLine, width: usize, offset: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();
@@ -275,6 +394,85 @@ mod tests {
         .unwrap();
         terminal.output().to_string()
     }
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn selected_row_keeps_background_on_indentation_spaces_and_clipping() {
+        use crate::terminal::{AnsiTerminal, Color};
+        use crate::theme::ThemeName;
+        let flat =
+            parse_top_level_json(r#"{"obj":{"value":"long text with spaces inside"}}"#.into())
+                .unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[1];
+        assert!(line.text.starts_with("  "));
+        for name in [
+            ThemeName::Borealis,
+            ThemeName::VimDesert,
+            ThemeName::VimDefault,
+        ] {
+            let theme = Theme::built_in(name);
+            let bg = theme.row_style(true).bg;
+            assert_ne!(bg, theme.row_style(false).bg);
+            let bg_escape = match bg {
+                Color::Rgb(r, g, b) => format!("\x1b[48;2;{r};{g};{b}m"),
+                Color::C256(c) => format!("\x1b[48;5;{c}m"),
+                _ => panic!("expected explicit selection background"),
+            };
+            for (offset, width) in [(0, 80), (0, 12), (5, 12), (5, 1)] {
+                let mut terminal = AnsiTerminal::new(String::new());
+                paint_themed(
+                    &mut terminal,
+                    &theme,
+                    line,
+                    line.owner..line.owner + 1,
+                    LineViewport::new(line, offset, 0),
+                    width,
+                    &[],
+                    &(0..0),
+                )
+                .unwrap();
+                let output = terminal.output().strip_suffix("\x1b[0m").unwrap();
+                assert!(output.contains(&bg_escape), "{:?}: {:?}", name, output);
+                assert_eq!(
+                    output.matches("\x1b[48;").count(),
+                    1,
+                    "{name:?}: {output:?}"
+                );
+                assert!(!output.contains("\x1b[49m"));
+                assert!(!output.contains("\x1b[0m"));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn borealis_table_fields_and_punctuation_use_plain_text() {
+        let flat = parse_top_level_json(r#"{"rows":[{"field":1,"name":true}]}"#.into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[0];
+        let theme = Theme::built_in(crate::theme::ThemeName::Borealis);
+        let mut terminal = crate::terminal::AnsiTerminal::new(String::new());
+        paint_impl(
+            &mut terminal,
+            Some(&theme),
+            line,
+            usize::MAX..usize::MAX,
+            LineViewport::new(line, 0, 0),
+            100,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        assert!(
+            terminal
+                .output()
+                .contains("\x1b[38;2;202;211;226m[1]{field,name}:"),
+            "{}",
+            terminal.output()
+        );
+        assert!(!terminal.output().contains("\x1b[1m"));
+    }
+
     #[test]
     fn reveal_window_reserves_only_actual_clipping_markers() {
         let flat = parse_top_level_json(r#"{"x":"aaaaaaaaaaaaaaaaaaaaaaaaaaZ"}"#.into()).unwrap();
@@ -405,6 +603,29 @@ mod tests {
             .all(|span| span.source.is_none()));
         assert!(line.spans.iter().any(|span| span.source.is_some()));
         assert!(text(line, 200, 0).ends_with("# WARN Non-finite number"));
+    }
+
+    #[test]
+    #[cfg(feature = "colorscheme")]
+    fn default_theme_dims_warning_annotations_without_brightening_them() {
+        let flat = parse_top_level_yaml("value: .inf".into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint_themed(
+            &mut terminal,
+            &Theme::default(),
+            &layout.lines[0],
+            0..0,
+            LineViewport::new(&layout.lines[0], 0, 0),
+            200,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        let output = terminal.output();
+        assert!(output.contains("_FG(Yellow)_"), "{}", output);
+        assert!(output.contains("_D_"), "{}", output);
+        assert!(!output.contains("_FG(LightYellow)_"), "{}", output);
     }
     #[test]
     fn container_focus_brightens_row_values_and_implicit_root_fields() {

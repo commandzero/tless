@@ -5,13 +5,14 @@ use std::io::Write;
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use rustyline::error::ReadlineError;
-use rustyline::Editor;
 use termion::event::Key;
 use termion::event::MouseButton::{Left, WheelDown, WheelUp};
 use termion::event::MouseEvent::Press;
 use termion::raw::RawTerminal;
 use termion::screen::{ToAlternateScreen, ToMainScreen};
 
+#[cfg(feature = "colorscheme")]
+use crate::config::Config;
 use crate::flatjson;
 use crate::input::TuiEvent;
 use crate::input::TuiEvent::{KeyEvent, MouseEvent, WinChEvent};
@@ -20,10 +21,13 @@ use crate::lineprinter::JS_IDENTIFIER;
 use crate::options::{DataFormat, Opt};
 use crate::screenwriter::{MessageSeverity, ScreenWriter};
 use crate::search::{JumpDirection, SearchDirection, SearchState};
+use crate::theme::Theme;
 use crate::types::TTYDimensions;
 use crate::viewer::{Action, JsonViewer};
 
 pub struct App {
+    #[cfg(feature = "colorscheme")]
+    config: Config,
     viewer: JsonViewer,
     screen_writer: ScreenWriter,
     input_state: InputState,
@@ -76,6 +80,8 @@ enum WriteFormat {
 }
 
 enum Command {
+    #[cfg(feature = "colorscheme")]
+    Colorscheme(String),
     Quit,
     Help,
     SetShowLineNumber(Option<bool>),
@@ -119,6 +125,8 @@ const ENABLE_MOUSE_BUTTON_TRACKING: &str = "\x1b[?1002h";
 impl App {
     pub fn new(
         opt: &Opt,
+        theme: Theme,
+        #[cfg(feature = "colorscheme")] config: Config,
         data: String,
         data_format: DataFormat,
         input_filename: String,
@@ -132,10 +140,11 @@ impl App {
         let mut viewer = JsonViewer::new(flatjson);
         viewer.scrolloff_setting = opt.scrolloff;
 
-        let screen_writer =
-            ScreenWriter::init(opt, stdout, Editor::<()>::new(), TTYDimensions::default());
+        let screen_writer = ScreenWriter::init(opt, theme, stdout, TTYDimensions::default());
 
         Ok(App {
+            #[cfg(feature = "colorscheme")]
+            config,
             viewer,
             screen_writer,
             input_state: InputState::Default,
@@ -493,6 +502,13 @@ impl App {
                                 match Self::parse_command(&command) {
                                     Command::Quit => break,
                                     Command::Help => self.show_help(),
+                                    #[cfg(feature = "colorscheme")]
+                                    Command::Colorscheme(name) => {
+                                        match self.config.resolve(&name) {
+                                            Ok(theme) => self.screen_writer.set_theme(theme),
+                                            Err(error) => self.set_error_message(error),
+                                        }
+                                    }
                                     Command::SetShowLineNumber(Some(new_val)) => {
                                         self.screen_writer.show_line_numbers = new_val
                                     }
@@ -764,6 +780,12 @@ impl App {
     }
 
     fn parse_command(command: &str) -> Command {
+        #[cfg(feature = "colorscheme")]
+        if let Some(name) = command.trim().strip_prefix("colorscheme") {
+            if name.starts_with(char::is_whitespace) && !name.trim().is_empty() {
+                return Command::Colorscheme(name.trim().to_string());
+            }
+        }
         let args: Vec<&str> = command.split(" ").filter(|s| !s.is_empty()).collect();
 
         match args.as_slice() {
@@ -830,6 +852,10 @@ impl App {
                     let _ = stdin.write_all(HELP.as_bytes());
                     #[cfg(feature = "toon")]
                     let _ = stdin.write_all(TOON_HELP.as_bytes());
+                    #[cfg(feature = "colorscheme")]
+                    let _ = stdin.write_all(
+                        b"\n:colorscheme <name>  Switch to a built-in or configured theme for this session.\n",
+                    );
                     let _ = stdin.flush();
                 }
                 let _ = child.wait();

@@ -9,8 +9,25 @@ cargo_path=$(rustup which --toolchain "$toolchain" cargo)
 PATH="$(dirname "$cargo_path"):$PATH"
 export PATH
 targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu)
+release_features=toon,colorscheme
 
 fail() { echo "$*" >&2; exit 1; }
+
+default_features() {
+    awk '
+        /^\[features\]$/ { in_features = 1; next }
+        in_features && /^\[/ { exit }
+        in_features && /^default = / {
+            value = $0
+            sub(/^default = \[/, "", value)
+            sub(/\]$/, "", value)
+            gsub(/"/, "", value)
+            gsub(/[[:space:]]/, "", value)
+            print value
+            exit
+        }
+    ' Cargo.toml
+}
 
 notes() {
     awk -v heading="## [$version] - " '
@@ -52,7 +69,7 @@ package() {
     "$supported" || fail "unsupported target: $target"
     [[ "$(rustc -vV | awk '/^host:/ {print $2}')" == "$target" ]] || fail 'package and smoke-test on the native target'
     if [[ "$target" == *apple-darwin ]]; then export MACOSX_DEPLOYMENT_TARGET=15.0; fi
-    [[ "$(awk -F '"' '/^default =/ {print $2}' Cargo.toml)" == toon ]] || fail 'release default features must be toon'
+    [[ "$(default_features)" == "$release_features" ]] || fail "release default features must be $release_features"
     cargo build --locked --release --target "$target"
     mkdir -p dist
     local stage archive
@@ -62,7 +79,7 @@ package() {
     cp LICENSE.md "$stage/LICENSE.md"
     cp NOTICES.md "$stage/NOTICES.md"
     {
-        printf 'tag=%s\ncommit=%s\ncompiler=%s\nfeatures=toon\ntarget=%s\n' "$tag" "$(git rev-parse HEAD)" "$(rustc --version)" "$target"
+        printf 'tag=%s\ncommit=%s\ncompiler=%s\nfeatures=%s\ntarget=%s\n' "$tag" "$(git rev-parse HEAD)" "$(rustc --version)" "$release_features" "$target"
         if [[ "$target" == *apple-darwin ]]; then
             printf 'minimum_os=macOS 15\n'
         else
@@ -99,10 +116,10 @@ verify_assets() {
             $0 == "tag=" tag { t = 1 }
             $0 == "target=" target { a = 1 }
             $0 == "commit=" commit { c = 1 }
-            $0 == "features=toon" { f = 1 }
+            $0 == "features=" expected_features { f = 1 }
             $0 == "source_dirty=false" { clean = 1 }
             END { exit !(t && a && c && f && clean) }
-        ' || fail "build metadata mismatch: $archive"
+        ' expected_features="$release_features" || fail "build metadata mismatch: $archive"
     done
 }
 
