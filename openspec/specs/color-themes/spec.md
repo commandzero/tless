@@ -58,7 +58,7 @@ Styling SHALL apply a role's base appearance, then focus, then a complete search
 
 ### Requirement: Default and Cyan palettes
 
-The tless default SHALL retain the terminal colors, annotation styling, and status contract in the toon-rendering specification. Selected keys SHALL brighten from cyan 6 to 14, strings from green 2 to 10, numbers from magenta 5 to 13, booleans from blue 4 to 12, and nulls from gray 7 to 15. Warning annotations SHALL remain yellow and dimmed without focus brightening. Preview text and collapsed object counts SHALL remain plain dark gray 8. Default highlighting SHALL use xterm color 235 for the selected-line background in colorscheme builds, use a dark-gray fallback in 16-color builds, and SHALL NOT use bold or reverse video. Cyan SHALL retain its alternate null, boolean, delimiter, focus, and search mappings listed below; unspecified roles SHALL inherit the default base mapping.
+The tless default SHALL retain the terminal colors, annotation styling, and status contract in the toon-rendering specification. Selected keys SHALL brighten from cyan 6 to 14, strings from green 2 to 10, numbers from magenta 5 to 13, booleans from blue 4 to 12, and nulls from gray 7 to 15. Warning annotations SHALL remain yellow and dimmed without focus brightening. Preview text and collapsed object counts SHALL remain plain dark gray 8. Default highlighting SHALL NOT use bold or reverse video. Cyan SHALL retain its alternate null, boolean, delimiter, focus, and search mappings listed below; unspecified roles SHALL inherit the default base mapping.
 
 | Role or state | Cyan |
 | --- | --- |

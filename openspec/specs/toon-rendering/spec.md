@@ -125,7 +125,7 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 - **WHEN** focus, search, status, or command entry is active
 - **THEN** status and commands SHALL remain outside document text
 - **AND** focus and search SHALL highlight existing spans without inserting text
-- **AND** default-theme focus SHALL use bright foreground colors instead of bold, SHALL use a color-235 selection background with a 16-color dark-gray fallback, and SHALL apply on all visible physical rows belonging to the selected logical display line
+- **AND** default-theme focus SHALL use bright foreground colors instead of bold and SHALL apply on all visible physical rows belonging to the selected logical display line
 - **AND** default-theme line numbers and collapse arrows SHALL use dark gray ordinarily and light gray on the selected display line
 
 ### Requirement: Optional line wrapping
@@ -178,13 +178,7 @@ Collapsed container lines, including their previews, counts, and warnings, SHALL
 
 ### Requirement: Theme selection background fills the row
 
-The default theme SHALL use xterm color 235 as the selection background, with a 16-color dark-gray fallback when 256-color support is unavailable. When any other theme defines a distinct selection background, each visible physical row of the selected logical display line SHALL fill the terminal width with it, including indentation, spaces, gutters, and clipping markers. Themes without a distinct selection background SHALL retain their appearance. Search matches SHALL retain their theme search style over the row background.
-
-#### Scenario: Default selected row
-
-- **WHEN** a short document line is selected under the default theme
-- **THEN** the selection background SHALL use xterm color 235 through the terminal edge
-- **AND** a build without 256-color support SHALL use its dark-gray fallback
+When a theme defines a distinct selection background, each visible physical row of the selected logical display line SHALL fill the terminal width with it, including indentation, spaces, gutters, and clipping markers. Themes without a distinct selection background SHALL retain their appearance. Search matches SHALL retain their theme search style over the row background.
 
 #### Scenario: Borealis selected row
 
