@@ -119,12 +119,14 @@ impl JsonViewer {
         self.physical_rows = rows;
         self.physical_generation = self.physical_generation.wrapping_add(1);
         self.wrapped_lines = eligible;
+        let height = usize::from(self.dimensions.height).max(1);
+        let last_top = self.physical_rows.len().saturating_sub(height);
         self.top_physical_row = self
             .physical_rows
             .iter()
             .position(|row| row.logical_line == previous_top)
             .unwrap_or(0)
-            .min(self.physical_rows.len().saturating_sub(1));
+            .min(last_top);
         self.sync_top_indices();
     }
 
@@ -1744,6 +1746,32 @@ mod tests {
         assert!(v.is_wrapped_line(0));
         assert!(v.set_wrap_geometry(6, 2));
         assert_eq!(path(&v), ".box");
+    }
+
+    #[test]
+    fn wrapping_reflow_clamps_to_the_last_viewport_origin() {
+        let mut v = viewer(&format!(
+            r#"{{"long":"{}","tail":42}}"#,
+            "0123456789abcdefghijklmnopqrstuvwxyz".repeat(4)
+        ));
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 4,
+            },
+            true,
+        );
+        v.set_wrap_geometry(8, 0);
+        v.toggle_wrapping();
+        v.perform_action(Action::FocusBottom);
+
+        v.set_wrap_geometry(200, 0);
+
+        let last_top = v
+            .physical_rows
+            .len()
+            .saturating_sub(usize::from(v.dimensions.height).max(1));
+        assert!(v.top_physical_row <= last_top);
     }
 
     fn wrapped_table_viewer() -> JsonViewer {
