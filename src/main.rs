@@ -203,7 +203,7 @@ fn determine_data_format(
         Some("toon") => Ok(DataFormat::Toon),
         #[cfg(not(feature = "toon"))]
         Some("toon") => Err(
-            "This binary was built without TOON support; rebuild with --features toon, or use --input json/--input yaml.",
+            "This binary was built without TOON support; rebuild with --features toon, or use --input-format json/--input-format yaml.",
         ),
         _ => Ok(DataFormat::Json),
     }

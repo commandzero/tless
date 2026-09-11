@@ -24,14 +24,19 @@ pub struct Opt {
     /// Input file. tless will read from stdin if no input file is
     /// provided, or '-' is specified. If a filename is provided, tless
     /// will check the extension to determine what the input format is,
-    /// and by default will assume JSON. Use --input <format> to select a
+    /// and by default will assume JSON. Use --input-format <format> to select a
     /// format explicitly.
     #[arg(value_name = "FILE")]
     pub file: Option<PathBuf>,
 
     /// Format for non-terminal stdout. TOON requires a toon-enabled build.
     /// Input format and interactive commands are unchanged.
-    #[arg(short = 'o', long, value_enum, default_value = "toon")]
+    #[arg(
+        short = 'o',
+        long = "output-format",
+        value_enum,
+        default_value = "toon"
+    )]
     pub output: OutputFormat,
 
     /// Maximum input bytes. Use 0 for unlimited input. The complete input stays in memory.
@@ -93,7 +98,8 @@ pub struct Opt {
         doc = "Supported formats are json and yaml; toon requires a TOON-enabled build."
     )]
     #[arg(
-        long = "input",
+        short = 'i',
+        long = "input-format",
         value_enum,
         value_name = "FORMAT",
         display_order = 1000

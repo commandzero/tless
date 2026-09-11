@@ -14,7 +14,7 @@ Earlier upstream history is preserved below.
 - Keep status-bar paths black when a theme uses reverse-video styling.
 - Highlight selected lines with xterm color 235 in 256-color builds and a dark-gray fallback in 16-color builds.
 - Color quoted-key delimiters as punctuation while retaining cyan for key text.
-- **Breaking:** Replace the `--json`, `--yaml`, and `--toon` input flags with `--input <format>`, using `json`, `yaml`, or `toon`. Update scripts and aliases that select an input format.
+- **Breaking:** Replace the `--json`, `--yaml`, and `--toon` input flags with `-i <format>`/`--input-format <format>`, using `json`, `yaml`, or `toon`. Rename the long output option to `--output-format` while retaining `-o`. Update scripts and aliases that select an input or output format.
 
 ## [0.1.0] - 2026-09-10
 

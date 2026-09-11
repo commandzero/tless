@@ -1,7 +1,7 @@
 
 TOON 3.0
 
-  Open .toon files or use --input toon for standard input. TOON is shown using the
+  Open .toon files or use --input-format toon for standard input. TOON is shown using the
   existing JSON Line/Data views. Searches use normalized JSON text.
 
   yt                  Copy the complete focused value as canonical TOON.

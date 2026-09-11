@@ -34,7 +34,11 @@ mod terminal_commands {
 
     #[test]
     fn output_selection_leaves_terminal_view_and_json_print_unchanged() {
-        for option in ["--output=json", "--output=yaml", "--output=toon"] {
+        for option in [
+            "--output-format=json",
+            "--output-format=yaml",
+            "--output-format=toon",
+        ] {
             let output = session_with_width(r#"{"a":1}"#, "lpp q", Some(option), 120);
             assert!(strip_styles(&output).contains("a: 1"));
             assert!(output.contains("1\r\n\r\nPress any key to continue."));
@@ -57,7 +61,7 @@ mod terminal_commands {
     }
 
     fn session_with_format(input: &str, commands: &str, format: Option<&str>) -> String {
-        let format_arg = format.map(|format| format!("--input={format}"));
+        let format_arg = format.map(|format| format!("--input-format={format}"));
         session_with_width(input, commands, format_arg.as_deref(), 120)
     }
 
@@ -900,7 +904,13 @@ fn toon_extension_is_detected_and_explicit_json_overrides_it() {
     }
     assert_eq!(
         run(
-            &["--input", "json", "-o", "json", path.to_str().unwrap()],
+            &[
+                "--input-format",
+                "json",
+                "-o",
+                "json",
+                path.to_str().unwrap(),
+            ],
             b""
         )
         .stdout,
@@ -913,7 +923,7 @@ fn toon_extension_is_detected_and_explicit_json_overrides_it() {
 #[test]
 fn toon_pipeline_validates_before_output() {
     let input = "\u{feff}items[99]: a,b\r\n  \r\n".as_bytes();
-    let output = run(&["--input", "toon"], input);
+    let output = run(&["--input-format", "toon"], input);
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("Unable to parse input"));
@@ -932,7 +942,7 @@ fn output_io_failure_exits_nonzero() {
     reader.shutdown(Shutdown::Both).unwrap();
     drop(reader);
     let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
-        .args(["--input", "toon"])
+        .args(["--input-format", "toon"])
         .stdin(Stdio::piped())
         .stdout(OwnedFd::from(writer))
         .stderr(Stdio::piped())
@@ -948,12 +958,12 @@ fn output_io_failure_exits_nonzero() {
 #[test]
 fn format_conflicts_and_invalid_utf8_fail_without_output() {
     for args in [
-        &["--input", "toon", "--input", "json"][..],
-        &["--input", "toon", "--input", "yaml"][..],
+        &["--input-format", "toon", "--input-format", "json"][..],
+        &["--input-format", "toon", "--input-format", "yaml"][..],
     ] {
         assert!(!run(args, b"").status.success());
     }
-    let output = run(&["--input", "toon"], &[0xff]);
+    let output = run(&["--input-format", "toon"], &[0xff]);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("Unable to get input"));
@@ -963,10 +973,10 @@ fn format_conflicts_and_invalid_utf8_fail_without_output() {
 #[cfg(not(feature = "toon"))]
 #[test]
 fn disabled_build_omits_toon_option_and_help() {
-    assert!(!run(&["--input", "toon"], b"").status.success());
+    assert!(!run(&["--input-format", "toon"], b"").status.success());
     let help_output = run(&["--help"], b"");
     let help = String::from_utf8_lossy(&help_output.stdout);
-    assert!(help.contains("--input <FORMAT>"));
+    assert!(help.contains("-i, --input-format <FORMAT>"));
     assert!(!help.contains("--toon"));
 }
 
@@ -1010,8 +1020,8 @@ fn version_help_and_usage_error_follow_cli_contract() {
 #[test]
 fn input_format_uses_one_option() {
     let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
-    assert!(help.contains("--input <FORMAT>"));
-    for legacy in ["--json", "--yaml", "--toon"] {
+    assert!(help.contains("-i, --input-format <FORMAT>"));
+    for legacy in ["--json", "--yaml", "--toon", "--input", "--output"] {
         let output = run(&[legacy], b"");
         assert_eq!(output.status.code(), Some(2), "{legacy}");
     }
