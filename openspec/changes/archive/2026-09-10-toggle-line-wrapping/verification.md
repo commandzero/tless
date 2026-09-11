@@ -14,13 +14,13 @@ Reviewed all 7 changed or added requirements and their 25 scenarios against the 
 | Viewport and selection stability | Existing collapse-ancestor and mouse/resize tests retain identity. New reflow tests cover stored display ranges and cache invalidation; continuation mouse tests verify the original copy target. |
 | Physical viewport scrolling for wrapped lines | Viewer tests cover logical versus physical motion, tall values at document end, match-based repositioning, reflow, and collapse invalidation. Terminal tests cover tall-value scrolling, continuation clicks, scalar/header search across resize, and logical motion past wrapped values. Painter tests cover cross-row search styles and hit boundaries. |
 
-No outstanding implementation findings. Physical row records contain ranges into existing display text rather than copied row strings. Reflow preserves logical ownership, and explicit viewport scrolling can traverse a value taller than the screen without snapping back to its start.
+Follow-up verification found half-page scrolling could change focus while the selected wrapped line remained visible. The fix applies the same intersection rule to half-page movement and viewport boundaries. Regression tests cover selected table cells, surrounding entries, and both boundaries. No outstanding implementation findings remain. Physical row records contain ranges into existing display text rather than copied row strings. Reflow preserves logical ownership, and explicit viewport scrolling can traverse a value taller than the screen without snapping back to its start.
 
 ## Validation
 
-- Rust 1.87.0: `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test` passed all 4 feature profiles: 622 test executions.
-- Rust 1.97.1: `scripts/preflight.sh test` passed the same 4 profiles: 622 test executions.
-- Per compiler: minimal 141, default 168, sexp 143, all features 170; no failed or ignored tests.
+- Rust 1.87.0: `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test` passed all 4 feature profiles: 630 test executions.
+- Rust 1.97.1: `scripts/preflight.sh test` passed the same 4 profiles: 630 test executions.
+- Per compiler: minimal 143, default 170, sexp 145, all features 172; no failed or ignored tests.
 - Strict native change validation passed before archival.
 - Delta-to-main review: all 7 requirement blocks and all 25 scenarios match exactly across `toon-rendering` and `toon-navigation`; unrelated requirements remain unchanged.
 - Full `scripts/preflight.sh` passed on Rust 1.97.1: formatting, strict minimal/all-feature Clippy, shell and workflow checks, release/OpenSpec gate regression tests, documentation validation, and all 4 test profiles. The existing actionlint 1.7.12 installation was added to PATH for this run.

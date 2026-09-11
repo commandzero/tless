@@ -660,6 +660,17 @@ impl JsonViewer {
             let screen_index = self.focused_physical_row().saturating_sub(previous_top);
             let height = usize::from(self.dimensions.height).max(1);
             let last_top = self.physical_rows.len().saturating_sub(height);
+            let focused = self.focused_line_index();
+            let focused_first = self
+                .physical_rows
+                .iter()
+                .position(|row| row.logical_line == focused)
+                .unwrap_or(0);
+            let focused_last = self
+                .physical_rows
+                .iter()
+                .rposition(|row| row.logical_line == focused)
+                .unwrap_or(focused_first);
             self.top_physical_row = if down {
                 previous_top
                     .saturating_add(distance)
@@ -668,19 +679,23 @@ impl JsonViewer {
             } else {
                 previous_top.saturating_sub(distance)
             };
-            if self.top_physical_row == previous_top {
-                self.vertical(distance, down);
-            } else {
-                let index = (self.top_physical_row + screen_index)
-                    .min(self.physical_rows.len().saturating_sub(1));
-                let index = (index..self.physical_rows.len())
-                    .find(|&i| {
-                        !self.visible[self.physical_rows[i].logical_line]
-                            .line
-                            .separator
-                    })
-                    .unwrap_or(index);
-                self.focus_line(self.physical_rows[index].logical_line, true);
+            let focused_visible = focused_last >= self.top_physical_row
+                && focused_first < self.top_physical_row.saturating_add(height);
+            if !focused_visible {
+                if self.top_physical_row == previous_top {
+                    self.vertical(distance, down);
+                } else {
+                    let index = (self.top_physical_row + screen_index)
+                        .min(self.physical_rows.len().saturating_sub(1));
+                    let index = (index..self.physical_rows.len())
+                        .find(|&i| {
+                            !self.visible[self.physical_rows[i].logical_line]
+                                .line
+                                .separator
+                        })
+                        .unwrap_or(index);
+                    self.focus_line(self.physical_rows[index].logical_line, true);
+                }
             }
             self.sync_top_indices();
             return;
@@ -1729,5 +1744,97 @@ mod tests {
         assert!(v.is_wrapped_line(0));
         assert!(v.set_wrap_geometry(6, 2));
         assert_eq!(path(&v), ".box");
+    }
+
+    fn wrapped_table_viewer() -> JsonViewer {
+        let mut v = viewer(
+            r#"[{"id":0,"long":"tail"},{"id":1,"long":"tail"},{"id":2,"long":"0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz"},{"id":3,"long":"tail"},{"id":4,"long":"tail"},{"id":5,"long":"tail"},{"id":6,"long":"tail"},{"id":7,"long":"tail"},{"id":8,"long":"tail"},{"id":9,"long":"tail"}]"#,
+        );
+        v.set_viewport(
+            TTYDimensions {
+                width: 20,
+                height: 4,
+            },
+            true,
+        );
+        v.set_wrap_geometry(8, 0);
+        v.toggle_wrapping();
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusNextSibling(2));
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusNextSibling(1));
+        v
+    }
+
+    #[test]
+    fn wrapped_half_page_jumps_retain_selected_cell_while_entry_is_visible() {
+        let mut v = wrapped_table_viewer();
+        let long = v.focused_node;
+        assert_eq!(path(&v), "[2].long");
+
+        v.perform_action(Action::JumpDown(Some(1)));
+        assert_eq!(v.focused_node, long);
+        assert!(v.top_physical_row > 0);
+
+        v.perform_action(Action::JumpDown(Some(2)));
+        assert_eq!(v.focused_node, long);
+
+        v.perform_action(Action::JumpUp(Some(1)));
+        assert_eq!(v.focused_node, long);
+
+        v.perform_action(Action::JumpUp(Some(2)));
+        assert_eq!(v.focused_node, long);
+    }
+
+    #[test]
+    fn wrapped_half_page_jumps_select_surrounding_lines_at_viewport_boundaries() {
+        let mut v = wrapped_table_viewer();
+        let long = v.focused_node;
+        let long_line = v.focused_line_index();
+
+        // Move down until the selected entry no longer intersects the screen.
+        for _ in 0..32 {
+            if v.focused_node != long {
+                break;
+            }
+            v.perform_action(Action::JumpDown(Some(1)));
+        }
+        assert_ne!(v.focused_node, long);
+        assert!(v.focused_line_index() > long_line);
+
+        let last_top = v
+            .physical_rows
+            .len()
+            .saturating_sub(usize::from(v.dimensions.height).max(1));
+        while v.top_physical_row < last_top {
+            v.perform_action(Action::JumpDown(Some(1)));
+        }
+        let lower_boundary_top = v.top_physical_row;
+        let lower_boundary_node = v.focused_node;
+        v.perform_action(Action::JumpDown(Some(1)));
+        assert_eq!(v.top_physical_row, lower_boundary_top);
+        assert_eq!(v.focused_node, lower_boundary_node);
+
+        let mut v = wrapped_table_viewer();
+        let long = v.focused_node;
+        let long_line = v.focused_line_index();
+        v.perform_action(Action::JumpDown(Some(5)));
+        assert_eq!(v.focused_node, long);
+
+        // Move up until the selected entry no longer intersects the screen.
+        for _ in 0..32 {
+            if v.focused_node != long {
+                break;
+            }
+            v.perform_action(Action::JumpUp(Some(1)));
+        }
+        assert_ne!(v.focused_node, long);
+        assert!(v.focused_line_index() < long_line);
+
+        let upper_boundary_top = v.top_physical_row;
+        let upper_boundary_node = v.focused_node;
+        v.perform_action(Action::JumpUp(Some(1)));
+        assert_eq!(v.top_physical_row, upper_boundary_top);
+        assert_eq!(v.focused_node, upper_boundary_node);
     }
 }
