@@ -84,7 +84,14 @@ pub struct Opt {
     pub scrolloff: u16,
 
     /// Parse input as FORMAT, regardless of file extension.
-    /// Supported formats are json, yaml, and toon (with TOON support enabled).
+    #[cfg_attr(
+        feature = "toon",
+        doc = "Supported formats are json, yaml, and toon (with TOON support enabled)."
+    )]
+    #[cfg_attr(
+        not(feature = "toon"),
+        doc = "Supported formats are json and yaml; toon requires a TOON-enabled build."
+    )]
     #[arg(
         long = "input",
         value_enum,
