@@ -17,8 +17,8 @@ Follow the applicable Rust, Bash, CLI, preflight, updates, versioning, and relea
 guidance in the shared [repo-man bundle](../../repo-man/index.md), including its
 draft recommendations. If the link is unavailable, clone CommandZero/repo-man
 beside this checkout or use `~/.agents/memory/repo-man/`.
-The TUI and release-target guidance is incomplete. Use the platform and terminal
-contract documented below to determine what tless supports.
+The TUI and release-target guidance is incomplete. Use the platform contract
+documented below and the README's user-facing guidance to determine what tless supports.
 
 Keep one application crate and put codec integration in the TOON module.
 Use nix wrappers for Unix terminal calls and borrowed or owned file descriptors.

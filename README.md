@@ -190,6 +190,7 @@ See [examples/config.yaml](examples/config.yaml) for a complete example and
 
 Run `scripts/preflight.sh` before submitting executable changes.
 See [contributor guidance](docs/contributing.md) and the [release checklist](docs/release-checklist.md).
+The supported targets and OS floors are listed in the [platform contract](docs/contributing.md#platform-contract).
 
 ## Attribution
 
