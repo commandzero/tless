@@ -17,7 +17,8 @@ and linear scanner-work guarantees no longer apply.
 
 Run `scripts/preflight.sh` with the pinned development compiler, then
 `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test` for the minimum compiler.
-Both exercise minimal, default TOON, S-expression-only, and combined features.
+Both exercise minimal and default builds, with TOON always enabled and optional
+S-expression and colorscheme features.
 The two fixture tests exercise 180 decode cases and 114 encode cases.
 The known large-number round-trip failure has an explicit string-result assertion.
 
@@ -29,7 +30,7 @@ The known large-number round-trip failure has an explicit string-result assertio
 | Nesting bounds, empty input, CRLF, BOM rejection | `input_depth_follows_published_codec_boundary`, `enforces_container_depth_and_accepts_blank_lines`, `accepts_empty_input_and_crlf_but_rejects_bom` |
 | Focused export, unsupported YAML, multiple roots | `focused_export_includes_collapsed_children_and_normalizes_closing_rows`, `unsupported_yaml_does_not_block_a_supported_focused_value`, `export_depth_is_relative_to_the_selected_subtree` |
 | Navigation, search, paths, collapse/expand | `decoded_navigation_search_and_paths_match_json_with_escaped_unicode` |
-| Format options, disabled builds, input limits, parsed pipelines | `tests/toon_cli.rs` |
+| Format options, feature profiles, input limits, parsed pipelines | `tests/toon_cli.rs` |
 | Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
 
@@ -49,10 +50,9 @@ Record the actual host and results in the release PR.
 2. Open `0.123456789012345678901` as JSON and use `yt`. Confirm that it copies
    the published encoder's rounded value, matching `pt`. Numeric precision loss
    is accepted; the former `UnsupportedNumber` expectation is removed.
-3. Open in-app help in default and `--no-default-features` builds. Only the
-   default build may list TOON commands. In the disabled build, `:wt`, `yt`, and
-   `pt` must remain unavailable/unbound. Check the documented TOON 3.0 profile
-   and 4.x limitation.
+3. Open in-app help in default and `--no-default-features` builds. Both builds
+   must list the TOON commands because TOON support is always enabled. Check the
+   documented TOON 3.0 profile and 4.x limitation.
 4. On Linux, use a disposable session to write to `/dev/full` with `:wt!`.
    Confirm a write error, no success message, and continued navigation.
    The shared writer propagates write and flush errors. Standard `File::flush`

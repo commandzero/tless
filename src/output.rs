@@ -10,35 +10,25 @@ pub fn serialize(
     input_format: DataFormat,
     format: OutputFormat,
 ) -> Result<String, String> {
-    #[cfg(not(feature = "toon"))]
-    if format == OutputFormat::Toon {
-        return Err("TOON output is unavailable in this build; rebuild with --features toon, or use -o json or -o yaml.".to_owned());
-    }
     let document = match input_format {
         DataFormat::Json => flatjson::parse_top_level_json(input),
         DataFormat::Yaml => flatjson::parse_top_level_yaml(input),
-        #[cfg(feature = "toon")]
         DataFormat::Toon => crate::toon::parse(&input).map_err(|e| e.to_string()),
     }
     .map_err(|e| format!("Unable to parse input: {e}"))?;
     if format == OutputFormat::Toon {
-        #[cfg(feature = "toon")]
-        {
-            // YAML's backing text is for display and does not JSON-escape all
-            // decoded strings. Supply safe JSON text to the existing adapter.
-            let document = if input_format == DataFormat::Yaml && !document.0.is_empty() {
-                let json = encode(&document, OutputFormat::Json)
-                    .map_err(|e| format!("Unable to serialize TOON output: {e}"))?;
-                flatjson::parse_top_level_json(json)
-                    .map_err(|e| format!("Unable to serialize TOON output: {e}"))?
-            } else {
-                document
-            };
-            return crate::toon::encode_document(&document, crate::toon::EncodeOptions::default())
-                .map_err(|e| format!("Unable to serialize output: {e}"));
-        }
-        #[cfg(not(feature = "toon"))]
-        unreachable!();
+        // YAML's backing text is for display and does not JSON-escape all
+        // decoded strings. Supply safe JSON text to the existing adapter.
+        let document = if input_format == DataFormat::Yaml && !document.0.is_empty() {
+            let json = encode(&document, OutputFormat::Json)
+                .map_err(|e| format!("Unable to serialize TOON output: {e}"))?;
+            flatjson::parse_top_level_json(json)
+                .map_err(|e| format!("Unable to serialize TOON output: {e}"))?
+        } else {
+            document
+        };
+        return crate::toon::encode_document(&document, crate::toon::EncodeOptions::default())
+            .map_err(|e| format!("Unable to serialize output: {e}"));
     }
     if format == OutputFormat::Json && input_format == DataFormat::Json {
         return Ok(document.pretty_printed());

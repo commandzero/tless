@@ -8,17 +8,17 @@ Let shell pipelines select JSON, YAML, or standard TOON output independently of 
 
 ### Requirement: Independent output selection
 
-The CLI SHALL accept `-o <format>` and `--output <format>`, with lowercase values `json`, `yaml`, and `toon`, defaulting to `toon`. This selection SHALL govern non-terminal stdout, including pipes and redirected files. Input selectors, extension detection, stdin defaults, and `-` input SHALL retain their meanings. An output selector SHALL NOT imply an input format or force noninteractive operation.
+The CLI SHALL accept `-o <format>` and `--output-format <format>`, with lowercase values `json`, `yaml`, and `toon`, defaulting to `toon`. Input selection SHALL accept `-i <format>` and `--input-format <format>`. Output selection SHALL govern non-terminal stdout, including pipes and redirected files. Extension detection, stdin defaults, and `-` input SHALL retain their meanings. An output selector SHALL NOT imply an input format or force noninteractive operation.
 
 #### Scenario: Default pipeline
 
-- **WHEN** a TOON-enabled build reads `{"a":1}` as JSON with non-terminal stdout and no output selector
+- **WHEN** a build reads `{"a":1}` as JSON with non-terminal stdout and no output selector
 - **THEN** stdout SHALL contain exactly `a: 1`, without a final newline
 - **AND** exit status SHALL be 0 and stderr SHALL be empty
 
 #### Scenario: Explicit conversion
 
-- **WHEN** supported JSON, YAML, or TOON input describing `{"a":1}` is read with `-o json`, `--output yaml`, or `--output=toon`
+- **WHEN** supported JSON, YAML, or TOON input describing `{"a":1}` is read with `-o json`, `--output-format yaml`, or `--output-format=toon`
 - **THEN** stdout SHALL use the requested output format regardless of the input format
 - **AND** explicit input selectors SHALL continue to override filename extensions
 
@@ -102,14 +102,14 @@ YAML output SHALL serialize parsed roots as a YAML document stream, with `---` o
 
 ### Requirement: Feature availability
 
-JSON and YAML output SHALL be available in every build profile. Standard TOON output SHALL require the existing `toon` feature. All builds SHALL recognize the three output selector values. With non-terminal stdout, unavailable TOON output SHALL fail with status 1 and a diagnostic suggesting a TOON-enabled build or explicit JSON or YAML output. It SHALL NOT silently change the default format. TOON input availability SHALL remain unchanged.
+JSON, YAML, and standard TOON output SHALL be available in every build profile. All builds SHALL recognize the three output selector values, and TOON input SHALL be available in every build profile. Optional `colorscheme` and `sexp` features SHALL NOT gate TOON parsing, rendering, export, or interactive commands.
 
-#### Scenario: Minimal build
+#### Scenario: Every build profile
 
-- **WHEN** a build without `toon` reads valid JSON with non-terminal stdout
-- **THEN** default output and explicit `-o toon` SHALL fail before stdout is written
+- **WHEN** a build with no default features reads valid JSON with non-terminal stdout
+- **THEN** default output and explicit `-o toon` SHALL succeed
 - **AND** `-o json` and `-o yaml` SHALL succeed
-- **AND** terminal stdout SHALL still open the viewer without requiring the codec
+- **AND** terminal stdout SHALL still open the viewer with TOON rendering and commands
 
 ### Requirement: Machine output failures and resource bounds
 
@@ -133,4 +133,4 @@ Help and user documentation SHALL describe the output selector, TOON default, fe
 #### Scenario: Discovering the override
 
 - **WHEN** a user reads `tless --help`
-- **THEN** it SHALL list `-o` / `--output`, the accepted formats, the TOON default, and the non-terminal scope
+- **THEN** it SHALL list `-o` / `--output-format`, the accepted formats, the TOON default, and the non-terminal scope

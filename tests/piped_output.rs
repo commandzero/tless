@@ -31,22 +31,35 @@ fn success(args: &[&str], input: &str) -> String {
 
 #[test]
 fn selectors_and_conversion_matrix() {
-    let mut inputs = vec![("--json", "{\"a\":1}"), ("--yaml", "a: 1")];
-    if cfg!(feature = "toon") {
-        inputs.push(("--toon", "a: 1\n"));
-    }
-    for (flag, input) in inputs {
-        assert_eq!(success(&[flag, "-o", "json"], input), "{\n  \"a\": 1\n}\n");
+    assert_eq!(
+        success(&["-i", "json", "-o", "json"], "{\"a\":1}"),
+        "{\n  \"a\": 1\n}\n"
+    );
+    let inputs = vec![("json", "{\"a\":1}"), ("yaml", "a: 1"), ("toon", "a: 1\n")];
+    for (format, input) in inputs {
         assert_eq!(
-            success(&[flag, "--output", "yaml"], input),
+            success(&["--input-format", format, "-o", "json"], input),
+            "{\n  \"a\": 1\n}\n"
+        );
+        assert_eq!(
+            success(
+                &["--input-format", format, "--output-format", "yaml"],
+                input
+            ),
             "---\n{\n  \"a\": 1\n}\n"
         );
-        if cfg!(feature = "toon") {
-            assert_eq!(success(&[flag], input), "a: 1");
-            assert_eq!(success(&[flag, "--output=toon"], input), "a: 1");
-        }
+        assert_eq!(success(&["--input-format", format], input), "a: 1");
+        assert_eq!(
+            success(&["--input-format", format, "--output-format=toon"], input),
+            "a: 1"
+        );
     }
-    for args in [&["-o"][..], &["--output", "xml"], &["-o", "JSON"]] {
+    for args in [
+        &["-o"][..],
+        &["--output-format", "xml"],
+        &["-o", "JSON"],
+        &["--output", "json"],
+    ] {
         let output = run(args, "");
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
@@ -54,7 +67,7 @@ fn selectors_and_conversion_matrix() {
     }
     let help = success(&["--help"], "");
     for text in [
-        "-o, --output",
+        "-o, --output-format",
         "non-terminal",
         "default: toon",
         "json",
@@ -68,7 +81,7 @@ fn selectors_and_conversion_matrix() {
 fn json_preserves_tokens_duplicates_and_root_framing() {
     assert_eq!(
         success(
-            &["--yaml", "-o", "json"],
+            &["--input-format", "yaml", "-o", "json"],
             "[.123456789012345678901, +1.5, 1.]"
         ),
         "[\n  0.123456789012345678901,\n  1.5,\n  1.0\n]\n"
@@ -80,20 +93,20 @@ fn json_preserves_tokens_duplicates_and_root_framing() {
         ),
         "{\n  \"a\": 0.123456789012345678901,\n  \"a\": 1e1000000\n}\n[]\n"
     );
-    assert_eq!(success(&["--yaml", "-o", "json"], ""), "");
-    assert_eq!(success(&["--yaml", "-o", "yaml"], ""), "");
+    assert_eq!(success(&["--input-format", "yaml", "-o", "json"], ""), "");
+    assert_eq!(success(&["--input-format", "yaml", "-o", "yaml"], ""), "");
 }
 
 #[test]
 fn yaml_strings_are_json_escaped_and_types_survive_yaml_output() {
     let input = "---\n\"a\\\"\\\\\\t\\n\": \"b\\\"\\\\\\t\\n\\0\"\n---\n[true, \"true\", \".inf\", null, [], {}]\n";
-    let json = success(&["--yaml", "-o", "json"], input);
+    let json = success(&["--input-format", "yaml", "-o", "json"], input);
     assert!(
         json.contains("\"a\\\"\\\\\\t\\n\": \"b\\\"\\\\\\t\\n\\u0000\""),
         "{}",
         json
     );
-    let yaml = success(&["--yaml", "-o", "yaml"], input);
+    let yaml = success(&["--input-format", "yaml", "-o", "yaml"], input);
     assert_eq!(yaml.matches("---\n").count(), 2);
     assert_eq!(
         yaml_rust::YamlLoader::load_from_str(input).unwrap(),
@@ -105,7 +118,7 @@ fn yaml_strings_are_json_escaped_and_types_survive_yaml_output() {
 fn yaml_preserves_typed_complex_keys_and_nonfinite_values() {
     let input =
         "1: number\n\"1\": string\n? [1, true]\n: .inf\n? {a: [null, \"x\"]}\n: -.inf\nnan: .nan\n";
-    let yaml = success(&["--yaml", "-o", "yaml"], input);
+    let yaml = success(&["--input-format", "yaml", "-o", "yaml"], input);
     assert_eq!(
         yaml_rust::YamlLoader::load_from_str(input).unwrap(),
         yaml_rust::YamlLoader::load_from_str(&yaml).unwrap(),
@@ -114,7 +127,7 @@ fn yaml_preserves_typed_complex_keys_and_nonfinite_values() {
     let duplicates = success(&["-o", "yaml"], "{\"a\":1,\"a\":2}");
     assert!(duplicates.contains("\"a\": 1,\n  \"a\": 2"));
     for input in ["1: x", "x: .inf", "x: .nan", "[1, 2"] {
-        let output = run(&["--yaml", "-o", "json"], input);
+        let output = run(&["--input-format", "yaml", "-o", "json"], input);
         assert_eq!(output.status.code(), Some(1));
         assert!(output.stdout.is_empty());
     }
@@ -133,12 +146,12 @@ fn yaml_long_and_escaped_string_keys_round_trip() {
         ("é".repeat(600), "é".repeat(600)),
     ]);
     for (escaped, decoded) in keys {
-        for input_format in ["--json", "--yaml"] {
-            let key_prefix = if input_format == "--yaml" { "? " } else { "" };
+        for input_format in ["json", "yaml"] {
+            let key_prefix = if input_format == "yaml" { "? " } else { "" };
             let input = format!(
                 "{{\"outer\": {{{key_prefix}\"{escaped}\" : [1, {{\"ok\": true}}]}}, \"tail\": 2}}"
             );
-            let output = success(&[input_format, "-o", "yaml"], &input);
+            let output = success(&["--input-format", input_format, "-o", "yaml"], &input);
             let docs = yaml_rust::YamlLoader::load_from_str(&output).unwrap_or_else(|e| {
                 panic!(
                     "{}; input {}, key length {}",
@@ -154,8 +167,11 @@ fn yaml_long_and_escaped_string_keys_round_trip() {
                 Some(true)
             );
             assert_eq!(docs[0]["tail"].as_i64(), Some(2));
-            let json = success(&["--yaml", "-o", "json"], &output);
-            assert_eq!(json, success(&[input_format, "-o", "json"], &input));
+            let json = success(&["--input-format", "yaml", "-o", "json"], &output);
+            assert_eq!(
+                json,
+                success(&["--input-format", input_format, "-o", "json"], &input)
+            );
         }
     }
 }
@@ -169,36 +185,31 @@ fn file_detection_and_override_do_not_select_output() {
         "{\n  \"a\": 1\n}\n"
     );
     assert_eq!(
-        run(&[path.to_str().unwrap(), "--json", "-o", "yaml"], "")
-            .status
-            .code(),
+        run(
+            &[
+                path.to_str().unwrap(),
+                "--input-format",
+                "json",
+                "-o",
+                "yaml"
+            ],
+            ""
+        )
+        .status
+        .code(),
         Some(1)
     );
     std::fs::remove_file(path).unwrap();
 }
 
-#[cfg(not(feature = "toon"))]
-#[test]
-fn disabled_toon_output_is_actionable_without_fallback() {
-    for args in [&[][..], &["-o", "toon"]] {
-        let output = run(args, "{}");
-        assert_eq!(output.status.code(), Some(1));
-        assert!(output.stdout.is_empty());
-        let error = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            error.contains("--features toon")
-                && error.contains("-o json")
-                && error.contains("-o yaml")
-        );
-    }
-}
-
-#[cfg(feature = "toon")]
 #[test]
 fn toon_export_contract_and_failures() {
     let escaped_json = r#"{"a\"\\\n":"x\"\\\t\n","nested":[true,null,{"b":"c"}]}"#;
     let yaml = success(&["-o", "yaml"], escaped_json);
-    assert_eq!(success(&["--yaml"], &yaml), success(&[], escaped_json));
+    assert_eq!(
+        success(&["--input-format", "yaml"], &yaml),
+        success(&[], escaped_json)
+    );
     for (input, expected) in [
         ("{}", ""),
         ("{\"a\":1,\"a\":2}", "a: 2"),
@@ -208,19 +219,19 @@ fn toon_export_contract_and_failures() {
         assert_eq!(success(&[], input), expected);
         assert_eq!(success(&["-o", "toon"], input), expected);
     }
-    assert_eq!(success(&["--toon"], ""), "");
-    assert_eq!(success(&["--toon"], "a: 1\r\n"), "a: 1");
-    for (flag, input) in [
-        ("--json", ""),
-        ("--json", "1 2"),
-        ("--yaml", "1: x"),
-        ("--yaml", "a: .inf"),
-        ("--json", "1e1025"),
-        ("--toon", "items[99]: a,b"),
-        ("--yaml", "[bad"),
+    assert_eq!(success(&["--input-format", "toon"], ""), "");
+    assert_eq!(success(&["--input-format", "toon"], "a: 1\r\n"), "a: 1");
+    for (format, input) in [
+        ("json", ""),
+        ("json", "1 2"),
+        ("yaml", "1: x"),
+        ("yaml", "a: .inf"),
+        ("json", "1e1025"),
+        ("toon", "items[99]: a,b"),
+        ("yaml", "[bad"),
     ] {
-        let output = run(&[flag], input);
-        assert_eq!(output.status.code(), Some(1), "{flag} {input}");
+        let output = run(&["--input-format", format], input);
+        assert_eq!(output.status.code(), Some(1), "{format} {input}");
         assert!(output.stdout.is_empty());
         assert!(!output.stderr.is_empty());
     }

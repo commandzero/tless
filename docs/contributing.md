@@ -136,6 +136,6 @@ The manifest is the version source; release checks compare it with the lockfile,
 changelog, and extracted binary. Tags use `vX.Y.Z` or `vX.Y.Z-rc.N`.
 
 The independent tless release history starts at 0.1.0. It changes the executable name,
-default TOON feature, input limit, and tested binary platform floors together.
+built-in TOON support, input limit, and tested binary platform floors together.
 The upstream jless package, tags, and download URLs remain unchanged.
 Recheck consumers before publication, then follow [the release checklist](release-checklist.md).
