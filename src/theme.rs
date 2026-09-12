@@ -10,8 +10,8 @@ mod vim;
 #[cfg(feature = "colorscheme")]
 use crate::terminal::LIGHT_BLUE;
 use crate::terminal::{
-    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, MAGENTA, RED, Style, WHITE,
-    YELLOW,
+    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, LINE_HIGHLIGHT, MAGENTA, RED,
+    Style, WHITE, YELLOW,
 };
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
@@ -519,7 +519,19 @@ impl Theme {
         let mut row = self.style(StyleRole::Document, StyleState::main());
         if focused {
             let focus = self.style(StyleRole::ObjectKey, StyleState::main().focused());
-            row.bg = if focus.inverted { focus.fg } else { focus.bg };
+            let focus_background = if focus.inverted { focus.fg } else { focus.bg };
+            row.bg = if self.name == ThemeName::Default
+                && focus_background == Color::Default
+                && row.bg == Color::Default
+            {
+                LINE_HIGHLIGHT
+            } else {
+                if focus_background == Color::Default {
+                    row.bg
+                } else {
+                    focus_background
+                }
+            };
         }
         row
     }
@@ -1149,6 +1161,38 @@ mod tests {
             theme.style(StyleRole::Message(MessageSeverity::Info), state),
             fg(WHITE)
         );
+    }
+
+    #[test]
+    fn default_selected_rows_use_line_highlight() {
+        let theme = Theme::default();
+        assert_eq!(theme.row_style(false).bg, Color::Default);
+        assert_eq!(theme.row_style(true).bg, LINE_HIGHLIGHT);
+        assert_eq!(
+            theme
+                .style_on_row(
+                    StyleRole::JsonValue(JsonValueKind::String),
+                    StyleState::main().focused(),
+                    true,
+                )
+                .bg,
+            LINE_HIGHLIGHT
+        );
+
+        #[cfg(feature = "colorscheme")]
+        {
+            assert_eq!(
+                Theme::built_in(ThemeName::Cyan).row_style(true).bg,
+                Color::Default
+            );
+            assert_eq!(
+                Theme::default()
+                    .with_color(ThemeColor::DocumentBackground, Color::C256(17))
+                    .row_style(true)
+                    .bg,
+                Color::C256(17)
+            );
+        }
     }
 
     #[test]

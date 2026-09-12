@@ -9,7 +9,7 @@ cargo_path=$(rustup which --toolchain "$toolchain" cargo)
 PATH="$(dirname "$cargo_path"):$PATH"
 export PATH
 targets=(aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu)
-release_features=toon,colorscheme
+release_features=colorscheme
 
 fail() { echo "$*" >&2; exit 1; }
 
@@ -56,8 +56,8 @@ check() {
 smoke() {
     local binary=$1
     [[ "$("$binary" --version)" == "tless $version" ]] || fail 'binary version mismatch'
-    [[ "$(printf '42' | "$binary" --json -)" == '42' ]] || fail 'JSON smoke test failed'
-    [[ "$(printf 'name: Ada' | "$binary" --toon -)" == 'name: Ada' ]] || fail 'TOON smoke test failed'
+    [[ "$(printf '42' | "$binary" --input-format json -)" == '42' ]] || fail 'JSON smoke test failed'
+    [[ "$(printf 'name: Ada' | "$binary" --input-format toon -)" == 'name: Ada' ]] || fail 'TOON smoke test failed'
     if printf '123' | "$binary" --max-input-bytes 2 - >/dev/null 2>&1; then
         fail 'input limit smoke test failed'
     fi

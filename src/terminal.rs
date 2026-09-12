@@ -43,6 +43,13 @@ pub const LIGHT_WHITE: Color = Color::C16(15);
 pub const LIGHT_CYAN: Color = Color::C16(14);
 pub const DEFAULT: Color = Color::Default;
 
+/// Background for the selected document line.
+#[cfg(feature = "colorscheme")]
+pub const LINE_HIGHLIGHT: Color = Color::C256(235);
+/// The closest available fallback when 256-color support is disabled.
+#[cfg(not(feature = "colorscheme"))]
+pub const LINE_HIGHLIGHT: Color = LIGHT_BLACK;
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Style {
     pub fg: Color,

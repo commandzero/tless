@@ -10,7 +10,7 @@ generated: { by: codex/gpt-5.6-luna, at: 2026-09-11T02:30:26Z }
 
 The interactive viewer renders JSON, YAML, and TOON through the same TOON 3.0
 profile, using 2-space indentation, commas, and no key folding. Rendering works
-in every build. The optional `toon` feature controls input and standard export.
+in every build. TOON input and standard export are included in every build.
 
 Object fields keep their parsed order. Primitive arrays with at most five
 elements share a line when the entire line fits the terminal, including its
@@ -32,12 +32,15 @@ no synthetic header. An empty root has a blank selectable row and its type in
 status. Root objects remain expanded.
 
 Line numbers and collapse arrows use dark gray, changing to light gray on the
-selected line. Focus uses bright syntax colors
-instead of bold text, and stays on the selected display line when a container
+selected line. The default theme uses xterm color 235 as its selected-line
+background, with dark gray as the fallback when 256-color support is unavailable;
+themes with their own selection backgrounds retain them. Focus uses bright syntax
+colors instead of bold text, and stays on the selected display line when a container
 has visible descendants. Inline elements and table cells keep individual focus.
 
-Default syntax colors use terminal palette indexes: keys cyan (6), strings green
-(2), numbers magenta (5), booleans blue (4, brightening to 12 when selected), and nulls gray (7).
+Default syntax colors use terminal palette indexes: keys cyan (6), quoted-key
+delimiters and other punctuation use the terminal default, strings green (2),
+numbers magenta (5), booleans blue (4, brightening to 12 when selected), and nulls gray (7).
 Previews and collapsed object counts use plain dark gray (8), without the
 terminal dim attribute, matching line numbers. Warnings use yellow (3). The status bar uses a
 dark gray (8) background with black (0) text and a light gray (7) filename.

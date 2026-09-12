@@ -58,7 +58,6 @@ enum InputState {
 #[derive(Copy, Clone)]
 enum ContentTarget {
     PrettyPrintedValue,
-    #[cfg(feature = "toon")]
     ToonValue,
     OneLineValue,
     String,
@@ -71,7 +70,6 @@ enum ContentTarget {
 #[derive(Copy, Clone)]
 enum WriteFormat {
     Json,
-    #[cfg(feature = "toon")]
     Toon,
     #[cfg(feature = "sexp")]
     Sexp,
@@ -94,7 +92,6 @@ enum Command {
 
 // Help contents that we pipe to less.
 const HELP: &str = std::include_str!("./tless.help");
-#[cfg(feature = "toon")]
 const TOON_HELP: &str = std::include_str!("./toon.help");
 
 pub const MAX_BUFFER_SIZE: usize = 9;
@@ -158,7 +155,6 @@ impl App {
         match data_format {
             DataFormat::Json => flatjson::parse_top_level_json(data),
             DataFormat::Yaml => flatjson::parse_top_level_yaml(data),
-            #[cfg(feature = "toon")]
             DataFormat::Toon => crate::toon::parse(&data).map_err(|e| e.to_string()),
         }
     }
@@ -247,7 +243,6 @@ impl App {
                 event if self.input_state == InputState::PendingPCommand => {
                     let content_target = match event {
                         KeyEvent(Key::Char('p')) => Some(ContentTarget::PrettyPrintedValue),
-                        #[cfg(feature = "toon")]
                         KeyEvent(Key::Char('t')) => Some(ContentTarget::ToonValue),
                         KeyEvent(Key::Char('v')) => Some(ContentTarget::OneLineValue),
                         KeyEvent(Key::Char('s')) => Some(ContentTarget::String),
@@ -275,7 +270,6 @@ impl App {
                 event if self.input_state == InputState::PendingYCommand => {
                     let content_target = match event {
                         KeyEvent(Key::Char('y')) => Some(ContentTarget::PrettyPrintedValue),
-                        #[cfg(feature = "toon")]
                         KeyEvent(Key::Char('t')) => Some(ContentTarget::ToonValue),
                         KeyEvent(Key::Char('v')) => Some(ContentTarget::OneLineValue),
                         KeyEvent(Key::Char('s')) => Some(ContentTarget::String),
@@ -869,13 +863,11 @@ impl App {
                 overwrite_existing: true,
                 write_format: WriteFormat::Json,
             },
-            #[cfg(feature = "toon")]
             ["wt" | "writetoon", filename] => Command::WriteFile {
                 filename: filename.to_string(),
                 overwrite_existing: false,
                 write_format: WriteFormat::Toon,
             },
-            #[cfg(feature = "toon")]
             ["wt!" | "writetoon!", filename] => Command::WriteFile {
                 filename: filename.to_string(),
                 overwrite_existing: true,
@@ -909,7 +901,6 @@ impl App {
             Ok(mut child) => {
                 if let Some(ref mut stdin) = child.stdin {
                     let _ = stdin.write_all(HELP.as_bytes());
-                    #[cfg(feature = "toon")]
                     let _ = stdin.write_all(TOON_HELP.as_bytes());
                     #[cfg(feature = "colorscheme")]
                     let _ = stdin.write_all(
@@ -933,7 +924,6 @@ impl App {
         let focused_node = &self.viewer.flatjson[focused_node_index];
 
         let data = match content_target {
-            #[cfg(feature = "toon")]
             ContentTarget::ToonValue => crate::toon::encode_value(
                 &self.viewer.flatjson,
                 focused_node_index,
@@ -1007,7 +997,6 @@ impl App {
                 let focused_node = &self.viewer.flatjson[self.viewer.focused_node];
 
                 let content_type = match content_target {
-                    #[cfg(feature = "toon")]
                     ContentTarget::ToonValue => "TOON value",
                     ContentTarget::PrettyPrintedValue if focused_node.is_container() => {
                         "pretty-printed value"
@@ -1075,7 +1064,6 @@ impl App {
                 .flatjson
                 .sexp_string()
                 .map_err(|e| e.to_string()),
-            #[cfg(feature = "toon")]
             WriteFormat::Toon => crate::toon::encode_document(
                 &self.viewer.flatjson,
                 crate::toon::EncodeOptions::default(),

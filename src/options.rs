@@ -6,7 +6,6 @@ use clap::{ArgAction, Parser, ValueEnum};
 pub enum DataFormat {
     Json,
     Yaml,
-    #[cfg(feature = "toon")]
     Toon,
 }
 
@@ -24,13 +23,19 @@ pub struct Opt {
     /// Input file. tless will read from stdin if no input file is
     /// provided, or '-' is specified. If a filename is provided, tless
     /// will check the extension to determine what the input format is,
-    /// and by default will assume JSON. Can specify input format
-    /// explicitly using --json or --yaml.
-    pub input: Option<PathBuf>,
+    /// and by default will assume JSON. Use --input-format <format> to select a
+    /// format explicitly.
+    #[arg(value_name = "FILE")]
+    pub file: Option<PathBuf>,
 
-    /// Format for non-terminal stdout. TOON requires a toon-enabled build.
+    /// Format for non-terminal stdout. TOON is available in every build.
     /// Input format and interactive commands are unchanged.
-    #[arg(short = 'o', long, value_enum, default_value = "toon")]
+    #[arg(
+        short = 'o',
+        long = "output-format",
+        value_enum,
+        default_value = "toon"
+    )]
     pub output: OutputFormat,
 
     /// Maximum input bytes. Use 0 for unlimited input. The complete input stays in memory.
@@ -82,18 +87,16 @@ pub struct Opt {
     #[arg(long = "scrolloff", default_value_t = 3)]
     pub scrolloff: u16,
 
-    /// Parse input as JSON, regardless of file extension.
-    #[arg(long = "json", group = "data-format", display_order = 1000)]
-    pub json: bool,
-
-    /// Parse input as YAML, regardless of file extension.
-    #[arg(long = "yaml", group = "data-format", display_order = 1000)]
-    pub yaml: bool,
-
-    /// Read TOON 3.0, regardless of file extension. Requires a toon-enabled build.
-    #[cfg(feature = "toon")]
-    #[arg(long = "toon", group = "data-format", display_order = 1000)]
-    pub toon: bool,
+    /// Parse input as FORMAT, regardless of file extension.
+    /// Supported formats are json, yaml, and toon.
+    #[arg(
+        short = 'i',
+        long = "input-format",
+        value_enum,
+        value_name = "FORMAT",
+        display_order = 1000
+    )]
+    pub input_format: Option<DataFormat>,
 }
 
 #[cfg(all(test, feature = "colorscheme"))]
@@ -123,16 +126,6 @@ mod colorscheme_tests {
 
 impl Opt {
     pub fn data_format(&self) -> Option<DataFormat> {
-        #[cfg(feature = "toon")]
-        if self.toon {
-            return Some(DataFormat::Toon);
-        }
-        if self.json {
-            Some(DataFormat::Json)
-        } else if self.yaml {
-            Some(DataFormat::Yaml)
-        } else {
-            None
-        }
+        self.input_format
     }
 }

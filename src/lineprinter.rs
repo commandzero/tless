@@ -300,21 +300,29 @@ fn grapheme_style(
             span.role,
             TokenRole::Preview | TokenRole::Count | TokenRole::Warning
         );
-        let role = match span.role {
-            TokenRole::Key => StyleRole::ObjectKey,
-            TokenRole::FieldDefinition => StyleRole::FieldDefinition,
-            TokenRole::String => StyleRole::JsonValue(JsonValueKind::String),
-            TokenRole::Number => StyleRole::JsonValue(JsonValueKind::Number),
-            TokenRole::Boolean => StyleRole::JsonValue(JsonValueKind::Boolean),
-            TokenRole::Null => StyleRole::JsonValue(JsonValueKind::Null),
-            TokenRole::ArrayIndex => StyleRole::ArrayIndex,
-            TokenRole::PrimitiveTrailingComma => StyleRole::PrimitiveTrailingComma,
-            TokenRole::ContainerDelimiter => StyleRole::ContainerDelimiter,
-            TokenRole::EmptyContainer => StyleRole::JsonValue(JsonValueKind::EmptyObject),
-            TokenRole::Punctuation => StyleRole::Punctuation,
-            TokenRole::Warning => StyleRole::Message(crate::theme::MessageSeverity::Warn),
-            TokenRole::Preview => StyleRole::PreviewText,
-            TokenRole::Count => StyleRole::PreviewCount,
+        let quoted_key_delimiter = matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition)
+            && line.text[span.range.clone()].starts_with('"')
+            && line.text[span.range.clone()].ends_with('"')
+            && (byte == span.range.start || byte.saturating_add(byte_len) == span.range.end);
+        let role = if quoted_key_delimiter {
+            StyleRole::Punctuation
+        } else {
+            match span.role {
+                TokenRole::Key => StyleRole::ObjectKey,
+                TokenRole::FieldDefinition => StyleRole::FieldDefinition,
+                TokenRole::String => StyleRole::JsonValue(JsonValueKind::String),
+                TokenRole::Number => StyleRole::JsonValue(JsonValueKind::Number),
+                TokenRole::Boolean => StyleRole::JsonValue(JsonValueKind::Boolean),
+                TokenRole::Null => StyleRole::JsonValue(JsonValueKind::Null),
+                TokenRole::ArrayIndex => StyleRole::ArrayIndex,
+                TokenRole::PrimitiveTrailingComma => StyleRole::PrimitiveTrailingComma,
+                TokenRole::ContainerDelimiter => StyleRole::ContainerDelimiter,
+                TokenRole::EmptyContainer => StyleRole::JsonValue(JsonValueKind::EmptyObject),
+                TokenRole::Punctuation => StyleRole::Punctuation,
+                TokenRole::Warning => StyleRole::Message(crate::theme::MessageSeverity::Warn),
+                TokenRole::Preview => StyleRole::PreviewText,
+                TokenRole::Count => StyleRole::PreviewCount,
+            }
         };
         let focus = if focused.contains(&span.node) && !annotation {
             crate::theme::FocusState::Row
@@ -349,21 +357,25 @@ fn grapheme_style(
             )
         } else {
             let mut style = Style::default();
-            style.fg = match span.role {
-                TokenRole::Key | TokenRole::FieldDefinition => crate::terminal::CYAN,
-                TokenRole::String => crate::terminal::GREEN,
-                TokenRole::Number => crate::terminal::MAGENTA,
-                TokenRole::Boolean => crate::terminal::BLUE,
-                TokenRole::Null => crate::terminal::WHITE,
-                TokenRole::Warning => crate::terminal::YELLOW,
-                TokenRole::Count | TokenRole::Preview => crate::terminal::LIGHT_BLACK,
-                TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
-                    crate::terminal::LIGHT_BLACK
+            style.fg = if quoted_key_delimiter {
+                crate::terminal::DEFAULT
+            } else {
+                match span.role {
+                    TokenRole::Key | TokenRole::FieldDefinition => crate::terminal::CYAN,
+                    TokenRole::String => crate::terminal::GREEN,
+                    TokenRole::Number => crate::terminal::MAGENTA,
+                    TokenRole::Boolean => crate::terminal::BLUE,
+                    TokenRole::Null => crate::terminal::WHITE,
+                    TokenRole::Warning => crate::terminal::YELLOW,
+                    TokenRole::Count | TokenRole::Preview => crate::terminal::LIGHT_BLACK,
+                    TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
+                        crate::terminal::LIGHT_BLACK
+                    }
+                    TokenRole::PrimitiveTrailingComma | TokenRole::Punctuation => {
+                        crate::terminal::DEFAULT
+                    }
+                    TokenRole::EmptyContainer => crate::terminal::WHITE,
                 }
-                TokenRole::PrimitiveTrailingComma | TokenRole::Punctuation => {
-                    crate::terminal::DEFAULT
-                }
-                TokenRole::EmptyContainer => crate::terminal::WHITE,
             };
             style.dimmed = span.role == TokenRole::Warning;
             if focused.contains(&span.node) && !annotation {
@@ -492,9 +504,8 @@ mod tests {
     use super::*;
     use crate::flatjson::{parse_top_level_json, parse_top_level_yaml};
     use crate::terminal::test::{TextOnlyTerminal, VisibleEscapesTerminal};
-    #[cfg(feature = "colorscheme")]
     use crate::theme::Theme;
-    use crate::toon_display::Layout;
+    use crate::toon_display::{Layout, Span};
     fn text(line: &DisplayLine, width: usize, offset: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();
         paint(
@@ -690,6 +701,87 @@ mod tests {
                 assert!(!output.contains("\x1b[0m"));
             }
         }
+    }
+
+    #[test]
+    #[cfg(not(feature = "colorscheme"))]
+    fn selected_row_fallback_background_reaches_document_text() {
+        let flat = parse_top_level_json(r#"{"value":"text"}"#.into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint_themed(
+            &mut terminal,
+            &crate::theme::Theme::default(),
+            &layout.lines[0],
+            0..1,
+            LineViewport::new(&layout.lines[0], 0, 0),
+            100,
+            &[],
+            &(0..0),
+        )
+        .unwrap();
+        assert!(terminal.output().contains("_BG(LightBlack)_"));
+    }
+
+    fn assert_quoted_key_styles(line: &DisplayLine, key: &Span) {
+        let theme = Theme::default();
+        let opening = grapheme_style(
+            Some(&theme),
+            line,
+            &(usize::MAX..usize::MAX),
+            key.range.start,
+            1,
+            &[],
+            &(0..0),
+        );
+        let interior = grapheme_style(
+            Some(&theme),
+            line,
+            &(usize::MAX..usize::MAX),
+            key.range.start + 1,
+            1,
+            &[],
+            &(0..0),
+        );
+        let closing = grapheme_style(
+            Some(&theme),
+            line,
+            &(usize::MAX..usize::MAX),
+            key.range.end - 1,
+            1,
+            &[],
+            &(0..0),
+        );
+        assert_eq!(opening.fg, crate::terminal::DEFAULT);
+        assert_eq!(interior.fg, crate::terminal::CYAN);
+        assert_eq!(closing.fg, crate::terminal::DEFAULT);
+    }
+
+    #[test]
+    fn quoted_key_delimiters_use_punctuation_style() {
+        let flat = parse_top_level_json(r#"{"needs quotes":1}"#.into()).unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[0];
+        let key = line
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::Key)
+            .unwrap();
+        assert_eq!(&line.text[key.range.clone()], r#""needs quotes""#);
+        assert_quoted_key_styles(line, key);
+
+        let flat =
+            parse_top_level_json(r#"{"rows":[{"needs quotes":1},{"needs quotes":2}]}"#.into())
+                .unwrap();
+        let layout = Layout::canonical(&flat);
+        let line = &layout.lines[0];
+        let field = line
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::FieldDefinition)
+            .unwrap();
+        assert_eq!(&line.text[field.range.clone()], r#""needs quotes""#);
+        assert_quoted_key_styles(line, field);
     }
 
     #[test]

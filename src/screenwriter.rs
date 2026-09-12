@@ -47,6 +47,15 @@ pub struct ScreenWriter {
 
 const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
 
+fn status_path_style(mut style: crate::terminal::Style) -> crate::terminal::Style {
+    if style.inverted {
+        std::mem::swap(&mut style.fg, &mut style.bg);
+        style.inverted = false;
+    }
+    style.fg = crate::terminal::BLACK;
+    style
+}
+
 fn paint_document_row(
     terminal: &mut dyn Terminal,
     theme: &Theme,
@@ -371,20 +380,9 @@ impl ScreenWriter {
                 0..0
             };
             if viewer.is_wrapped_line(index) {
-                #[cfg(feature = "colorscheme")]
                 lp::paint_wrapped_themed(
                     &mut self.terminal,
                     &self.theme,
-                    line,
-                    focused_nodes,
-                    physical,
-                    available - 2,
-                    matches,
-                    &current,
-                )?;
-                #[cfg(not(feature = "colorscheme"))]
-                lp::paint_wrapped(
-                    &mut self.terminal,
                     line,
                     focused_nodes,
                     physical,
@@ -400,20 +398,9 @@ impl ScreenWriter {
             } else {
                 std::borrow::Cow::Borrowed(line)
             };
-            #[cfg(feature = "colorscheme")]
             lp::paint_themed(
                 &mut self.terminal,
                 &self.theme,
-                &fitted,
-                focused_nodes,
-                viewport,
-                available - 2,
-                matches,
-                &current,
-            )?;
-            #[cfg(not(feature = "colorscheme"))]
-            lp::paint(
-                &mut self.terminal,
                 &fitted,
                 focused_nodes,
                 viewport,
@@ -550,9 +537,8 @@ impl ScreenWriter {
         let space_available_for_filename =
             width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
-        let mut status_style = self.theme.style(StyleRole::StatusBar, StyleState::main());
-        status_style.fg = crate::terminal::BLACK;
-        status_style.inverted = false;
+        let status_style =
+            status_path_style(self.theme.style(StyleRole::StatusBar, StyleState::main()));
 
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
@@ -704,7 +690,7 @@ fn end_scroll_offset(width: usize, available: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::end_scroll_offset;
+    use super::{end_scroll_offset, status_path_style};
 
     #[test]
     #[cfg(feature = "colorscheme")]
@@ -741,5 +727,33 @@ mod tests {
         assert_eq!(end_scroll_offset(1, 0), 0);
         assert_eq!(end_scroll_offset(10, 5), 6);
         assert_eq!(end_scroll_offset(10, 20), 0);
+    }
+
+    #[test]
+    fn status_path_keeps_black_text_after_reverse_video() {
+        use crate::terminal::{BLACK, Color, Style, WHITE};
+
+        assert_eq!(
+            status_path_style(Style {
+                fg: WHITE,
+                bg: BLACK,
+                inverted: true,
+                ..Style::default()
+            }),
+            Style {
+                fg: BLACK,
+                bg: WHITE,
+                ..Style::default()
+            }
+        );
+        assert_eq!(
+            status_path_style(Style {
+                fg: Color::C16(5),
+                bg: Color::C16(6),
+                ..Style::default()
+            })
+            .fg,
+            BLACK
+        );
     }
 }

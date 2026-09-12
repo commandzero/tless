@@ -36,7 +36,6 @@ mod screenwriter;
 mod search;
 mod terminal;
 mod theme;
-#[cfg(feature = "toon")]
 mod toon;
 mod toon_display;
 mod truncatedstrview;
@@ -145,7 +144,7 @@ fn get_input_and_filename(opt: &Opt) -> io::Result<(String, String)> {
     let mut input_string = String::new();
     let filename;
 
-    match &opt.input {
+    match &opt.file {
         None => {
             if io::stdin().is_terminal() {
                 eprintln!("Missing filename (\"tless --help\" for help)");
@@ -199,12 +198,7 @@ fn determine_data_format(
         .and_then(std::ffi::OsStr::to_str)
     {
         Some("yml") | Some("yaml") => Ok(DataFormat::Yaml),
-        #[cfg(feature = "toon")]
         Some("toon") => Ok(DataFormat::Toon),
-        #[cfg(not(feature = "toon"))]
-        Some("toon") => Err(
-            "This binary was built without TOON support; rebuild with --features toon, or force --json/--yaml.",
-        ),
         _ => Ok(DataFormat::Json),
     }
 }
