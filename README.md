@@ -70,7 +70,7 @@ forecast[3]{day,temp{min,max},condition,rainChance}:
 
 Yes, that is the exact same data.
 
-Also look at the differences between `examples/nato-phonetecs.json` and `examples/nato-phonetecs.toon`:
+Also look at the differences between `examples/nato-phonetics.json` and `examples/nato-phonetics.toon`:
 
 | Format | Lines | Tokens |
 | --- | ---: | ---: |
@@ -111,7 +111,7 @@ cat <filename> | tless --input-format json
 
 Some quick keys:
 - `hjkl` vim motions, or arrows
-- left/right to collapse/expand curent entry
+- left/right to collapse/expand current entry
 - `e` to expand, `shift+e` to expand all siblings
 - `c` to collapse, `shift+c` to collapse all siblings
 - `ctrl+l` to toggle line wrapping
@@ -150,8 +150,9 @@ tless --theme peachpuff data.json
 tless --theme borealis data.json
 ```
 
-These palettes require a 256-color terminal. See the
-[Vim palette audit and gallery](docs/vim-themes.md) for all 28 schemes.
+Vim companion palettes require a 256-color terminal. Borealis uses exact
+24-bit RGB colors and requires a true-color terminal. See the [Vim palette
+audit and gallery](docs/vim-themes.md) for all 28 companion schemes.
 
 Define named themes in `~/.config/tless/config.yaml`. (Or `$XDG_CONFIG_HOME` location)
 

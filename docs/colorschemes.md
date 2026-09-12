@@ -151,7 +151,7 @@ last column are accepted for compatibility and map to the same token.
 | `empty-container` | Empty objects and empty arrays. | |
 | `object-key` | Object keys and TOON table field definitions. | |
 | `object-key-focused` | A focused object key or table field definition. | `focused-object-key` |
-| `array-index` | Array indexes. | |
+| `array-index` | Array indexes, including focused array indexes. | |
 | `punctuation` | Structural punctuation such as colons and ordinary separators. | |
 | `punctuation-comma-trailing` | Commas that follow primitive values in the rendered document. | `primitive-trailing-comma` |
 | `container-delimiter` | Brackets, braces, and other container delimiters. | |
@@ -194,8 +194,9 @@ built-in style would otherwise use reverse video.
 
 The main precedence rules are:
 
-- A focused object key, field definition, array index, delimiter, or line number
-  uses its focused token.
+- A focused object key or field definition uses `object-key-focused`. Focused
+  delimiters and line numbers use their focused tokens. Focused array indexes
+  continue to use `array-index`; there is no separate focused array-index token.
 - A search match takes precedence over focus. `search-match-current` takes
   precedence over `search-match` for the active match.
 - Search matches in previews use `search-match-preview`.
@@ -207,9 +208,10 @@ The main precedence rules are:
 - `document-background` applies to document content and rows, while status and
   command rows use their own row colors.
 
-Built-in companion palettes have one additional display rule. In a Vim
-companion or Borealis preview, a current match uses the ordinary preview match
-color. The default scheme keeps the distinct current-match color in previews.
+Built-in palettes other than `default`, including Cyan, Borealis, and the Vim
+companions, have one additional display rule. In their collapsed previews, a
+current match uses the ordinary preview match color. The default and configured
+themes keep the distinct current-match color in previews.
 
 ## Related references
 
