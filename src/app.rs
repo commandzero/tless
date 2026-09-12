@@ -197,9 +197,10 @@ impl App {
                 let _ = write!(self.screen_writer.stdout, "{ToMainScreen}");
                 let _ = write!(self.screen_writer.stdout, "{}", termion::cursor::Show);
                 let _ = self.screen_writer.stdout.flush();
-                unsafe {
-                    libc::kill(0, libc::SIGSTOP);
-                }
+                let _ = nix::sys::signal::kill(
+                    nix::unistd::Pid::from_raw(0),
+                    nix::sys::signal::Signal::SIGSTOP,
+                );
                 // Re-enable all the terminal settings.
                 let _ = write!(self.screen_writer.stdout, "{}", termion::cursor::Hide);
                 let _ = write!(self.screen_writer.stdout, "{ToAlternateScreen}");
