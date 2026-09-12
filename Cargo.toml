@@ -1,6 +1,6 @@
 [package]
 name = "tless"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Ryan Eno <cargo@commandzero.com>", "Paul Julius Martinez <pauljuliusmartinez@gmail.com>"]
 license = "MIT"
 description = "A terminal viewer for JSON, YAML, and TOON"
