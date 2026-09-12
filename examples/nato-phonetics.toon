@@ -1,0 +1,47 @@
+metadata:
+  title: NATO phonetic code words
+  description: The 36 alphanumeric code words used to spell letters clearly over radio and telephone communications.
+  standard: International Radiotelephony Spelling Alphabet
+  pronunciation_note: Phonetic transcription is based on English pronunciation.
+  source: "https://www.nato.int/content/dam/nato/webready/news/2010-2019/2017/12/21/20180111_nato-alphabet-sign-signal.pdf"
+  count:
+    lines: 47
+    tokens: 546
+alphabet[26]{position,letter,lowercase,code_word,pronunciation}:
+  1,A,a,Alfa,al-fah
+  2,B,b,Bravo,brah-voh
+  3,C,c,Charlie,char-lee
+  4,D,d,Delta,dell-tah
+  5,E,e,Echo,eck-oh
+  6,F,f,Foxtrot,foks-trot
+  7,G,g,Golf,golf
+  8,H,h,Hotel,hoh-tel
+  9,I,i,India,in-dee-ah
+  10,J,j,Juliett,jew-lee-ett
+  11,K,k,Kilo,key-loh
+  12,L,l,Lima,lee-mah
+  13,M,m,Mike,mike
+  14,N,n,November,no-vem-ber
+  15,O,o,Oscar,oss-cah
+  16,P,p,Papa,pah-pah
+  17,Q,q,Quebec,keh-beck
+  18,R,r,Romeo,row-me-oh
+  19,S,s,Sierra,see-air-rah
+  20,T,t,Tango,tang-go
+  21,U,u,Uniform,you-nee-form
+  22,V,v,Victor,vic-tah
+  23,W,w,Whiskey,wiss-key
+  24,X,x,X-ray,ecks-ray
+  25,Y,y,Yankee,yang-key
+  26,Z,z,Zulu,zoo-loo
+numbers[10]{number,code_word,pronunciation}:
+  0,Zero,zee-ro
+  1,One,wun
+  2,Two,too
+  3,Three,tree
+  4,Four,fow-er
+  5,Five,fife
+  6,Six,six
+  7,Seven,sev-en
+  8,Eight,ait
+  9,Niner,nin-er
