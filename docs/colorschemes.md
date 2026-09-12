@@ -61,11 +61,11 @@ palette and overrides the entries it supplies.
 
 Tless reads one YAML document from:
 
-1. `$XDG_CONFIG_HOME/tless/config.yaml`, when `XDG_CONFIG_HOME` is set.
+1. `$XDG_CONFIG_HOME/tless/config.yaml`, when `XDG_CONFIG_HOME` is set and non-empty.
 2. `$HOME/.config/tless/config.yaml`, otherwise.
 
-A missing file or an empty YAML document keeps the built-in defaults. The root
-must be a mapping. The only accepted top-level keys are `colorscheme` and
+A missing file, an empty YAML document, or an explicit YAML `null` document
+keeps the built-in defaults. Otherwise, the root must be a mapping. The only accepted top-level keys are `colorscheme` and
 `themes`.
 
 `colorscheme` is a non-empty string naming the startup scheme. `themes` maps
@@ -208,10 +208,11 @@ The main precedence rules are:
 - `document-background` applies to document content and rows, while status and
   command rows use their own row colors.
 
-Built-in palettes other than `default`, including Cyan, Borealis, and the Vim
-companions, have one additional display rule. In their collapsed previews, a
-current match uses the ordinary preview match color. The default and configured
-themes keep the distinct current-match color in previews.
+The resolved base palette controls current matches in collapsed previews.
+A non-default base (`cyan`, `borealis`, or a Vim companion) uses the ordinary
+preview match color, including when configuration overrides that palette.
+The `default` base keeps the distinct current-match color. New configured
+theme names inherit `default` and therefore keep that distinction too.
 
 ## Related references
 

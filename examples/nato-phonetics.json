@@ -1,13 +1,13 @@
 {
   "metadata": {
     "title": "NATO phonetic code words",
-    "description": "The 36 alphanumeric code words used to spell letters clearly over radio and telephone communications.",
+    "description": "The 36 alphanumeric code words used to communicate letters and numbers clearly over radio and telephone communications.",
     "standard": "International Radiotelephony Spelling Alphabet",
     "pronunciation_note": "Phonetic transcription is based on English pronunciation.",
     "source": "https://www.nato.int/content/dam/nato/webready/news/2010-2019/2017/12/21/20180111_nato-alphabet-sign-signal.pdf",
     "count": {
       "lines": 249,
-      "tokens": 1602
+      "tokens": 1604
     }
   },
   "alphabet": [

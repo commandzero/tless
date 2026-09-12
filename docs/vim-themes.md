@@ -113,9 +113,9 @@ Validation commands:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --locked --all-features -- -D warnings
-cargo test --locked
-cargo test --locked --all-features
+cargo clippy --all-features -- -D warnings
+cargo test
+cargo test --all-features
 okf validate docs/
 ```
 
