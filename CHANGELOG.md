@@ -5,6 +5,8 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-12
+
 ### Added
 
 - Add session-only, off-by-default Ctrl+L wrapping for expanded TOON lines. Logical navigation remains line-based while scrolling, paging, and positioning use physical rows, and collapsed previews retain horizontal access.
@@ -16,6 +18,7 @@ Earlier upstream history is preserved below.
 - Color quoted-key delimiters as punctuation while retaining cyan for key text.
 - **Breaking:** Replace the `--json`, `--yaml`, and `--toon` input flags with `-i <format>`/`--input-format <format>`, using `json`, `yaml`, or `toon`. Rename the long output option to `--output-format` while retaining `-o`. Update scripts and aliases that select an input or output format.
 - **Breaking:** Remove the optional `toon` Cargo feature. TOON parsing, export, and interactive commands are now included in every build.
+- Use nix wrappers for runtime Unix terminal descriptors, polling, resizing, and process suspension.
 
 ## [0.1.0] - 2026-09-10
 
@@ -62,7 +65,8 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/CommandZero/tless/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/CommandZero/tless/compare/35f1c7686bd096ecce2ce73016dc70191869bb6c...v0.1.0
 
 ## Upstream history

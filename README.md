@@ -143,8 +143,8 @@ tless --max-input-bytes 1073741824 large.json
 
 - No filename or `-` reads from `stdin`
 - Redirecting output bypasses interactive viewing mode
-- Use `-i | --input-format <format>` for `stdin` or to override filename detection
-- Use `-o | --output-format <format>` to change output format
+- Use `-i <format>` or `--input-format <format>` for `stdin` or to override filename detection
+- Use `-o <format>` or `--output-format <format>` to select the non-terminal output format
 - Supported input/output formats are `toon`, `json`, and `yaml`
 - Default input limit of 512 MiB, use `--max-input-bytes 0` to remove it
 

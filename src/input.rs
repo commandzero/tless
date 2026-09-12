@@ -226,7 +226,8 @@ fn wait_for_input(input_fd: BorrowedFd<'_>, signal_fd: BorrowedFd<'_>) -> io::Re
         let mut readable = FdSet::new();
         readable.insert(input_fd);
         readable.insert(signal_fd);
-        match select(None, &mut readable, None, None, None) {
+        let nfds = input_fd.as_raw_fd().max(signal_fd.as_raw_fd()) + 1;
+        match select(Some(nfds), Some(&mut readable), None, None, None) {
             Err(Errno::EINTR) => continue,
             Err(error) => return Err(error.into()),
             Ok(_) => return Ok(readable.contains(signal_fd)),
