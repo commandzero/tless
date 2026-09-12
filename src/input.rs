@@ -5,7 +5,7 @@ use termion::event::{Event, Key, MouseEvent, parse_event};
 use nix::errno::Errno;
 use nix::sys::select::{FD_SETSIZE, FdSet, select};
 use std::io;
-use std::io::{Read, Stdin, stdin};
+use std::io::{IsTerminal, Read, Stdin, stdin};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 
@@ -15,6 +15,9 @@ const ESCAPE: u8 = 0o33;
 
 pub fn remap_dev_tty_to_stdin() -> io::Result<()> {
     // Rustyline reads stdin. Restore keyboard input after loading piped data.
+    if stdin().is_terminal() {
+        return Ok(());
+    }
     let tty = std::fs::File::open("/dev/tty")?;
     let tty_is_stdin = tty.as_raw_fd() == 0;
     let result = nix::unistd::dup2_stdin(&tty).map_err(io::Error::from);
