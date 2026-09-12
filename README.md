@@ -1,143 +1,141 @@
 # tless
 
-A terminal viewer for JSON, YAML, and TOON, maintained by CommandZero.
-This is an independent fork of [jless](https://github.com/PaulJuliusMartinez/jless).
+A terminal viewer for TOON, JSON, and YAML. Forked from the excellent [jless](https://github.com/PaulJuliusMartinez/jless).
 
 [![ci](https://github.com/CommandZero/tless/actions/workflows/ci.yml/badge.svg)](https://github.com/CommandZero/tless/actions/workflows/ci.yml)
 
+View your data in the compact TOON format, including JSON and YAML files.
 Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
-Press F1 or enter `:help` for in-app help.
-Every input uses one TOON document view, with JSON and YAML inputs supported
-alongside TOON.
-See [the document view](docs/toon-view.md) for navigation and display warnings.
-Press Ctrl+L to toggle line wrapping for expanded values during the current
-session. Wrapping starts off. Structural navigation remains logical, while
-scrolling, paging, and `zz`/`zt`/`zb` positioning use physical rows. Continuation
-rows have blank gutters. Collapsed previews stay on one row with horizontal
-scrolling; `,`, `.`, and `;` do nothing on wrapped expanded lines.
+
+Why [TOON](https://toonformat.dev/) format? Look at this short example from the TOON format [getting started](https://toonformat.dev/guide/getting-started.html) guide.
+
+JSON:
+
+```json
+{
+  "location": {
+    "city": "Berlin",
+    "country": "DE",
+    "units": "metric"
+  },
+  "alerts": [
+    "frost",
+    "wind"
+  ],
+  "forecast": [
+    {
+      "day": "Mon",
+      "temp": {
+        "min": -2,
+        "max": 4
+      },
+      "condition": "snow",
+      "rainChance": 80
+    },
+    {
+      "day": "Tue",
+      "temp": {
+        "min": 1,
+        "max": 7
+      },
+      "condition": "cloudy",
+      "rainChance": 20
+    },
+    {
+      "day": "Wed",
+      "temp": {
+        "min": 3,
+        "max": 11
+      },
+      "condition": "sunny",
+      "rainChance": 5
+    }
+  ]
+}
+```
+
+TOON:
+
+```toon
+location:
+  city: Berlin
+  country: DE
+  units: metric
+alerts[2]: frost,wind
+forecast[3]:
+  - day: Mon
+    temp:
+      min: -2
+      max: 4
+    condition: snow
+    rainChance: 80
+  - day: Tue
+    temp:
+      min: 1
+      max: 7
+    condition: cloudy
+    rainChance: 20
+  - day: Wed
+    temp:
+      min: 3
+      max: 11
+    condition: sunny
+    rainChance: 5
+```
+
+Yes, that is the exact same data.
+
+Also look at the differences between `examples/nato-phonetics.json` and `examples/nato-phonetics.toon`:
+
+| Format | Lines | Tokens |
+| --- | ---: | ---: |
+| JSON | 249 |  1,604 |
+| TOON | 47 | 548 |
+| Saved | 202 | 1,056 |
+| Saved % | 81.1% | 65.8% |
+
+Token counts use the `o200k_base` tokenizer and include file metadata.
+
+That is far fewer tokens for your LLM, [higher accuracy](https://toonformat.dev/guide/benchmarks.html#retrieval-accuracy), fewer lines for commit diffs, _and_ easier on your eyes.
+
+Sign me up!
 
 ## Install
 
-Build from this checkout with Rust 1.87 or newer:
+Install from Homebrew:
 
 ```sh
-cargo install --path . --locked
-tless data.json
-tless data.yaml
-tless data.toon
-producer | tless --input-format toon
-```
-
-The independent tless release history starts at 0.1.0. Install the latest
-release with Cargo or Homebrew:
-
-```sh
-cargo install tless --locked
 brew install commandzero/tools/tless
 ```
 
-Prebuilt binaries are available on the [releases page](https://github.com/CommandZero/tless/releases).
-To install one, download the archive for your platform, extract it, and put the
-`tless` binary on your `PATH`:
+Or from Cargo:
 
 ```sh
-archive="tless-vX.Y.Z-<target-triple>.tar.gz" # replace with the downloaded filename
-tar -xzf "$archive"
-mkdir -p "$HOME/.local/bin"
-install -m 755 tless "$HOME/.local/bin/tless"
+cargo install tless
 ```
 
-The codec comes from crates.io.
-
-The executable is `tless`. Update scripts and aliases that should use this fork.
-The upstream `jless` executable can remain installed alongside it.
-
-## Color themes
-
-Theme support is included in the default build. Build or install it explicitly
-with:
+Then open any TOON, JSON, or YAML file with `tless`:
 
 ```sh
-cargo build --release --features colorscheme
-cargo install --path . --features colorscheme
+tless path/to/file.json
 ```
 
-The `--no-default-features` build omits `--theme` and the theme configuration
-file. TOON, JSON, and YAML viewing remain available in both builds.
-
-Use `--theme <name>` to select a built-in or configured theme. Without that
-option, `colorscheme` in the configuration selects the startup theme, otherwise
-`default` is used. While viewing a document, enter `:colorscheme <name>` to
-switch themes without changing your position or search.
-The former `classic` name remains accepted as a compatibility alias for
-`default`.
-
-The `borealis` theme uses the Borealis dark-mode CSS palette with RGB colors.
-It requires a true-color terminal. Use `tless --theme borealis data.json` or
-`:colorscheme borealis`. See [the palette mapping](openspec/specs/color-themes/spec.md#requirement-borealis-palette-and-source-fidelity).
-
-Vim companions use the original Vim scheme name, with Vim's `default` scheme
-exposed as `vim`:
+Or pipe in contents from stdin:
 
 ```sh
-tless --theme desert data.json
-tless --theme peachpuff data.json
-tless --theme catppuccin data.json
+cat file.json | tless --input-format json
 ```
 
-These palettes require a 256-color terminal. See the
-[Vim palette audit and gallery](docs/vim-themes.md) for all 28 schemes.
+Some quick keys:
+- `hjkl` vim motions, or arrows
+- left/right to collapse/expand current entry
+- `e` to expand, `shift+e` to expand all siblings
+- `c` to collapse, `shift+c` to collapse all siblings
+- `ctrl+l` to toggle line wrapping
+- `/` to search
+- `f1` or type `:help` for the help screen
 
-Define named themes in `$XDG_CONFIG_HOME/tless/config.yaml`. If
-`XDG_CONFIG_HOME` is unset, tless uses `$HOME/.config/tless/config.yaml`.
-See [examples/config.yaml](examples/config.yaml) for a complete example.
-
-```yaml
-colorscheme: navy
-themes:
-  navy:
-    object-key: blue
-    object-key-focused: light-blue
-    string: cyan
-    status-bar-background: 18
-    status-bar-foreground: cyan
-  ocean:
-    object-key: cyan
-    string: light-blue
-    status-bar-background: 17
-    status-bar-foreground: light-cyan
-```
-
-Custom themes inherit the default styles for omitted keys. Theme keys include
-`document-foreground`, `document-background`, `null`, `boolean`, `number`,
-`string`, `empty-container`, `object-key`, `object-key-focused`, `array-index`,
-`punctuation`, `punctuation-comma-trailing`, `container-delimiter`,
-`container-delimiter-focused`, `ellipsis`, `preview-text`, `preview-count`,
-`line-number`, `line-number-focused`, `row-marker-empty`,
-`indicator-truncation`, `status-bar`, `status-text`, `status-bar-foreground`,
-`status-bar-background`, `command-line-foreground`, `command-line-background`,
-`message-info`, `message-warning`, `message-error`, `search-match`,
-`search-match-preview`, and `search-match-current`.
-
-Colors may be named ANSI colors or integer values from `0` through `255` for
-the ANSI 256-color palette.
-
-## Platform contract
-
-| Target | Release test host and support floor |
-| --- | --- |
-| aarch64-apple-darwin | Native macOS 15 arm64 |
-| x86_64-apple-darwin | Native macOS 15 Intel |
-| x86_64-unknown-linux-gnu | Native Ubuntu 24.04, glibc 2.39 |
-| aarch64-unknown-linux-gnu | Native Ubuntu 24.04 arm64, glibc 2.39 |
-
-Each release must pass native tests and an extracted-binary smoke test on all 4 hosts.
-These are release gates, not a claim that an unpublished release has passed them.
-Other Linux distributions and older operating systems are unverified.
-Windows and musl are not supported.
-Linux clipboard access requires a usable X11 or XWayland display session.
-
-## Command-line contract
+## Command-line arguments
 
 ```sh
 tless --help
@@ -191,6 +189,52 @@ Parsed data and rendered output need additional memory; this is not a total-proc
 JSON and YAML have no configurable depth bound. TOON has the limits below.
 No output starts until input loading, parsing, and machine-output serialization finish.
 An output error can leave a partial payload in the downstream consumer.
+
+## Color themes
+
+Define your own colorscheme, or use one of the included schemes:
+
+```sh
+tless --theme desert data.json
+tless --theme peachpuff data.json
+tless --theme borealis data.json
+```
+
+Vim companion palettes require a 256-color terminal. Borealis uses exact
+24-bit RGB colors and requires a true-color terminal. See the [Vim palette
+audit and gallery](docs/vim-themes.md) for all 28 companion schemes.
+
+Define named themes in `$XDG_CONFIG_HOME/tless/config.yaml` when
+`XDG_CONFIG_HOME` is set and non-empty; otherwise use `~/.config/tless/config.yaml`.
+
+```yaml
+colorscheme: navy # set a default colorscheme
+themes: # define custom colorschemes
+  navy:
+    object-key: blue
+    object-key-focused: light-blue
+    string: cyan
+    status-bar-background: 18
+    status-bar-foreground: cyan
+```
+
+See [examples/config.yaml](examples/config.yaml) for a complete example and
+[Color schemes](docs/colorschemes.md) for configuration, tokens, and precedence.
+
+## Platform contract
+
+| Target | Release test host and support floor |
+| --- | --- |
+| aarch64-apple-darwin | Native macOS 15 arm64 |
+| x86_64-apple-darwin | Native macOS 15 Intel |
+| x86_64-unknown-linux-gnu | Native Ubuntu 24.04, glibc 2.39 |
+| aarch64-unknown-linux-gnu | Native Ubuntu 24.04 arm64, glibc 2.39 |
+
+Each release must pass native tests and an extracted-binary smoke test on all 4 hosts.
+These are release gates, not a claim that an unpublished release has passed them.
+Other Linux distributions and older operating systems are unverified.
+Windows and musl are not supported.
+Linux clipboard access requires a usable X11 or XWayland display session.
 
 ## TOON support
 
@@ -250,7 +294,8 @@ See [contributor guidance](docs/contributing.md) and the [release checklist](doc
 
 ## Attribution
 
-The upstream viewer, its mascot Jules, and its historical release notes remain attributed to their authors.
-Jules artwork is by [annatgraphics](https://www.fiverr.com/annatgraphics).
-The code retains the [MIT license](LICENSE.md).
-See [third-party notices](NOTICES.md) for the codec and specification fixtures.
+A fork of [jless](https://github.com/PaulJuliusMartinez/jless)
+
+[MIT license](LICENSE.md)
+
+See [third-party notices](NOTICES.md) for upstream, codec, fixture, and artwork attribution.

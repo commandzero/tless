@@ -162,4 +162,4 @@ Interactive JSON commands stay JSON. Redirected stdout defaults to standard TOON
 use `-o json` or `-o yaml` to select a different machine-output format. Standard TOON export through `yt`, `pt`, and
 `:wt` retains the [published codec's conversion behavior](toon-codec.md),
 including last-value-wins duplicates and possible numeric precision loss.
-Redirected stdout retains the [command-line contract](../README.md#command-line-contract).
+Redirected stdout retains the [command-line contract](../README.md#command-line-arguments).

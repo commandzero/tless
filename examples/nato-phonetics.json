@@ -1,0 +1,249 @@
+{
+  "metadata": {
+    "title": "NATO phonetic code words",
+    "description": "The 36 alphanumeric code words used to communicate letters and numbers clearly over radio and telephone communications.",
+    "standard": "International Radiotelephony Spelling Alphabet",
+    "pronunciation_note": "Phonetic transcription is based on English pronunciation.",
+    "source": "https://www.nato.int/content/dam/nato/webready/news/2010-2019/2017/12/21/20180111_nato-alphabet-sign-signal.pdf",
+    "count": {
+      "lines": 249,
+      "tokens": 1604
+    }
+  },
+  "alphabet": [
+    {
+      "position": 1,
+      "letter": "A",
+      "lowercase": "a",
+      "code_word": "Alfa",
+      "pronunciation": "al-fah"
+    },
+    {
+      "position": 2,
+      "letter": "B",
+      "lowercase": "b",
+      "code_word": "Bravo",
+      "pronunciation": "brah-voh"
+    },
+    {
+      "position": 3,
+      "letter": "C",
+      "lowercase": "c",
+      "code_word": "Charlie",
+      "pronunciation": "char-lee"
+    },
+    {
+      "position": 4,
+      "letter": "D",
+      "lowercase": "d",
+      "code_word": "Delta",
+      "pronunciation": "dell-tah"
+    },
+    {
+      "position": 5,
+      "letter": "E",
+      "lowercase": "e",
+      "code_word": "Echo",
+      "pronunciation": "eck-oh"
+    },
+    {
+      "position": 6,
+      "letter": "F",
+      "lowercase": "f",
+      "code_word": "Foxtrot",
+      "pronunciation": "foks-trot"
+    },
+    {
+      "position": 7,
+      "letter": "G",
+      "lowercase": "g",
+      "code_word": "Golf",
+      "pronunciation": "golf"
+    },
+    {
+      "position": 8,
+      "letter": "H",
+      "lowercase": "h",
+      "code_word": "Hotel",
+      "pronunciation": "hoh-tel"
+    },
+    {
+      "position": 9,
+      "letter": "I",
+      "lowercase": "i",
+      "code_word": "India",
+      "pronunciation": "in-dee-ah"
+    },
+    {
+      "position": 10,
+      "letter": "J",
+      "lowercase": "j",
+      "code_word": "Juliett",
+      "pronunciation": "jew-lee-ett"
+    },
+    {
+      "position": 11,
+      "letter": "K",
+      "lowercase": "k",
+      "code_word": "Kilo",
+      "pronunciation": "key-loh"
+    },
+    {
+      "position": 12,
+      "letter": "L",
+      "lowercase": "l",
+      "code_word": "Lima",
+      "pronunciation": "lee-mah"
+    },
+    {
+      "position": 13,
+      "letter": "M",
+      "lowercase": "m",
+      "code_word": "Mike",
+      "pronunciation": "mike"
+    },
+    {
+      "position": 14,
+      "letter": "N",
+      "lowercase": "n",
+      "code_word": "November",
+      "pronunciation": "no-vem-ber"
+    },
+    {
+      "position": 15,
+      "letter": "O",
+      "lowercase": "o",
+      "code_word": "Oscar",
+      "pronunciation": "oss-cah"
+    },
+    {
+      "position": 16,
+      "letter": "P",
+      "lowercase": "p",
+      "code_word": "Papa",
+      "pronunciation": "pah-pah"
+    },
+    {
+      "position": 17,
+      "letter": "Q",
+      "lowercase": "q",
+      "code_word": "Quebec",
+      "pronunciation": "keh-beck"
+    },
+    {
+      "position": 18,
+      "letter": "R",
+      "lowercase": "r",
+      "code_word": "Romeo",
+      "pronunciation": "row-me-oh"
+    },
+    {
+      "position": 19,
+      "letter": "S",
+      "lowercase": "s",
+      "code_word": "Sierra",
+      "pronunciation": "see-air-rah"
+    },
+    {
+      "position": 20,
+      "letter": "T",
+      "lowercase": "t",
+      "code_word": "Tango",
+      "pronunciation": "tang-go"
+    },
+    {
+      "position": 21,
+      "letter": "U",
+      "lowercase": "u",
+      "code_word": "Uniform",
+      "pronunciation": "you-nee-form"
+    },
+    {
+      "position": 22,
+      "letter": "V",
+      "lowercase": "v",
+      "code_word": "Victor",
+      "pronunciation": "vic-tah"
+    },
+    {
+      "position": 23,
+      "letter": "W",
+      "lowercase": "w",
+      "code_word": "Whiskey",
+      "pronunciation": "wiss-key"
+    },
+    {
+      "position": 24,
+      "letter": "X",
+      "lowercase": "x",
+      "code_word": "X-ray",
+      "pronunciation": "ecks-ray"
+    },
+    {
+      "position": 25,
+      "letter": "Y",
+      "lowercase": "y",
+      "code_word": "Yankee",
+      "pronunciation": "yang-key"
+    },
+    {
+      "position": 26,
+      "letter": "Z",
+      "lowercase": "z",
+      "code_word": "Zulu",
+      "pronunciation": "zoo-loo"
+    }
+  ],
+  "numbers": [
+    {
+      "number": 0,
+      "code_word": "Zero",
+      "pronunciation": "zee-ro"
+    },
+    {
+      "number": 1,
+      "code_word": "One",
+      "pronunciation": "wun"
+    },
+    {
+      "number": 2,
+      "code_word": "Two",
+      "pronunciation": "too"
+    },
+    {
+      "number": 3,
+      "code_word": "Three",
+      "pronunciation": "tree"
+    },
+    {
+      "number": 4,
+      "code_word": "Four",
+      "pronunciation": "fow-er"
+    },
+    {
+      "number": 5,
+      "code_word": "Five",
+      "pronunciation": "fife"
+    },
+    {
+      "number": 6,
+      "code_word": "Six",
+      "pronunciation": "six"
+    },
+    {
+      "number": 7,
+      "code_word": "Seven",
+      "pronunciation": "sev-en"
+    },
+    {
+      "number": 8,
+      "code_word": "Eight",
+      "pronunciation": "ait"
+    },
+    {
+      "number": 9,
+      "code_word": "Niner",
+      "pronunciation": "nin-er"
+    }
+  ]
+}
