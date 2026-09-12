@@ -1,7 +1,7 @@
 [package]
 name = "tless"
 version = "0.1.0"
-authors = ["Paul Julius Martinez <pauljuliusmartinez@gmail.com>"]
+authors = ["Ryan Eno <cargo@commandzero.com>", "Paul Julius Martinez <pauljuliusmartinez@gmail.com>"]
 license = "MIT"
 description = "A terminal viewer for JSON, YAML, and TOON"
 keywords = ["cli", "json", "yaml", "toon"]
