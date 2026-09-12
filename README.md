@@ -53,7 +53,7 @@ JSON:
 
 TOON:
 
-```yaml
+```toon
 location:
   city: Berlin
   country: DE

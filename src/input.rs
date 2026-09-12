@@ -16,7 +16,14 @@ const ESCAPE: u8 = 0o33;
 pub fn remap_dev_tty_to_stdin() -> io::Result<()> {
     // Rustyline reads stdin. Restore keyboard input after loading piped data.
     let tty = std::fs::File::open("/dev/tty")?;
-    nix::unistd::dup2_stdin(&tty).map_err(io::Error::from)
+    let tty_is_stdin = tty.as_raw_fd() == 0;
+    let result = nix::unistd::dup2_stdin(&tty).map_err(io::Error::from);
+    if result.is_ok() && tty_is_stdin {
+        // `open` reused descriptor 0, so dropping `tty` would close the stdin
+        // we just restored. Keep that descriptor open for the viewer lifetime.
+        std::mem::forget(tty);
+    }
+    result
 }
 
 pub fn get_input() -> impl Iterator<Item = io::Result<TuiEvent>> {
