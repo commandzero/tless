@@ -49,7 +49,8 @@ impl VimPalette {
                 JsonValueKind::EmptyObject | JsonValueKind::EmptyArray => self.delimiter,
             },
             StyleRole::ObjectKey | StyleRole::FieldDefinition => self.identifier,
-            StyleRole::ArrayIndex | StyleRole::LineNumber => self.linenr,
+            StyleRole::ArrayIndex => self.normal,
+            StyleRole::LineNumber => self.linenr,
             StyleRole::Punctuation | StyleRole::StatusText => self.normal,
             StyleRole::PrimitiveTrailingComma | StyleRole::ContainerDelimiter => self.delimiter,
             StyleRole::Ellipsis

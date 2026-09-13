@@ -584,26 +584,11 @@ impl Theme {
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => CYAN,
             }),
-            StyleRole::ArrayIndex | StyleRole::LineNumber | StyleRole::Ellipsis => {
-                color(LIGHT_BLACK)
-            }
+            StyleRole::ArrayIndex => Style::default(),
+            StyleRole::LineNumber | StyleRole::Ellipsis => color(LIGHT_BLACK),
             StyleRole::Punctuation | StyleRole::StatusText => Style::default(),
-            StyleRole::PrimitiveTrailingComma => match self.legacy_name() {
-                LegacyTheme::Classic => Style::default(),
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            },
-            StyleRole::ContainerDelimiter => match self.legacy_name() {
-                LegacyTheme::Classic => color(LIGHT_BLACK),
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            },
+            StyleRole::PrimitiveTrailingComma => Style::default(),
+            StyleRole::ContainerDelimiter => Style::default(),
             StyleRole::PreviewText => color(LIGHT_BLACK),
             StyleRole::PreviewCount | StyleRole::EmptyRowMarker => color(LIGHT_BLACK),
             StyleRole::DocumentPosition => color(LIGHT_BLACK),
@@ -953,10 +938,10 @@ mod tests {
 
         for (role, expected) in [
             (StyleRole::ObjectKey, fg(CYAN)),
-            (StyleRole::ArrayIndex, fg(LIGHT_BLACK)),
+            (StyleRole::ArrayIndex, Style::default()),
             (StyleRole::Punctuation, Style::default()),
             (StyleRole::PrimitiveTrailingComma, Style::default()),
-            (StyleRole::ContainerDelimiter, fg(LIGHT_BLACK)),
+            (StyleRole::ContainerDelimiter, Style::default()),
             (StyleRole::Ellipsis, fg(LIGHT_BLACK)),
             (StyleRole::PreviewText, fg(LIGHT_BLACK)),
             (StyleRole::PreviewCount, fg(LIGHT_BLACK)),
@@ -1005,18 +990,13 @@ mod tests {
             fg(MAGENTA)
         );
         assert_eq!(cyan.style(StyleRole::ObjectKey, state), fg(CYAN));
-        assert_eq!(
-            cyan.style(StyleRole::PrimitiveTrailingComma, state),
-            Style {
-                dimmed: true,
-                ..Style::default()
-            }
-        );
-
         for role in [
             StyleRole::JsonValue(JsonValueKind::Number),
             StyleRole::JsonValue(JsonValueKind::String),
             StyleRole::Punctuation,
+            StyleRole::PrimitiveTrailingComma,
+            StyleRole::ArrayIndex,
+            StyleRole::ContainerDelimiter,
             StyleRole::LineNumber,
             StyleRole::StatusBar,
             StyleRole::Message(MessageSeverity::Error),

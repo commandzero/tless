@@ -375,7 +375,7 @@ fn grapheme_style(
                         crate::terminal::LIGHT_BLACK
                     }
                     TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
-                        crate::terminal::LIGHT_BLACK
+                        crate::terminal::DEFAULT
                     }
                     TokenRole::PrimitiveTrailingComma | TokenRole::Punctuation => {
                         crate::terminal::DEFAULT
