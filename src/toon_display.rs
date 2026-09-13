@@ -448,7 +448,7 @@ impl Layout {
             .filter(|(node, info)| {
                 !flat[*node].is_closing_of_container()
                     && info.inline_array
-                    && UnicodeWidthStr::width(result.lines[info.line].text.as_str()) > width
+                    && UnicodeWidthStr::width(result.lines[info.body_line].text.as_str()) > width
             })
             .map(|(node, _)| node)
             .collect();
@@ -787,10 +787,7 @@ impl Layout {
                         quote_json(self.keys[node].as_deref().unwrap_or(""))
                     )
                 } else if let OptionIndex::Index(parent) = flat[node].parent {
-                    if flat[parent].is_array()
-                        && self.nodes[node].line == line
-                        && self.nodes[parent].body_line == line
-                    {
+                    if flat[parent].is_array() && self.nodes[node].line == line {
                         format!(" at [{}]", flat[node].index_in_parent)
                     } else {
                         String::new()
@@ -1693,6 +1690,18 @@ mod tests {
             text(&flat),
             "--- (1 of 2)\n[2]: .inf,7  # WARN Non-finite number at [0]\n--- (2 of 2)\n7"
         );
+    }
+
+    #[test]
+    fn multiline_sequence_root_array_warnings_keep_element_locators() {
+        let flat = yaml("---\n[.inf, 1, 2, 3, 4, 5]\n---\n7\n");
+        let layout = Layout::for_view(&flat, 20, &HashSet::new());
+        let warning = layout
+            .lines
+            .iter()
+            .find(|line| line.text.contains("Non-finite number"))
+            .unwrap();
+        assert!(warning.text.contains("at [0]"));
     }
 
     #[test]

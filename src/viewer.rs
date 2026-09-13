@@ -547,7 +547,11 @@ impl JsonViewer {
             .layout
             .project_with_documents(&self.flatjson, &self.document_collapsed);
         let recovered = self.visible_ancestor(self.focused_node);
-        if recovered != self.focused_node {
+        let anchor_visible = self
+            .visible
+            .iter()
+            .any(|line| line.absolute == self.absolute_anchor_line);
+        if recovered != self.focused_node || !anchor_visible {
             self.focus(recovered);
         }
         self.top_visible_line = previous_top_absolute
@@ -745,6 +749,11 @@ impl JsonViewer {
             self.flatjson.expand(node);
             self.expanded_arrays.insert(node);
             self.rebuild_layout();
+        } else if self.is_document_root(node)
+            && !self.line_is_collapsible(self.focused_line_index())
+        {
+            // Scalar and empty sequence roots have a selectable body line but
+            // no parsed collapse state; only their generated header collapses.
         } else {
             self.collapse(node, !self.flatjson[node].is_collapsed());
             self.refresh_projection();
@@ -1001,7 +1010,8 @@ impl JsonViewer {
                         self.collapse(self.focused_node, true);
                         self.refresh_projection();
                     }
-                } else if self.layout.nodes[self.focused_node].collapsible
+                } else if self.line_is_collapsible(self.focused_line_index())
+                    && self.layout.nodes[self.focused_node].collapsible
                     && self.flatjson[self.focused_node].is_expanded()
                 {
                     self.collapse(self.focused_node, true);
@@ -1406,7 +1416,27 @@ mod tests {
             assert!(!v.focused_document_header());
             v.perform_action(action);
             assert!(roots.iter().all(|&root| v.is_document_collapsed(root)));
+            assert_eq!(v.focused_line_index(), 0);
+            assert_eq!(
+                v.absolute_anchor_line,
+                v.document_header_absolute(roots[0]),
+                "collapsing the document rows recovers the hidden body anchor"
+            );
         }
+    }
+
+    #[test]
+    fn scalar_and_empty_sequence_bodies_do_not_mutate_parsed_collapse() {
+        let mut v = viewer("1 {}");
+        let first = v.document_roots()[0];
+        v.perform_action(Action::MoveDown(1));
+        assert!(!v.focused_document_header());
+
+        v.perform_action(Action::ToggleCollapsed);
+        v.perform_action(Action::MoveLeft);
+        assert!(!v.flatjson[first].is_collapsed());
+        assert!(!v.is_document_collapsed(first));
+        assert_eq!(v.focused_node, first);
     }
 
     #[test]
