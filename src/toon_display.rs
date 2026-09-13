@@ -755,6 +755,7 @@ impl Layout {
             } else {
                 preview.text = format!("{header} {}", preview.text);
             }
+            truncate_preview(&mut preview, 256);
         }
         if preview.text.is_empty() {
             match flat[node].value {
@@ -1851,6 +1852,29 @@ mod tests {
         let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
 
         assert_eq!(visible[0].line.text, "--- (1 of 2) [2]: 10,20");
+    }
+
+    #[test]
+    fn collapsed_array_document_preview_stays_bounded_after_header() {
+        let input = format!(
+            "[{}] 0",
+            (0..200)
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let flat = json(&input);
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
+
+        assert!(visible[0].line.text.len() <= "--- (1 of 2) ".len() + 256);
     }
 
     #[test]
