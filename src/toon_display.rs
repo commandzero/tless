@@ -133,6 +133,7 @@ pub struct Layout {
     pub warnings: Vec<Warning>,
     own_warnings: Vec<Vec<WarningKind>>,
     previews: Vec<Preview>,
+    document_previews: Vec<Preview>,
     keys: Vec<Option<String>>,
     scalars: Vec<String>,
     line_containers: Vec<Vec<usize>>,
@@ -219,6 +220,7 @@ impl Layout {
             warnings: vec![],
             own_warnings: vec![vec![]; n],
             previews: vec![Preview::default(); n],
+            document_previews: vec![Preview::default(); n],
             keys: vec![None; n],
             scalars: vec![String::new(); n],
             line_containers: vec![],
@@ -356,7 +358,7 @@ impl Layout {
                 let end = result.nodes[root].extent.end;
                 result.nodes[root].line = header;
                 result.nodes[root].extent = header..end;
-                result.previews[root] = result.document_preview(flat, root);
+                result.document_previews[root] = result.document_preview(flat, root);
             }
         }
         for i in 0..n {
@@ -785,7 +787,10 @@ impl Layout {
                         quote_json(self.keys[node].as_deref().unwrap_or(""))
                     )
                 } else if let OptionIndex::Index(parent) = flat[node].parent {
-                    if flat[parent].is_array() && self.nodes[node].line == self.nodes[parent].line {
+                    if flat[parent].is_array()
+                        && self.nodes[node].line == line
+                        && self.nodes[parent].body_line == line
+                    {
                         format!(" at [{}]", flat[node].index_in_parent)
                     } else {
                         String::new()
@@ -943,8 +948,12 @@ impl Layout {
                 } else {
                     false
                 };
-                if !inline_rendered && !self.previews[node].text.is_empty() {
-                    let preview = &self.previews[node];
+                let preview = if document {
+                    &self.document_previews[node]
+                } else {
+                    &self.previews[node]
+                };
+                if !inline_rendered && !preview.text.is_empty() {
                     let start = line.text.len();
                     let rendered = format!(" {}", preview.text);
                     line.text.push_str(&rendered);
@@ -1486,6 +1495,39 @@ mod tests {
                 .is_empty()
         );
     }
+
+    #[test]
+    fn sequence_root_body_preview_keeps_source_mapping() {
+        let mut flat = json(r#"[{"needle":1},{"other":2}] {}"#);
+        let root = flat
+            .0
+            .iter()
+            .enumerate()
+            .find(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .unwrap();
+        let layout = Layout::canonical(&flat);
+        flat.collapse(root);
+        let line = layout
+            .project_with_documents(&flat, &HashSet::new())
+            .into_iter()
+            .find(|line| line.absolute == layout.nodes[root].body_line)
+            .unwrap()
+            .line;
+        let preview = line
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::Preview)
+            .unwrap();
+        let source_start = flat.1.find("needle").unwrap();
+        assert!(preview.source.is_some());
+        assert!(
+            !preview
+                .matching_ranges(&(source_start..source_start + 6))
+                .is_empty()
+        );
+    }
+
     #[test]
     fn duplicate_decoded_keys_keep_identity() {
         let flat = json(r#"{"box":{"a":1,"\u0061":2}}"#);
@@ -1641,6 +1683,15 @@ mod tests {
                 .spans
                 .iter()
                 .all(|span| span.source.is_none() || span.role != TokenRole::Preview)
+        );
+    }
+
+    #[test]
+    fn sequence_root_array_warnings_keep_element_locators() {
+        let flat = yaml("---\n[.inf, 7]\n---\n7\n");
+        assert_eq!(
+            text(&flat),
+            "--- (1 of 2)\n[2]: .inf,7  # WARN Non-finite number at [0]\n--- (2 of 2)\n7"
         );
     }
 

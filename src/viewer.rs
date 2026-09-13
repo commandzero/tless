@@ -963,7 +963,16 @@ impl JsonViewer {
                     } else if let OptionIndex::Index(child) =
                         self.flatjson[self.focused_node].first_child()
                     {
-                        if self.layout.nodes[self.focused_node].inline_array {
+                        let body_collapsed = self.flatjson[self.focused_node].is_collapsed();
+                        if body_collapsed {
+                            self.flatjson.expand(self.focused_node);
+                        }
+                        if body_collapsed && self.layout.nodes[self.focused_node].inline_array {
+                            self.expanded_arrays.insert(self.focused_node);
+                            self.rebuild_layout();
+                        } else if body_collapsed {
+                            self.refresh_projection();
+                        } else if self.layout.nodes[self.focused_node].inline_array {
                             self.expanded_arrays.insert(self.focused_node);
                             self.rebuild_layout();
                         }
@@ -1041,12 +1050,18 @@ impl JsonViewer {
                 let line = line.min(self.layout.lines.len() - 1);
                 let node = self.layout.lines[line].owner;
                 if make_visible {
-                    self.reveal(node, None);
-                    if let Some(index) = self
+                    let visible_index = self
                         .visible
                         .iter()
-                        .position(|visible| visible.absolute == line)
-                    {
+                        .position(|visible| visible.absolute == line);
+                    if visible_index.is_none() {
+                        self.reveal(node, None);
+                    }
+                    if let Some(index) = visible_index.or_else(|| {
+                        self.visible
+                            .iter()
+                            .position(|visible| visible.absolute == line)
+                    }) {
                         self.focus_line(index, false);
                     }
                 } else {
@@ -1411,6 +1426,31 @@ mod tests {
         assert!(v.is_document_collapsed(roots[0]));
         assert_eq!(v.focused_node, roots[0]);
         assert_eq!(v.focused_line_index(), 0);
+
+        v.perform_action(Action::JumpTo {
+            line: first_header,
+            make_visible: true,
+        });
+        assert!(v.is_document_collapsed(roots[0]));
+        assert_eq!(v.focused_line_index(), 0);
+    }
+
+    #[test]
+    fn header_right_reopens_a_collapsed_root_array_body() {
+        let mut v = viewer("[1,2] {}");
+        let first = v.document_roots()[0];
+
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[first].is_collapsed());
+
+        v.perform_action(Action::FocusTop);
+        assert!(v.focused_document_header());
+        v.perform_action(Action::MoveRight);
+        assert!(!v.flatjson[first].is_collapsed());
+        assert_eq!(path(&v), "[0]");
     }
 
     #[test]
