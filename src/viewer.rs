@@ -1669,7 +1669,10 @@ mod tests {
             true,
         );
         assert_eq!(v.visible.len(), 3);
-        assert_eq!(v.visible[1].line.text, "  - .inf  # WARN Non-finite number");
+        assert_eq!(
+            v.visible[1].line.text,
+            "  - .inf  # WARN Non-finite number at [0]"
+        );
         assert_eq!(v.layout.warnings.len(), 1);
         v.perform_action(Action::MoveLeft);
         assert!(
