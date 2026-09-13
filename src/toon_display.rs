@@ -748,6 +748,14 @@ impl Layout {
     /// lines and source ranges.
     fn document_preview(&self, flat: &FlatJson, node: usize) -> Preview {
         let mut preview = self.preview(flat, node);
+        if flat[node].is_array() || matches!(flat[node].value, Value::EmptyArray) {
+            let header = format!("[{}]:", self.nodes[node].entry_count);
+            if preview.text.is_empty() {
+                preview.text = header;
+            } else {
+                preview.text = format!("{header} {}", preview.text);
+            }
+        }
         if preview.text.is_empty() {
             match flat[node].value {
                 Value::EmptyObject => preview.text.push_str("{}"),
@@ -1828,6 +1836,23 @@ mod tests {
         assert!(visible[0].line.text.len() <= "--- (1 of 2) ".len() + 256);
         assert!(visible[0].line.text.ends_with('…'));
     }
+
+    #[test]
+    fn collapsed_array_document_preview_keeps_toon_header() {
+        let flat = json("[10,20] {}");
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
+
+        assert_eq!(visible[0].line.text, "--- (1 of 2) [2]: 10,20");
+    }
+
     #[test]
     fn shared_header_mapping_and_table_rows_remain_visible() {
         let mut flat = yaml("- a: .inf\n  b: 2\n- a: .nan\n  b: 4\n");

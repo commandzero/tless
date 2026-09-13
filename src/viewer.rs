@@ -425,10 +425,12 @@ impl JsonViewer {
     }
 
     fn rebuild_layout(&mut self) {
-        let top_node = self
-            .visible
-            .get(self.top_logical_line())
-            .map(|line| line.line.owner);
+        let top_line = self.visible.get(self.top_logical_line());
+        let top_node = top_line.map(|line| line.line.owner);
+        let top_document_body = top_line.is_some_and(|line| {
+            self.is_document_root(line.line.owner)
+                && !self.is_document_header(self.top_logical_line())
+        });
         let focused_node = self.focused_node;
         let focused_document_body =
             self.is_document_root(focused_node) && !self.focused_document_header();
@@ -449,7 +451,9 @@ impl JsonViewer {
         }
         if let Some(top_node) = top_node {
             let top = self.flatjson.first_visible_ancestor(top_node);
-            let anchor = if self.is_document_root(top) {
+            let anchor = if top_document_body && self.is_document_root(top) {
+                self.layout.nodes[top].body_line
+            } else if self.is_document_root(top) {
                 self.document_header_absolute(top)
             } else {
                 self.layout.nodes[top].line
@@ -2448,6 +2452,22 @@ mod tests {
         v.refresh_projection();
 
         assert_eq!(v.visible[v.top_visible_line].absolute, tail_absolute);
+    }
+
+    #[test]
+    fn projection_reflow_preserves_a_sequence_body_at_the_top() {
+        let mut v = viewer("1 2");
+        let root = v.document_roots()[0];
+        let body = v.layout.nodes[root].body_line;
+        v.top_visible_line = v
+            .visible
+            .iter()
+            .position(|line| line.absolute == body)
+            .unwrap();
+
+        v.rebuild_layout();
+
+        assert_eq!(v.visible[v.top_visible_line].absolute, body);
     }
 
     #[test]
