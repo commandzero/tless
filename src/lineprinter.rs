@@ -298,7 +298,10 @@ fn grapheme_style(
     if let Some(span) = span {
         let annotation = matches!(
             span.role,
-            TokenRole::Preview | TokenRole::Count | TokenRole::Warning
+            TokenRole::Preview
+                | TokenRole::Count
+                | TokenRole::DocumentPosition
+                | TokenRole::Warning
         );
         let quoted_key_delimiter = matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition)
             && line.text[span.range.clone()].starts_with('"')
@@ -322,6 +325,7 @@ fn grapheme_style(
                 TokenRole::Warning => StyleRole::Message(crate::theme::MessageSeverity::Warn),
                 TokenRole::Preview => StyleRole::PreviewText,
                 TokenRole::Count => StyleRole::PreviewCount,
+                TokenRole::DocumentPosition => StyleRole::DocumentPosition,
             }
         };
         let focus = if focused.contains(&span.node) && !annotation {
@@ -367,7 +371,9 @@ fn grapheme_style(
                     TokenRole::Boolean => crate::terminal::BLUE,
                     TokenRole::Null => crate::terminal::WHITE,
                     TokenRole::Warning => crate::terminal::YELLOW,
-                    TokenRole::Count | TokenRole::Preview => crate::terminal::LIGHT_BLACK,
+                    TokenRole::Count | TokenRole::Preview | TokenRole::DocumentPosition => {
+                        crate::terminal::LIGHT_BLACK
+                    }
                     TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
                         crate::terminal::LIGHT_BLACK
                     }
@@ -922,6 +928,11 @@ mod tests {
         let fitted = fit_annotations(&projected[0].line, 24);
         assert!(fitted.text.starts_with("--- (1 of 2)"));
         assert!(fitted.text.contains('…'));
+        assert_eq!(
+            fitted.spans[1].role,
+            TokenRole::DocumentPosition,
+            "the sequence position is its own annotation rather than preview text"
+        );
         assert!(
             fitted
                 .spans

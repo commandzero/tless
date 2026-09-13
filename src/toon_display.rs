@@ -20,6 +20,7 @@ pub enum TokenRole {
     Warning,
     Preview,
     Count,
+    DocumentPosition,
 }
 #[derive(Clone, Debug)]
 pub struct Span {
@@ -342,7 +343,7 @@ impl Layout {
                 line.token(
                     &format!(" ({} of {})", position + 1, roots.len()),
                     root,
-                    TokenRole::Count,
+                    TokenRole::DocumentPosition,
                     None,
                 );
                 result.lines.push(line);

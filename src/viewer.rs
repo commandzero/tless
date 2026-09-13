@@ -141,6 +141,17 @@ impl JsonViewer {
                 .is_some_and(Option::is_some)
     }
 
+    /// Whether a visible line is the source-less body row paired with a
+    /// generated sequence document header.
+    pub fn is_document_body(&self, logical_line: usize) -> bool {
+        let Some(visible) = self.visible.get(logical_line) else {
+            return false;
+        };
+        self.is_sequence()
+            && !self.is_document_header(logical_line)
+            && self.is_document_root(visible.line.owner)
+    }
+
     fn is_navigable_line(&self, logical_line: usize) -> bool {
         self.visible
             .get(logical_line)

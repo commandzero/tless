@@ -255,6 +255,12 @@ impl ScreenWriter {
             let line = &viewer.visible[index].line;
             let (node, source) =
                 lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
+            if source.is_none() && viewer.is_document_body(index) {
+                return Action::JumpTo {
+                    line: viewer.visible[index].absolute,
+                    make_visible: false,
+                };
+            }
             return Action::FocusNodeAt {
                 node,
                 source,
@@ -282,7 +288,14 @@ impl ScreenWriter {
                 std::borrow::Cow::Borrowed(line)
             };
             let (node, source) = lp::hit_test(&fitted, column);
-            Action::FocusNode { node, source }
+            if source.is_none() && viewer.is_document_body(index) {
+                Action::JumpTo {
+                    line: viewer.visible[index].absolute,
+                    make_visible: false,
+                }
+            } else {
+                Action::FocusNode { node, source }
+            }
         }
     }
 
