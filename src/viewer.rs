@@ -1060,6 +1060,10 @@ impl JsonViewer {
             Action::FocusTop => {
                 let root = self.document_roots().first().copied().unwrap_or(0);
                 self.focus(root);
+                if self.is_document_root(root) {
+                    self.absolute_anchor_line = self.document_header_absolute(root);
+                    self.desired_depth = self.flatjson[root].depth;
+                }
                 self.top_visible_line = 0;
                 self.top_physical_row = 0;
             }
