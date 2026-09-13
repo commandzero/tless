@@ -5,7 +5,6 @@
 #![allow(clippy::int_plus_one)]
 
 extern crate lazy_static;
-extern crate libc_stdhandle;
 
 use std::fs::File;
 use std::io;
@@ -92,11 +91,11 @@ fn main() {
     #[cfg(not(feature = "colorscheme"))]
     let theme = Theme::default();
 
-    // We use freopen to remap /dev/tty to STDIN so that rustyline works when
-    // JSON input is provided via STDIN. rustyline gets initialized when we
-    // create the App, so by putting this before creating the app, we make
-    // sure rustyline gets the /dev/tty input.
-    input::remap_dev_tty_to_stdin();
+    // Restore keyboard input before Rustyline initializes and raw mode starts.
+    if let Err(error) = input::remap_dev_tty_to_stdin() {
+        eprintln!("Unable to open terminal input: {error}");
+        std::process::exit(1);
+    }
 
     let raw_stdout = MouseTerminal::from(HideCursor::from(
         io::stdout()

@@ -46,7 +46,7 @@ and membership in origin/main. It runs preflight and minimum-compiler tests befo
 
 Each target runs native feature tests, builds with locked dependencies and Rust 1.97.1,
 extracts its archive, and checks version, JSON, TOON, and input-limit behavior.
-The supported targets and OS floors are in README.md.
+The supported targets and OS floors are in the [platform contract](contributing.md#platform-contract).
 
 Archives use `tless-vX.Y.Z-<rust-target-triple>.tar.gz`.
 Each has a SHA-256 sidecar containing the hash and archive basename.

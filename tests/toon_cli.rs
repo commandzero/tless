@@ -46,6 +46,12 @@ mod terminal_commands {
     }
 
     #[test]
+    fn piped_input_with_controlling_pty_restores_interactive_input() {
+        let output = piped_session(r#"{"a":1}"#, "q");
+        assert!(strip_styles(&output).contains("a: 1"));
+    }
+
+    #[test]
     fn terminal_peer_answers_cursor_requests_across_read_boundaries() {
         let request = b"prefix\x1b[6nsuffix";
         for split in 0..=request.len() {
@@ -60,23 +66,39 @@ mod terminal_commands {
         session_with_format(input, commands, None)
     }
 
+    fn piped_session(input: &str, commands: &str) -> String {
+        session_with_source(input, commands, None, 120, true)
+    }
+
     fn session_with_format(input: &str, commands: &str, format: Option<&str>) -> String {
         let format_arg = format.map(|format| format!("--input-format={format}"));
         session_with_width(input, commands, format_arg.as_deref(), 120)
     }
 
     fn session_with_width(input: &str, commands: &str, format: Option<&str>, width: u16) -> String {
+        session_with_source(input, commands, format, width, false)
+    }
+
+    fn session_with_source(
+        input: &str,
+        commands: &str,
+        format: Option<&str>,
+        width: u16,
+        piped: bool,
+    ) -> String {
         let path = std::env::temp_dir().join(format!(
             "tless-pty-{}-{}.json",
             std::process::id(),
             NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
-        let mut input_file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .unwrap();
-        input_file.write_all(input.as_bytes()).unwrap();
+        if !piped {
+            let mut input_file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            input_file.write_all(input.as_bytes()).unwrap();
+        }
         let mut master = -1;
         let mut slave = -1;
         let mut size = libc::winsize {
@@ -107,12 +129,18 @@ mod terminal_commands {
         if let Some(format) = format {
             command.arg(format);
         }
+        if !piped {
+            command.arg(&path);
+        }
         command
-            .arg(&path)
             .env("TERM", "xterm-256color")
-            .stdin(slave.try_clone().unwrap())
             .stdout(slave.try_clone().unwrap())
             .stderr(slave.try_clone().unwrap());
+        if piped {
+            command.stdin(Stdio::piped());
+        } else {
+            command.stdin(slave.try_clone().unwrap());
+        }
         unsafe {
             command.pre_exec(move || {
                 if libc::setsid() == -1 || libc::ioctl(slave_fd, libc::TIOCSCTTY as _, 0) == -1 {
@@ -122,6 +150,14 @@ mod terminal_commands {
             });
         }
         let mut child = command.spawn().unwrap();
+        if piped {
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+        }
         drop(command);
         drop(slave);
         assert_ne!(
@@ -148,7 +184,12 @@ mod terminal_commands {
                     for _ in 0..cursor_requests(&output, &mut scanned_cursor_requests) {
                         master.write_all(b"\x1b[1;1R").unwrap();
                     }
-                    if !sent && String::from_utf8_lossy(&output).contains("tless-pty-") {
+                    let ready = if piped {
+                        output.windows(6).any(|bytes| bytes == b"\x1b[1;1H")
+                    } else {
+                        String::from_utf8_lossy(&output).contains("tless-pty-")
+                    };
+                    if !sent && ready {
                         sent = true;
                         deadline = Instant::now() + Duration::from_secs(10);
                     }
@@ -223,7 +264,9 @@ mod terminal_commands {
             std::thread::sleep(Duration::from_millis(5));
         }
         let status = child.wait().unwrap();
-        std::fs::remove_file(path).unwrap();
+        if !piped {
+            std::fs::remove_file(path).unwrap();
+        }
         assert!(status.success(), "{}", String::from_utf8_lossy(&output));
         String::from_utf8(output).unwrap()
     }

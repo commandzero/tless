@@ -8,30 +8,30 @@ generated: { by: codex/gpt-6, at: 2026-09-11T00:29:19Z }
 
 # Contributing
 
-CommandZero maintains tless as an independently released fork of jless.
-Changes can diverge from upstream conventions while preserving its license and attribution.
+CommandZero maintains and releases tless as a fork of jless. We can depart from
+upstream conventions, but must preserve the upstream license and attribution.
 
 ## Standards and scope
 
-Use the shared [repo-man bundle](../../repo-man/index.md).
-Clone CommandZero/repo-man beside this checkout if that link is unavailable.
-The user-level copy at `~/.agents/memory/repo-man/` is also an accepted source
-for this workspace when the sibling checkout is unavailable.
-This repository adopts its applicable Rust, Bash, CLI, preflight, updates,
-versioning, and release guidance, including draft recommendations.
-The pending TUI and release-target documents do not provide complete requirements.
-The README's platform and terminal contract supplies this repository's current scope.
+Follow the applicable Rust, Bash, CLI, preflight, updates, versioning, and release
+guidance in the shared [repo-man bundle](../../repo-man/index.md), including its
+draft recommendations. If the link is unavailable, clone CommandZero/repo-man
+beside this checkout or use `~/.agents/memory/repo-man/`.
+The TUI and release-target guidance is incomplete. Use the platform contract
+documented below and the README's user-facing guidance to determine what tless supports.
 
-One application crate is sufficient. Keep codec integration behind the TOON module.
-Existing Unix terminal FFI uses unsafe code; retain small, reviewed boundaries and
-terminal tests instead of imposing an incompatible blanket unsafe-code prohibition.
-Do not remove behavior tests because a type check passes.
+Keep one application crate and put codec integration in the TOON module.
+Use nix wrappers for Unix terminal calls and borrowed or owned file descriptors.
+Keep any unsafe code in test setup small and document its safety requirements.
+Test terminal behavior. Passing a type check does not replace behavior tests.
 
 ## Local checks
 
-Install rustup, Rust 1.97.1 with rustfmt and Clippy, ShellCheck, actionlint 1.7.12, okf 0.2.7, Node.js 20.19 or newer, and OpenSpec 1.11.0.
-Linux clipboard builds use arboard's Rust X11 backend and need no libxcb development packages.
-Scripts target Bash 3.2 and use language-native tools without requiring RTK.
+Install rustup and Rust 1.97.1 with rustfmt and Clippy. You also need ShellCheck,
+actionlint 1.7.12, okf 0.2.7, Node.js 20.19 or newer, and OpenSpec 1.11.0.
+Linux clipboard builds use arboard's Rust X11 backend and need no libxcb
+development packages. Scripts target Bash 3.2 and use the language's own tools.
+They do not require RTK.
 
 ```sh
 rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
@@ -41,101 +41,128 @@ rustup toolchain install 1.87.0 --profile minimal
 TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test
 ```
 
-The entry point runs formatting, all-target Clippy for minimal and combined features,
-ShellCheck, workflow validation, release and OpenSpec gate regression tests, the PR-scoped OpenSpec gate, and all 4 feature profiles.
-CI calls this same entry point. It runs inexpensive lint once, Linux minimum-compiler
-coverage, and macOS terminal tests. Release preparation adds the full native platform matrix.
-There is no root library target, so root library doctests do not apply.
+Preflight checks formatting, runs all-target Clippy for minimal and combined
+features, and validates shell scripts and workflows. It also runs release and
+OpenSpec gate regression tests, the OpenSpec completion check for the PR, and
+the feature-profile tests.
 
-Tests use disposable files and isolated pseudoterminals.
-A terminal-permission failure must be rerun with terminal access; do not skip it.
-Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing a release.
-Documentation-only edits can use `scripts/validate-docs.sh` locally. It validates
-the complete docs bundle with pinned okf 0.2.7. CI calls this same check through
-preflight, including on documentation-only and workflow changes.
+CI uses the same script. It runs lint once, tests the minimum compiler on Linux,
+and runs terminal tests on macOS. Release checks cover every supported platform.
+The root crate has no library target, so it has no library doctests.
+
+Tests use disposable files and isolated pseudoterminals. If a test fails because
+it lacks terminal access, rerun it with access. Do not skip it.
+Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing.
+
+For documentation-only edits, run `scripts/validate-docs.sh` locally. It validates
+the complete docs bundle with okf 0.2.7. CI runs this check through preflight,
+including for documentation-only and workflow changes.
 
 ## Pull requests
 
-Use Conventional Commit PR titles, for example `fix(cli): report input errors on stderr`.
+Use Conventional Commit PR titles, such as `fix(cli): report input errors on stderr`.
 Allowed types are feat, fix, docs, refactor, perf, test, build, ci, chore, and revert.
-Use a scope when it helps and `!` for a breaking change.
-Squash merge into main after the `required` CI check and maintainer review.
-Resolve review conversations. Temporary branch commits need not follow the convention.
-Workflow changes trigger the same checks. Dependabot maintains action pins and dependencies.
+Add a scope when it helps and `!` for a breaking change. Temporary branch commits
+need not follow this convention.
 
-Describe behavior changes and validation. Update the Unreleased changelog for notable
-user effects, including upgrade instructions for breaks. Pure maintenance does not
-require a changelog entry. Preserve old upstream commit and release history.
+Describe behavior changes and how you checked them. Add notable user-facing
+changes to the Unreleased changelog, with upgrade instructions for breaking
+changes. Pure maintenance needs no changelog entry. Preserve upstream commit and
+release history.
+
+Resolve review conversations, pass the `required` CI check, and get maintainer
+review before squash merging into main. Workflow changes run the same checks.
+Dependabot maintains action pins and dependencies.
 
 ## OpenSpec completion gate
 
-OpenSpec planning artifacts live under `openspec/`, outside the `docs/` OKF bundle.
-Run all OpenSpec CLI commands with `OPENSPEC_TELEMETRY=0`.
-Planning workflows create artifacts without implementing their tasks.
+Keep OpenSpec planning artifacts in `openspec/`, outside the `docs/` OKF bundle.
+Run OpenSpec commands with `OPENSPEC_TELEMETRY=0`. Planning workflows create
+artifacts but do not implement their tasks.
 
-Before an associated implementation PR merges:
+Before merging an implementation PR associated with an OpenSpec change:
 
-1. Complete and verify the change's implementation tasks.
-2. Synchronize its delta requirements into main specs and archive its artifacts.
-   Deleting an active change directory alone does not satisfy this gate.
-3. Pass native OpenSpec validation for the affected changes and specs, including
-   archived-task validation, using the pinned CLI selected during implementation.
-4. Review delta-to-main-spec correspondence explicitly. Archive presence and syntax
-   validation alone do not prove synchronization or implementation correctness.
-5. Run a PR-scoped completion check through one local entry point shared with CI.
-   Select associated changes from added, edited, deleted, and renamed Git paths,
-   plus explicit associations when artifacts are absent from the PR diff.
+1. Complete and verify its implementation tasks.
+2. Apply its delta requirements to the main specs and archive its artifacts.
+   Deleting the active change directory does not count as archiving.
+3. Validate the affected changes, specs, and archived tasks with the pinned
+   OpenSpec CLI used during implementation.
+4. Compare every delta with the main specs. Check additions, modifications,
+   removals, renames, and scenarios. Syntax validation and an archive directory
+   do not establish that the specs match the change or the implementation.
+5. Run the PR's completion check. It selects changes from added, edited, deleted,
+   and renamed Git paths, plus associations declared in the PR description.
    Unrelated active changes must not block the PR.
 
-Run the committed-head check locally with the target branch fetched:
+Commit your changes and fetch the target branch before running the check:
 
 ```sh
 OPENSPEC_BASE=origin/main OPENSPEC_PR_BODY="$(cat /tmp/pr-description.md)" scripts/openspec-check.sh
 ```
 
-Preflight calls this same entry point, and CI supplies the PR target commit and body.
-The default local target is `origin/main`; selection compares its merge base with
-committed `HEAD`. Commit changes before running the gate. Both rename endpoints
-and added, edited, or deleted active/archive paths select changes. Unrelated active
-changes and historical archives are excluded. No associated changes reports a
-successful not-applicable result.
+Preflight calls this script too. CI supplies the PR's target commit and body.
+Locally, the target defaults to `origin/main`. The script compares committed
+`HEAD` with the merge base of the target branch. It checks both paths of a rename
+and changes to active or archived artifacts. It excludes unrelated active
+changes and historical archives. If no changes are associated with the PR, it
+reports that the check does not apply.
 
-For implementation whose artifacts are absent from the diff, include one line per
-associated change in the PR description:
+Declare changes whose artifacts are absent from the diff in the PR description.
+Every selected change also needs a synchronization review statement:
 
 ```text
 OpenSpec-Change: toon-only-rendering
 OpenSpec-Sync-Reviewed: toon-only-rendering
 ```
 
-The second field is required for every selected change. Add it only after reviewing
-all archived additions, modifications, removals, renames, and scenarios against
-current main specs. Explain any change without deltas in the PR description and use the native
-`skip_specs: true` metadata marker.
-Maintainer review must confirm this statement before merging; CI records the
-statement, rather than proving semantic synchronization. Already-synchronized main
-specs need no artificial edit. Missing statements fail, including archives produced
-with skipped synchronization. Repeat both fields for multiple changes. Artifact-free
-implementation requires the first field; the gate cannot infer undisclosed associations.
+Repeat these fields for each change. Add `OpenSpec-Sync-Reviewed` only after
+comparing its archived deltas with the current main specs. A maintainer must
+confirm that review before merging. CI checks for the statement but cannot judge
+whether the specs match. Missing review statements fail the check, including
+when archiving skipped synchronization. Specs that already match need no edit.
 
-OpenSpec 1.11.0 supplies native strict change/spec validation and `validate --archived`
-for task completion. The gate stages only associated archives and affected main specs
-from committed `HEAD`. It validates archived deltas through the native change command,
-then invokes the native archived-task and main-spec validators. It preserves each
-base active artifact by path and requires proposal and task files. The gate performs
-no automatic synchronization or archival. Native validators own syntax/task semantics;
-the repository adds selection, preservation, archival, and explicit review policy.
-Run `scripts/test-openspec.sh` for fixture coverage with the real pinned CLI.
+For a change without deltas, explain why in the PR description and set
+`skip_specs: true` in its metadata. Implementation without artifacts still needs
+an `OpenSpec-Change` declaration so the gate can find its associated change.
+
+The gate reads committed `HEAD` and stages only the associated archives and
+affected main specs. It validates archived deltas with OpenSpec's change
+validator, checks task completion with `validate --archived`, and validates the
+main specs. All validation uses OpenSpec 1.11.0 in strict mode.
+
+The repository's checks require proposal and task files and preserve each
+artifact from the base change at its relative path in the archive. They enforce
+change selection, preservation, archival, and review requirements. OpenSpec
+handles syntax and task validation. The gate does not synchronize or archive
+anything for you. Run `scripts/test-openspec.sh` to test it against fixtures with
+the pinned CLI.
 
 ## Compatibility and release ownership
 
-The CommandZero maintainers own releases and the public CLI/TUI contract.
-During 0.x, incompatible changes use the next minor version; compatible fixes use patches.
-Compiler minimum increases also use a minor version and need dependency/feature validation.
-The manifest is the version source; release checks compare it with the lockfile, tag,
-changelog, and extracted binary. Tags use `vX.Y.Z` or `vX.Y.Z-rc.N`.
+CommandZero maintainers own releases and the public CLI/TUI contract.
+During 0.x, use the next minor version for incompatible changes and a patch
+version for compatible fixes. Raising the minimum Rust version also requires a
+minor release and dependency and feature validation.
 
-The independent tless release history starts at 0.1.0. It changes the executable name,
-built-in TOON support, input limit, and tested binary platform floors together.
-The upstream jless package, tags, and download URLs remain unchanged.
-Recheck consumers before publication, then follow [the release checklist](release-checklist.md).
+The manifest defines the version. Release checks compare it with the lockfile,
+tag, changelog, and extracted binary. Tags use `vX.Y.Z` or `vX.Y.Z-rc.N`.
+
+The tless release history starts at 0.1.0, which introduced the executable name,
+TOON support, input limit, and tested platform minimums. The upstream jless
+package, tags, and download URLs remain unchanged. Recheck consumers before
+publication and follow [the release checklist](release-checklist.md).
+
+## Platform contract
+
+| Target | Release test host and support floor |
+| --- | --- |
+| aarch64-apple-darwin | Native macOS 15 arm64 |
+| x86_64-apple-darwin | Native macOS 15 Intel |
+| x86_64-unknown-linux-gnu | Native Ubuntu 24.04, glibc 2.39 |
+| aarch64-unknown-linux-gnu | Native Ubuntu 24.04 arm64, glibc 2.39 |
+
+Before publishing a release, run native tests and smoke-test the extracted binary
+on all four hosts. Record the results for that release.
+Other Linux distributions and older operating systems are unverified.
+Windows and musl are unsupported. Linux clipboard access requires a working X11
+or XWayland display session.
