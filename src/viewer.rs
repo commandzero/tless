@@ -508,10 +508,12 @@ impl JsonViewer {
 
     fn focus(&mut self, node: usize) {
         self.focus_byte_range = None;
+        let requested = normalize_node(&self.flatjson, node);
         self.focused_node = self.visible_ancestor(node);
         if self.is_document_root(self.focused_node) {
             let header = self.document_header_absolute(self.focused_node);
             let body_anchor = self.flatjson[self.focused_node].is_collapsed()
+                && !self.is_document_root(requested)
                 && !self.is_document_collapsed(self.focused_node)
                 && self.layout.nodes[self.focused_node].body_line != header;
             self.absolute_anchor_line = if body_anchor {
@@ -1522,6 +1524,26 @@ mod tests {
         v.perform_action(Action::MoveRight);
         assert!(!v.flatjson[first].is_collapsed());
         assert_eq!(path(&v), "[0]");
+    }
+
+    #[test]
+    fn structural_root_focus_stays_on_document_header_after_body_collapse() {
+        let mut v = viewer("[1,2] {}");
+        let root = v.document_roots()[0];
+
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[root].is_collapsed());
+        assert!(!v.is_document_collapsed(root));
+
+        // Clicking the generated row's arrow must target the document row,
+        // while retaining the parsed body collapse state.
+        v.perform_action(Action::ClickArrow(1));
+        assert!(v.is_document_collapsed(root));
+        assert!(v.flatjson[root].is_collapsed());
+        assert!(v.focused_document_header());
     }
 
     #[test]
