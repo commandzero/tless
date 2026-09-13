@@ -10,8 +10,8 @@ mod vim;
 #[cfg(feature = "colorscheme")]
 use crate::terminal::LIGHT_BLUE;
 use crate::terminal::{
-    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, LINE_HIGHLIGHT, MAGENTA, RED,
-    Style, WHITE, YELLOW,
+    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_WHITE, LIGHT_YELLOW, LINE_HIGHLIGHT,
+    MAGENTA, RED, Style, WHITE, YELLOW,
 };
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
@@ -654,7 +654,10 @@ impl Theme {
                 }
             }
             (StyleRole::ArrayIndex, FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style { fg: WHITE, ..style },
+                LegacyTheme::Classic => Style {
+                    fg: LIGHT_WHITE,
+                    ..style
+                },
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => Style {
                     inverted: true,
@@ -972,6 +975,21 @@ mod tests {
         ] {
             assert_eq!(theme.style(role, state), expected, "role: {role:?}");
         }
+    }
+
+    #[test]
+    fn focused_array_counts_match_toon_punctuation() {
+        let theme = Theme::default();
+        let state = StyleState::main().focused();
+
+        assert_eq!(
+            theme.style(StyleRole::ArrayIndex, state),
+            theme.style(StyleRole::Punctuation, state)
+        );
+        assert_eq!(
+            theme.style(StyleRole::ArrayIndex, state),
+            theme.style(StyleRole::PrimitiveTrailingComma, state)
+        );
     }
 
     #[test]
