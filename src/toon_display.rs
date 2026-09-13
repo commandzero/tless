@@ -748,7 +748,7 @@ impl Layout {
     /// lines and source ranges.
     fn document_preview(&self, flat: &FlatJson, node: usize) -> Preview {
         let mut preview = self.preview(flat, node);
-        if flat[node].is_array() || matches!(flat[node].value, Value::EmptyArray) {
+        if flat[node].is_array() {
             let header = format!("[{}]:", self.nodes[node].entry_count);
             if preview.text.is_empty() {
                 preview.text = header;
