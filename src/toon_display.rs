@@ -533,7 +533,10 @@ impl Layout {
                 self.lines.push(line);
             } else {
                 for (ordinal, &child) in kids.iter().enumerate() {
-                    self.render(flat, child, depth + usize::from(list), false);
+                    // A root object in a sequence has no extra indentation;
+                    // list items retain the indentation required by TOON.
+                    let child_depth = if list { depth + 1 } else { depth };
+                    self.render(flat, child, child_depth, false);
                     if list && ordinal == 0 {
                         let first = &mut self.lines[start];
                         // The first object's field occupies the hyphen line; nested content
