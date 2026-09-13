@@ -750,12 +750,13 @@ impl Layout {
         let mut preview = self.preview(flat, node);
         if flat[node].is_array() {
             let header = format!("[{}]:", self.nodes[node].entry_count);
-            if preview.text.is_empty() {
-                preview.text = header;
-            } else {
-                preview.text = format!("{header} {}", preview.text);
+            let contents = std::mem::take(&mut preview.text);
+            preview.source_map.clear();
+            preview_append(&mut preview, &header, None);
+            if !contents.is_empty() {
+                preview_append(&mut preview, " ", None);
+                preview_append(&mut preview, &contents, None);
             }
-            truncate_preview(&mut preview, 256);
         }
         if preview.text.is_empty() {
             match flat[node].value {
@@ -1875,6 +1876,7 @@ mod tests {
         let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
 
         assert!(visible[0].line.text.len() <= "--- (1 of 2) ".len() + 256);
+        assert!(visible[0].line.text.ends_with('…'));
     }
 
     #[test]
