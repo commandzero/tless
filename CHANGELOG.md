@@ -5,6 +5,12 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-13
+
+### Changed
+
+- Replace multiple-root warning separators with selectable, collapsible document rows for every multi-root input. Expanded rows show `--- (i of n)` with no added indentation; collapsed rows add a subdued contents preview, `[` from a top-level field selects its document row, and `]` selects the next row.
+
 ## [0.1.1] - 2026-09-12
 
 ### Added
@@ -12,8 +18,6 @@ Earlier upstream history is preserved below.
 - Add session-only, off-by-default Ctrl+L wrapping for expanded TOON lines. Logical navigation remains line-based while scrolling, paging, and positioning use physical rows, and collapsed previews retain horizontal access.
 
 ### Changed
-
-- Replace multiple-root warning separators with selectable, collapsible document rows for every multi-root input. Expanded rows show `--- (i of n)` with no added indentation; collapsed rows add a subdued contents preview, `[` from a top-level field selects its document row, and `]` selects the next row.
 - Keep status-bar paths black when a theme uses reverse-video styling.
 - Highlight selected lines with xterm color 235 in 256-color builds and a dark-gray fallback in 16-color builds.
 - Color quoted-key delimiters as punctuation while retaining cyan for key text.
@@ -66,7 +70,8 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/CommandZero/tless/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/CommandZero/tless/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/CommandZero/tless/compare/35f1c7686bd096ecce2ce73016dc70191869bb6c...v0.1.0
 
