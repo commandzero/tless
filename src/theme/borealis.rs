@@ -27,6 +27,7 @@ pub(super) fn style(role: StyleRole, state: StyleState, search: SearchState) -> 
         StyleRole::LineNumber
         | StyleRole::Ellipsis
         | StyleRole::PreviewText
+        | StyleRole::DocumentPosition
         | StyleRole::EmptyRowMarker
         | StyleRole::TruncationIndicator => MUTED,
         StyleRole::Message(MessageSeverity::Warn) => WARNING,
@@ -107,6 +108,7 @@ mod tests {
                 assert!(!style.bold);
                 assert!(!style.dimmed);
             }
+            assert_eq!(theme.style(StyleRole::DocumentPosition, state).fg, MUTED);
             assert_eq!(
                 theme
                     .style(StyleRole::Message(MessageSeverity::Error), state)

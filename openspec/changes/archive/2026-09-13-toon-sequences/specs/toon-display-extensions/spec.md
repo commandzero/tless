@@ -1,10 +1,4 @@
-# toon-display-extensions Specification
-
-## Purpose
-
-Preserve parsed data that standard TOON cannot represent faithfully and make each display extension visible through subdued warning comments.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Explicit display extension boundary
 
@@ -22,39 +16,6 @@ The viewer SHALL preserve the values, types, entry occurrences, and order availa
 - **THEN** rendering SHALL preserve the resulting parsed value
 - **AND** it SHALL NOT claim to recover the original input or invent a warning without evidence in the parsed model
 
-### Requirement: Duplicate object entries
-
-The viewer SHALL render every duplicate object entry in encounter order and attach `# WARN Duplicate key` to every occurrence of a repeated decoded key. Escaped spellings of the same key SHALL compare equal. Arrays containing duplicate-key objects SHALL use list form, not tables. Duplicate occurrences SHALL remain distinct navigation and selection targets.
-
-#### Scenario: Two statuses
-
-- **WHEN** parsed JSON contains `{"status":"queued","status":"done"}`
-- **THEN** it SHALL display `status: queued  # WARN Duplicate key` and `status: done  # WARN Duplicate key` on separate lines
-- **AND** a collapsed containing object SHALL count 2 entries
-
-#### Scenario: Equivalent key spellings
-
-- **WHEN** parsed JSON contains keys `"a"` and `"\u0061"` in the same object
-- **THEN** both occurrences SHALL receive the duplicate-key warning
-
-### Requirement: Non-finite and non-canonical numbers
-
-Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, or `.nan`, followed by `# WARN Non-finite number`. Standard finite numeric values SHALL render without rounding or conversion to strings. When canonical decimal rendering would require more than 4096 characters, or a parsed numeric token cannot be expressed by the standard profile without changing its value, the viewer SHALL retain its parsed numeric spelling and append `# WARN Non-canonical number`. Literal strings that resemble these tokens SHALL be quoted.
-
-#### Scenario: Infinity and a similar string
-
-- **WHEN** parsed YAML contains numeric infinity and the string `.inf`
-- **THEN** the number SHALL display as `.inf  # WARN Non-finite number`
-- **AND** the string SHALL display as `".inf"` without a generated warning
-- **AND** neither value SHALL become null
-
-#### Scenario: Exact decimal and large exponent
-
-- **WHEN** parsed JSON contains `0.123456789012345678901` and `1e1000000`
-- **THEN** the decimal SHALL retain all significant digits
-- **AND** the exponent SHALL display as `1e1000000  # WARN Non-canonical number`
-- **AND** rendering SHALL NOT allocate a million-character decimal expansion
-
 ### Requirement: Non-string keys and multiple roots
 
 A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>` with `# WARN Non-string key`. Compact keys SHALL retain their parsed type using JSON-style strings, literals, arrays, and ordered object entries, with the numeric extensions where needed. String keys that could resemble extension syntax SHALL be quoted. Multiple parsed roots SHALL retain their order, each represented by a selectable `---` sequence document row with a subdued position in both states and a contents preview only when collapsed. Multiple roots alone SHALL NOT generate a warning. The viewer SHALL NOT wrap roots in a synthetic array or rename non-string keys into strings.
@@ -71,17 +32,6 @@ A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>
 - **WHEN** parsing yields an object root and a primitive root
 - **THEN** each SHALL retain its root shape under its sequence document row without extra indentation
 - **AND** each document row SHALL be selectable and collapsible and SHALL identify its existing parsed root without introducing a serialized value
-
-### Requirement: Unsupported control-character escapes
-
-String values and string keys containing control characters other than LF, CR, and TAB SHALL use terminal-safe JSON-style `\uXXXX` spellings and receive `# WARN Non-standard string escape`. These spellings SHALL be labeled as display extensions because TOON 3.0 does not support Unicode escape sequences. The warning SHALL also apply to such strings inside compact typed keys. Literal backslash-u text SHALL remain string data without this warning. Input parsing and export behavior SHALL remain unchanged.
-
-#### Scenario: Unsafe control and literal escape text
-
-- **WHEN** parsed JSON contains string values `"\u0001"` and `"\\u0001"`
-- **THEN** the control character SHALL display as `"\u0001"  # WARN Non-standard string escape`
-- **AND** the literal backslash-u value SHALL retain its characters without a generated warning
-- **AND** neither SHALL write a raw control character to the terminal
 
 ### Requirement: Warning placement and collapse
 
@@ -110,14 +60,3 @@ Warnings SHALL be generated annotation spans, separated from preceding content b
 - **WHEN** a string contains `# WARN Duplicate key`
 - **THEN** the renderer SHALL quote and escape that string as data
 - **AND** warning counts SHALL exclude it
-
-### Requirement: Serialization remains separate
-
-Copying a selected value or invoking an existing export SHALL operate on the selected parsed value and SHALL NOT include warning comments, arrows, count annotations, or previews. Existing TOON exports SHALL retain their documented normalization and failure behavior. Help SHALL explicitly state that extended display text is not standard TOON and that standard exports can normalize data differently from the viewer.
-
-#### Scenario: Duplicate export
-
-- **WHEN** a user invokes the existing TOON export on a displayed duplicate-key object
-- **THEN** export SHALL retain its documented last-value-wins behavior
-- **AND** the display SHALL continue to show both entries with warnings
-- **AND** the export SHALL NOT contain generated warning text

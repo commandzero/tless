@@ -49,10 +49,14 @@ impl VimPalette {
                 JsonValueKind::EmptyObject | JsonValueKind::EmptyArray => self.delimiter,
             },
             StyleRole::ObjectKey | StyleRole::FieldDefinition => self.identifier,
-            StyleRole::ArrayIndex | StyleRole::LineNumber => self.linenr,
+            StyleRole::ArrayIndex => self.normal,
+            StyleRole::LineNumber => self.linenr,
             StyleRole::Punctuation | StyleRole::StatusText => self.normal,
             StyleRole::PrimitiveTrailingComma | StyleRole::ContainerDelimiter => self.delimiter,
-            StyleRole::Ellipsis | StyleRole::PreviewText | StyleRole::PreviewCount => self.comment,
+            StyleRole::Ellipsis
+            | StyleRole::PreviewText
+            | StyleRole::PreviewCount
+            | StyleRole::DocumentPosition => self.comment,
             StyleRole::EmptyRowMarker | StyleRole::TruncationIndicator => self.nontext,
             StyleRole::StatusBar | StyleRole::StatusPathBase => self.statusline,
             StyleRole::Message(severity) => match severity {

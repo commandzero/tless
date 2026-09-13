@@ -1,9 +1,9 @@
 ---
 type: Guide
 title: TOON acceptance checks
-description: Automated coverage and manual release acceptance checks.
+description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: codex/gpt-6, at: 2026-09-11T05:42:30Z }
+generated: { by: codex/gpt-5.6-luna, at: 2026-09-13T16:32:02Z }
 ---
 
 # TOON acceptance checks
@@ -78,12 +78,22 @@ release checks above remain separate.
    warning counts, and restoration of descendant collapse states.
 4. Search for a hidden table value and a table field key. Confirm ancestor
    expansion, row identity, header highlighting, and horizontal visibility.
-   Source strings containing `# WARN` must remain ordinary searchable data;
-   generated warning comments must not create search matches.
+   Search inside a collapsed sequence document and confirm that its document
+   row expands to reveal the match. Source strings containing `# WARN` must
+   remain ordinary searchable data; generated headers, positions, warning
+   comments, counts, and previews must not create search matches.
 5. Open duplicate JSON keys, a precise decimal, `1e1000000`, and YAML with
    non-finite numbers and non-string keys. Confirm each warning and preserved
-   parsed value. Open multiple roots and check that vertical motion skips
-   separators while absolute jumps select the following root.
+   parsed value. Open equivalent multi-root NDJSON, JSONL, concatenated JSON,
+   and YAML stream inputs. Confirm each has ordered, selectable root-owned
+   rows with expanded headers `--- (i of n)`, no multiple-roots warning, and a
+   subdued contents preview only after collapse. Confirm the document fields
+   start in the same content column as `---`, each row collapses independently,
+   `[` from a top-level field selects its row, and `]` selects the next row.
+   Vertical motion includes visible rows, absolute jumps select document rows,
+   and selecting a row for copy or print returns its parsed root without
+   generated metadata. Confirm single-root presentation and standard export
+   restrictions remain unchanged.
 6. Scroll long values and warnings horizontally. Include wide and combining
    Unicode and escaped controls. Confirm clipping does not split terminal cells
    and narrowing the window does not change a table to a list.

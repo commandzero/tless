@@ -226,7 +226,7 @@ impl App {
             let mut jumped_to_search_match = false;
             let focused_node_before = self.viewer.focused_node;
             let previous_collapsed_state_of_focused_node =
-                self.viewer.flatjson[focused_node_before].is_collapsed();
+                self.viewer.effective_collapsed(focused_node_before);
 
             let action = match event {
                 // Put this first so the current input state doesn't get reset
@@ -628,7 +628,7 @@ impl App {
                 if focused_node_before != self.viewer.focused_node {
                     self.search_state.set_no_longer_actively_searching();
                 } else if previous_collapsed_state_of_focused_node
-                    != self.viewer.flatjson[focused_node_before].is_collapsed()
+                    != self.viewer.effective_collapsed(focused_node_before)
                 {
                     self.search_state
                         .set_matches_visible_if_actively_searching();

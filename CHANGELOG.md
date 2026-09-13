@@ -13,6 +13,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
+- Replace multiple-root warning separators with selectable, collapsible document rows for every multi-root input. Expanded rows show `--- (i of n)` with no added indentation; collapsed rows add a subdued contents preview, `[` from a top-level field selects its document row, and `]` selects the next row.
 - Keep status-bar paths black when a theme uses reverse-video styling.
 - Highlight selected lines with xterm color 235 in 256-color builds and a dark-gray fallback in 16-color builds.
 - Color quoted-key delimiters as punctuation while retaining cyan for key text.

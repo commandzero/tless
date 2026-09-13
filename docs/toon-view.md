@@ -1,9 +1,9 @@
 ---
 type: Guide
 title: TOON document view
-description: Document layout, optional wrapping, logical selection, collapse, and display extensions.
+description: Document rows, layout, optional wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-5.6-luna, at: 2026-09-11T02:30:26Z }
+generated: { by: codex/gpt-5.6-luna, at: 2026-09-13T16:32:02Z }
 ---
 
 # TOON document view
@@ -29,7 +29,37 @@ users[2]{id,name}:
 Empty object fields use `key:` and empty arrays use `key[0]:`. Arrays of empty
 objects use a counted list with a bare `-` for each object. Root objects have
 no synthetic header. An empty root has a blank selectable row and its type in
-status. Root objects remain expanded.
+status. In a single-root input, root objects remain expanded.
+
+When parsing yields multiple roots, the viewer adds one selectable document row
+for each root, in encounter order. JSONL, NDJSON, concatenated JSON values, and
+YAML streams use the same rows regardless of filename extension. An expanded
+row contains only its header and position:
+
+```text
+▾ --- (1 of 2)
+  name: Ada
+  active: true
+▾ --- (2 of 2)
+  name: Lin
+  active: false
+```
+
+The arrow is in the collapse gutter. Document content starts at the same
+content column as `---`, so a document row adds no TOON indentation. A collapsed
+row hides its body and adds a subdued preview after the position:
+
+```text
+▸ --- (1 of 2) name: Ada; active: true
+▾ --- (2 of 2)
+  name: Lin
+  active: false
+```
+
+The position stays visible in both states. Empty roots use `{}` or `[]` in a
+collapsed preview, and scalar roots use their existing terminal-safe spelling.
+The preview is bounded and remains on one physical row. A single root keeps
+the existing presentation without a document row or position annotation.
 
 Line numbers and collapse arrows use dark gray, changing to light gray on the
 selected line. The default theme uses xterm color 235 as its selected-line
@@ -59,6 +89,10 @@ If there is no parent, `[` falls back to the current node's previous sibling.
 If the parent has no next sibling, or there is no parent, `]` falls back to the
 current node's next sibling. The destination keeps its collapse state. Focus stays put when
 neither target exists.
+In a sequence, each document row represents its parsed root. From a top-level
+field, `[` selects its document row and `]` selects the next document row. Sibling
+motions from a document row move between rows. Vertical motion includes each
+visible row, while a collapsed document contributes only its own row.
 Moving down from a table cell retains its field on the next expanded table row.
 The status bar shows paths without an `input` prefix, such as `.users[1].name`,
 and shows `.` at the document root. A cell's path includes its row index and key. Its
@@ -67,9 +101,10 @@ separate selections, with an occurrence number beside the path.
 
 Search matches are underlined and use yellow foreground (3), with bright yellow (11) for the active
 match. The default theme never uses reverse video.
-Search matches parsed keys and values. A hidden result expands its ancestors.
-Table-key matches highlight the shared header while retaining the selected
-row's field identity. Generated warnings, counts, and previews add no matches.
+Search matches parsed keys and values. A hidden result expands its document and
+other ancestors. Table-key matches highlight the shared header while retaining
+the selected row's field identity. Generated document headers, positions,
+warnings, counts, and previews add no matches.
 
 The `▾` and `▸` arrows occupy a separate gutter. Inline primitive arrays show
 `▸` by default; clicking it or pressing Space expands the array to multiline.
@@ -82,13 +117,19 @@ remain subdued even on the selected line. Arrays keep the count already in their
 TOON header. A collapsed primitive array with at most five values keeps its
 value colors when the complete inline line fits the terminal, including after
 expanding it to multiline. Expanding an ancestor
-restores descendant collapse states. Empty containers have no collapse arrow.
+restores descendant collapse states. Empty containers have no collapse arrow in
+single-root content; sequence document rows still use their row arrow.
+Document rows use the same arrows and collapse commands. Their positions stay
+subdued and visible in both states, and only a collapsed row shows its subdued
+contents preview. Collapsing a document hides its body without changing the
+collapse state of another document.
 
 Absolute line numbers are on by default; relative numbers are off. Keep using
 `-n`/`-N` and `-r`/`-R` to control them. Absolute jumps and gutters address fully
 expanded TOON lines, so collapse leaves gaps. Values sharing a line share its
-address. Relative numbers count visible vertical motions. Root warning
-separators have absolute addresses but vertical navigation skips them.
+address. Document rows have addresses and participate in vertical motion. A
+collapsed document contributes only its row. Relative numbers count visible
+vertical motions.
 
 Expanded values and table rows scroll horizontally by default. Press Ctrl+L to
 toggle wrapping for the current session, starting off. Wrapped rows use
@@ -137,13 +178,14 @@ control characters use terminal-safe JSON-style `\uXXXX` spellings with
 a literal backslash-u string does not receive a warning. Shared-line warnings
 follow parsed-node encounter order. Within each node,
 warning order is duplicate key, non-finite number, non-canonical number,
-non-string key, multiple roots, then non-standard string escape. A collapsed
+non-string key, then non-standard string escape. A collapsed
 container's hidden-warning count follows its own messages and appears last.
 
 Non-string keys use `? ` followed by compact typed notation. Strings remain
 JSON-style quoted strings; arrays and ordered object pairs preserve key types
-recursively. Each of several parsed roots starts with
-`---  # WARN Multiple document roots`. These separators do not create values.
+recursively. Each parsed root in a multi-root input has a selectable
+`--- (i of n)` document row. Multiple roots do not generate a warning, and
+document rows, positions, and previews do not create parsed values or matches.
 
 Shared lines collect warnings into one final comment. Inline-array warnings
 name the zero-based element, such as `Non-finite number at [1]`; table warnings
@@ -155,8 +197,10 @@ containing `# WARN` are quoted data and do not increase warning counts.
 
 Extended display text is not standard TOON 3.0. Its warnings, collapse arrows,
 counts, and previews are presentation annotations, not a new file format.
-Copy and print commands operate on the selected parsed value. Whole-document
-write commands operate on the parsed document. None serializes the screen.
+Copy and print commands operate on the selected parsed value. Selecting a
+document row targets its parsed root. Whole-document write commands operate on
+the parsed document, and standard TOON multi-root restrictions remain
+unchanged. None serializes the screen.
 
 Interactive JSON commands stay JSON. Redirected stdout defaults to standard TOON;
 use `-o json` or `-o yaml` to select a different machine-output format. Standard TOON export through `yt`, `pt`, and

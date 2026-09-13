@@ -27,6 +27,13 @@ pub struct JsonViewer {
     pub dimensions: TTYDimensions,
     pub scrolloff_setting: u16,
     expanded_arrays: HashSet<usize>,
+    /// Collapse state for sequence document rows. This is deliberately kept
+    /// separate from `FlatJson` so a root's document row can be collapsed
+    /// independently from a root array's TOON body layout.
+    document_collapsed: HashSet<Index>,
+    document_roots: Vec<Index>,
+    document_header_by_root: Vec<Option<usize>>,
+    document_root_by_header: Vec<Option<Index>>,
     line_numbers: bool,
     wrap_width: usize,
     wrap_indentation: usize,
@@ -40,7 +47,7 @@ impl JsonViewer {
     pub fn new(flatjson: FlatJson) -> Self {
         let layout =
             Self::layout_for_view(&flatjson, TTYDimensions::default(), true, &HashSet::new());
-        let visible = layout.project(&flatjson);
+        let visible = layout.project_with_documents(&flatjson, &HashSet::new());
         let absolute_anchor_line = layout.nodes[0].line;
         let physical_rows = build_physical_rows(
             &visible,
@@ -49,7 +56,7 @@ impl JsonViewer {
             false,
             &[],
         );
-        Self {
+        let mut viewer = Self {
             flatjson,
             layout,
             visible,
@@ -64,6 +71,10 @@ impl JsonViewer {
             dimensions: TTYDimensions::default(),
             scrolloff_setting: 3,
             expanded_arrays: HashSet::new(),
+            document_collapsed: HashSet::new(),
+            document_roots: vec![],
+            document_header_by_root: vec![],
+            document_root_by_header: vec![],
             line_numbers: true,
             wrap_width: usize::from(TTYDimensions::default().width),
             wrap_indentation: 0,
@@ -71,6 +82,156 @@ impl JsonViewer {
             layout_generation: 0,
             physical_generation: 0,
             focus_byte_range: None,
+        };
+        viewer.refresh_document_metadata();
+        if viewer.is_sequence() {
+            if let Some(root) = viewer.document_roots().first().copied() {
+                viewer.absolute_anchor_line = viewer.document_header_absolute(root);
+            }
+        }
+        viewer
+    }
+
+    /// Return the parsed roots in encounter order. A sequence document row is
+    /// keyed by this existing parsed root, so no synthetic wrapper is needed.
+    pub fn document_roots(&self) -> &[Index] {
+        &self.document_roots
+    }
+
+    pub fn is_sequence(&self) -> bool {
+        self.document_roots.len() > 1
+    }
+
+    fn document_root(&self, mut node: Index) -> Index {
+        node = normalize_node(&self.flatjson, node);
+        while let OptionIndex::Index(parent) = self.flatjson[node].parent {
+            node = parent;
+        }
+        node
+    }
+
+    fn is_document_root(&self, node: Index) -> bool {
+        self.is_sequence()
+            && self.flatjson[node].parent.is_nil()
+            && !self.flatjson[node].is_closing_of_container()
+    }
+
+    pub fn is_document_collapsed(&self, root: Index) -> bool {
+        self.document_collapsed.contains(&self.document_root(root))
+    }
+
+    /// Resolve a root's structural header.
+    pub fn document_header_absolute(&self, root: Index) -> usize {
+        let root = self.document_root(root);
+        self.document_header_by_root
+            .get(root)
+            .copied()
+            .flatten()
+            .unwrap_or(self.layout.nodes[root].line)
+    }
+
+    pub fn is_document_header(&self, logical_line: usize) -> bool {
+        let Some(visible) = self.visible.get(logical_line) else {
+            return false;
+        };
+        self.is_sequence()
+            && self
+                .document_root_by_header
+                .get(visible.absolute)
+                .is_some_and(Option::is_some)
+    }
+
+    /// Whether a visible line is the source-less body row paired with a
+    /// generated sequence document header.
+    pub fn is_document_body(&self, logical_line: usize) -> bool {
+        let Some(visible) = self.visible.get(logical_line) else {
+            return false;
+        };
+        self.is_sequence()
+            && !self.is_document_header(logical_line)
+            && self.is_document_root(visible.line.owner)
+    }
+
+    fn is_navigable_line(&self, logical_line: usize) -> bool {
+        self.visible
+            .get(logical_line)
+            .is_some_and(|line| !line.line.separator || self.is_document_header(logical_line))
+    }
+
+    pub fn document_root_for_line(&self, logical_line: usize) -> Option<Index> {
+        let absolute = self.visible.get(logical_line)?.absolute;
+        self.is_sequence().then(|| {
+            self.document_root_by_header
+                .get(absolute)
+                .copied()
+                .flatten()
+        })?
+    }
+
+    pub fn line_is_collapsible(&self, logical_line: usize) -> bool {
+        let Some(visible) = self.visible.get(logical_line) else {
+            return false;
+        };
+        if self.is_document_header(logical_line) {
+            return true;
+        }
+        // Sequence roots have one structural collapse control on their header;
+        // the standalone body line must not inherit that control, including
+        // scalar and empty-root bodies.
+        if self.is_document_root(visible.line.owner) {
+            return self.flatjson[visible.line.owner].is_array()
+                && self.layout.nodes[visible.line.owner].entry_count > 0;
+        }
+        self.layout.nodes[visible.line.owner].collapsible
+    }
+
+    fn focused_document_header(&self) -> bool {
+        self.is_document_root(self.focused_node)
+            && self.is_document_header(self.focused_line_index())
+    }
+
+    /// Collapse state used by app-level search tracking and rendering.
+    pub fn effective_collapsed(&self, node: Index) -> bool {
+        self.flatjson[node].is_collapsed()
+            || (self.is_sequence() && self.is_document_collapsed(node))
+    }
+
+    fn visible_ancestor(&self, node: Index) -> Index {
+        let mut current = normalize_node(&self.flatjson, node);
+        let mut visible = current;
+        while let OptionIndex::Index(parent) = self.flatjson[current].parent {
+            if self.flatjson[parent].is_collapsed() {
+                visible = parent;
+            }
+            current = parent;
+        }
+        let root = current;
+        if self.is_document_collapsed(root) {
+            root
+        } else {
+            visible
+        }
+    }
+
+    fn refresh_document_metadata(&mut self) {
+        self.document_roots = self
+            .flatjson
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(index, _)| index)
+            .collect();
+        self.document_root_by_header = vec![None; self.layout.lines.len()];
+        self.document_header_by_root = vec![None; self.flatjson.0.len()];
+        if self.is_sequence() {
+            for &root in &self.document_roots {
+                let header = self.layout.nodes[root].line;
+                self.document_header_by_root[root] = Some(header);
+                if let Some(slot) = self.document_root_by_header.get_mut(header) {
+                    *slot = Some(root);
+                }
+            }
         }
     }
 
@@ -78,7 +239,7 @@ impl JsonViewer {
         let Some(visible) = self.visible.get(logical_line) else {
             return false;
         };
-        !visible.line.separator && !self.flatjson[visible.line.owner].is_collapsed()
+        !self.is_document_header(logical_line) && !self.effective_collapsed(visible.line.owner)
     }
 
     fn top_logical_line(&self) -> usize {
@@ -264,25 +425,40 @@ impl JsonViewer {
     }
 
     fn rebuild_layout(&mut self) {
-        let top_node = self
-            .visible
-            .get(self.top_logical_line())
-            .map(|line| line.line.owner);
+        let top_line = self.visible.get(self.top_logical_line());
+        let top_node = top_line.map(|line| line.line.owner);
+        let top_document_body = top_line.is_some_and(|line| {
+            self.is_document_root(line.line.owner)
+                && !self.is_document_header(self.top_logical_line())
+        });
+        let focused_node = self.focused_node;
+        let focused_document_body =
+            self.is_document_root(focused_node) && !self.focused_document_header();
         self.layout = Self::layout_for_view(
             &self.flatjson,
             self.dimensions,
             self.line_numbers,
             &self.expanded_arrays,
         );
+        self.refresh_document_metadata();
         self.refresh_projection();
-        self.focus(self.focused_node);
+        self.focus(focused_node);
+        if focused_document_body && self.is_document_root(focused_node) {
+            let body = self.layout.nodes[focused_node].body_line;
+            if self.visible.iter().any(|line| line.absolute == body) {
+                self.absolute_anchor_line = body;
+            }
+        }
         if let Some(top_node) = top_node {
             let top = self.flatjson.first_visible_ancestor(top_node);
-            if let Some(index) = self
-                .visible
-                .iter()
-                .position(|line| line.absolute == self.layout.nodes[top].line)
-            {
+            let anchor = if top_document_body && self.is_document_root(top) {
+                self.layout.nodes[top].body_line
+            } else if self.is_document_root(top) {
+                self.document_header_absolute(top)
+            } else {
+                self.layout.nodes[top].line
+            };
+            if let Some(index) = self.visible.iter().position(|line| line.absolute == anchor) {
                 self.top_visible_line = index;
             }
         }
@@ -336,15 +512,36 @@ impl JsonViewer {
 
     fn focus(&mut self, node: usize) {
         self.focus_byte_range = None;
-        self.focused_node = normalize_node(&self.flatjson, node);
-        self.focused_node = self.flatjson.first_visible_ancestor(self.focused_node);
-        self.absolute_anchor_line = self.layout.nodes[self.focused_node].line;
+        let requested = normalize_node(&self.flatjson, node);
+        self.focused_node = self.visible_ancestor(node);
+        if self.is_document_root(self.focused_node) {
+            let header = self.document_header_absolute(self.focused_node);
+            let body_anchor = self.flatjson[self.focused_node].is_collapsed()
+                && !self.is_document_root(requested)
+                && !self.is_document_collapsed(self.focused_node)
+                && self.layout.nodes[self.focused_node].body_line != header;
+            self.absolute_anchor_line = if body_anchor {
+                self.layout.nodes[self.focused_node].body_line
+            } else {
+                header
+            };
+            if self.absolute_anchor_line == header {
+                self.desired_depth = self.flatjson[self.focused_node].depth;
+            }
+        } else {
+            self.absolute_anchor_line = self.layout.nodes[self.focused_node].line;
+        }
     }
 
     fn reveal(&mut self, node: usize, source: Option<usize>) {
         let node = normalize_node(&self.flatjson, node);
         let mut current = node;
         let mut changed = false;
+        let root = self.document_root(node);
+        if self.is_document_collapsed(root) {
+            self.document_collapsed.remove(&root);
+            changed = true;
+        }
         while let OptionIndex::Index(parent) = self.flatjson[current].parent {
             changed |= self.flatjson[parent].is_collapsed();
             self.flatjson.expand(parent);
@@ -375,9 +572,15 @@ impl JsonViewer {
             .get(self.top_logical_line())
             .map(|line| line.absolute);
         self.focus_byte_range = None;
-        self.visible = self.layout.project(&self.flatjson);
-        let recovered = self.flatjson.first_visible_ancestor(self.focused_node);
-        if recovered != self.focused_node {
+        self.visible = self
+            .layout
+            .project_with_documents(&self.flatjson, &self.document_collapsed);
+        let recovered = self.visible_ancestor(self.focused_node);
+        let anchor_visible = self
+            .visible
+            .iter()
+            .any(|line| line.absolute == self.absolute_anchor_line);
+        if recovered != self.focused_node || !anchor_visible {
             self.focus(recovered);
         }
         self.top_visible_line = previous_top_absolute
@@ -391,6 +594,7 @@ impl JsonViewer {
                     .min(self.visible.len().saturating_sub(1))
             });
         self.rebuild_physical_rows();
+        self.layout_generation = self.layout_generation.wrapping_add(1);
     }
 
     fn ensure_visible(&mut self) {
@@ -428,9 +632,9 @@ impl JsonViewer {
         let mut index = self.focused_line_index();
         for _ in 0..count {
             let next = if down {
-                ((index + 1)..self.visible.len()).find(|&i| !self.visible[i].line.separator)
+                ((index + 1)..self.visible.len()).find(|&i| self.is_navigable_line(i))
             } else {
-                (0..index).rev().find(|&i| !self.visible[i].line.separator)
+                (0..index).rev().find(|&i| self.is_navigable_line(i))
             };
             let Some(next) = next else { break };
             index = next;
@@ -472,6 +676,12 @@ impl JsonViewer {
             }
         }
         self.focus(node);
+        // A sequence root owns both its structural header and its body lines.
+        // Keep vertical/body selection on the body line while structural
+        // focus continues to resolve to the document header.
+        if self.is_document_root(owner) && !self.is_document_header(index) {
+            self.absolute_anchor_line = self.visible[index].absolute;
+        }
     }
 
     fn parent(&mut self) {
@@ -546,7 +756,13 @@ impl JsonViewer {
     }
 
     fn collapse(&mut self, node: usize, collapsed: bool) {
-        if self.layout.nodes[node].collapsible {
+        if self.is_document_root(node) && self.focused_document_header() {
+            if collapsed {
+                self.document_collapsed.insert(node);
+            } else {
+                self.document_collapsed.remove(&node);
+            }
+        } else if self.layout.nodes[node].collapsible {
             if collapsed {
                 self.flatjson.collapse(node);
             } else {
@@ -556,10 +772,18 @@ impl JsonViewer {
     }
 
     fn toggle_collapsed(&mut self, node: usize) {
-        if self.layout.nodes[node].inline_array {
+        if self.is_document_root(node) && self.focused_document_header() {
+            self.collapse(node, !self.is_document_collapsed(node));
+            self.refresh_projection();
+        } else if self.layout.nodes[node].inline_array {
             self.flatjson.expand(node);
             self.expanded_arrays.insert(node);
             self.rebuild_layout();
+        } else if self.is_document_root(node)
+            && !self.line_is_collapsible(self.focused_line_index())
+        {
+            // Scalar and empty sequence roots have a selectable body line but
+            // no parsed collapse state; only their generated header collapses.
         } else {
             self.collapse(node, !self.flatjson[node].is_collapsed());
             self.refresh_projection();
@@ -567,12 +791,36 @@ impl JsonViewer {
     }
 
     fn collapse_siblings(&mut self, collapsed: bool, deep: bool) {
+        let bulk_document_rows =
+            self.is_sequence() && self.flatjson[self.focused_node].parent.is_nil();
         let mut node = match self.flatjson[self.focused_node].parent {
             OptionIndex::Index(parent) => self.flatjson[parent].first_child(),
             OptionIndex::Nil => OptionIndex::Index(0),
         };
         while let OptionIndex::Index(current) = node {
-            self.collapse(current, collapsed);
+            if bulk_document_rows && self.is_document_root(current) {
+                if collapsed {
+                    self.document_collapsed.insert(current);
+                } else {
+                    self.document_collapsed.remove(&current);
+                }
+            } else {
+                self.collapse(current, collapsed);
+            }
+            if deep
+                && self.is_document_root(current)
+                && self.flatjson[current].is_array()
+                && self.layout.nodes[current].entry_count > 0
+            {
+                // A deep document operation owns both the generated row and
+                // the root's parsed body state. Shallow operations leave an
+                // independently collapsed root-array body untouched.
+                if collapsed {
+                    self.flatjson.collapse(current);
+                } else {
+                    self.flatjson.expand(current);
+                }
+            }
             if deep {
                 if let OptionIndex::Index(end) = self.flatjson[current].pair_index() {
                     for descendant in current + 1..end {
@@ -611,7 +859,11 @@ impl JsonViewer {
                     .enumerate()
                     .skip(self.top_physical_row)
                     .take(height)
-                    .find(|(_, row)| !self.visible[row.logical_line].line.separator)
+                    .find(|(_, row)| {
+                        self.visible.get(row.logical_line).is_some_and(|line| {
+                            !line.line.separator || self.is_document_header(row.logical_line)
+                        })
+                    })
                     .map(|(index, _)| index)
                     .unwrap_or(self.top_physical_row);
                 self.focus_line(self.physical_rows[target].logical_line, true);
@@ -633,7 +885,7 @@ impl JsonViewer {
         let last = (self.top_visible_line + height - padding - 1).min(self.visible.len() - 1);
         let index = focus.clamp(first, last.max(first));
         let index = (index..self.visible.len())
-            .find(|&i| !self.visible[i].line.separator)
+            .find(|&i| self.is_navigable_line(i))
             .unwrap_or(index);
         if index != focus {
             self.focus_line(index, true);
@@ -701,16 +953,10 @@ impl JsonViewer {
                     let index =
                         (self.top_physical_row + screen_index).min(viewport_end.saturating_sub(1));
                     let index = (index..viewport_end)
-                        .find(|&i| {
-                            !self.visible[self.physical_rows[i].logical_line]
-                                .line
-                                .separator
-                        })
+                        .find(|&i| self.is_navigable_line(self.physical_rows[i].logical_line))
                         .or_else(|| {
                             (self.top_physical_row..index).rev().find(|&i| {
-                                !self.visible[self.physical_rows[i].logical_line]
-                                    .line
-                                    .separator
+                                self.is_navigable_line(self.physical_rows[i].logical_line)
                             })
                         })
                         .unwrap_or(index);
@@ -736,7 +982,7 @@ impl JsonViewer {
         } else {
             let index = (self.top_visible_line + screen_index).min(self.visible.len() - 1);
             let index = (index..self.visible.len())
-                .find(|&i| !self.visible[i].line.separator)
+                .find(|&i| self.is_navigable_line(i))
                 .unwrap_or(index);
             self.focus_line(index, true);
         }
@@ -749,7 +995,29 @@ impl JsonViewer {
             Action::MoveUp(n) => self.vertical(n, false),
             Action::MoveDown(n) => self.vertical(n, true),
             Action::MoveRight => {
-                if self.flatjson[self.focused_node].is_collapsed() {
+                if self.is_document_root(self.focused_node) && self.focused_document_header() {
+                    if self.is_document_collapsed(self.focused_node) {
+                        self.collapse(self.focused_node, false);
+                        self.refresh_projection();
+                    } else if let OptionIndex::Index(child) =
+                        self.flatjson[self.focused_node].first_child()
+                    {
+                        let body_collapsed = self.flatjson[self.focused_node].is_collapsed();
+                        if body_collapsed {
+                            self.flatjson.expand(self.focused_node);
+                        }
+                        if body_collapsed && self.layout.nodes[self.focused_node].inline_array {
+                            self.expanded_arrays.insert(self.focused_node);
+                            self.rebuild_layout();
+                        } else if body_collapsed {
+                            self.refresh_projection();
+                        } else if self.layout.nodes[self.focused_node].inline_array {
+                            self.expanded_arrays.insert(self.focused_node);
+                            self.rebuild_layout();
+                        }
+                        self.focus(child);
+                    }
+                } else if self.flatjson[self.focused_node].is_collapsed() {
                     self.collapse(self.focused_node, false);
                     if self.layout.nodes[self.focused_node].inline_array {
                         self.expanded_arrays.insert(self.focused_node);
@@ -767,7 +1035,13 @@ impl JsonViewer {
                 }
             }
             Action::MoveLeft => {
-                if self.layout.nodes[self.focused_node].collapsible
+                if self.is_document_root(self.focused_node) && self.focused_document_header() {
+                    if !self.is_document_collapsed(self.focused_node) {
+                        self.collapse(self.focused_node, true);
+                        self.refresh_projection();
+                    }
+                } else if self.line_is_collapsible(self.focused_line_index())
+                    && self.layout.nodes[self.focused_node].collapsible
                     && self.flatjson[self.focused_node].is_expanded()
                 {
                     self.collapse(self.focused_node, true);
@@ -801,7 +1075,12 @@ impl JsonViewer {
                 self.focus(node);
             }
             Action::FocusTop => {
-                self.focus(0);
+                let root = self.document_roots().first().copied().unwrap_or(0);
+                self.focus(root);
+                if self.is_document_root(root) {
+                    self.absolute_anchor_line = self.document_header_absolute(root);
+                    self.desired_depth = self.flatjson[root].depth;
+                }
                 self.top_visible_line = 0;
                 self.top_physical_row = 0;
             }
@@ -815,9 +1094,30 @@ impl JsonViewer {
                 let line = line.min(self.layout.lines.len() - 1);
                 let node = self.layout.lines[line].owner;
                 if make_visible {
-                    self.reveal(node, None);
+                    let visible_index = self
+                        .visible
+                        .iter()
+                        .position(|visible| visible.absolute == line);
+                    if visible_index.is_none() {
+                        self.reveal(node, None);
+                    }
+                    if let Some(index) = visible_index.or_else(|| {
+                        self.visible
+                            .iter()
+                            .position(|visible| visible.absolute == line)
+                    }) {
+                        self.focus_line(index, false);
+                    }
                 } else {
-                    self.focus(node);
+                    if let Some(index) = self
+                        .visible
+                        .iter()
+                        .position(|visible| visible.absolute == line)
+                    {
+                        self.focus_line(index, false);
+                    } else {
+                        self.focus(node);
+                    }
                 }
             }
             Action::FocusNode { node, source } => self.reveal(node, source),
@@ -883,8 +1183,18 @@ impl JsonViewer {
                 if !physical.first {
                     return;
                 }
-                let node = self.visible[physical.logical_line].line.owner;
-                self.focus(node);
+                if !self.line_is_collapsible(physical.logical_line) {
+                    return;
+                }
+                let is_header = self.is_document_header(physical.logical_line);
+                let node = self
+                    .document_root_for_line(physical.logical_line)
+                    .unwrap_or(self.visible[physical.logical_line].line.owner);
+                if is_header {
+                    self.focus(node);
+                } else {
+                    self.focus_line(physical.logical_line, false);
+                }
                 self.toggle_collapsed(node);
             }
             Action::ToggleCollapsed => {
@@ -1040,6 +1350,246 @@ mod tests {
             .build_path_to_node(PathType::Dot, v.focused_node)
             .unwrap()
     }
+
+    #[test]
+    fn sequence_document_rows_are_structural_navigation_anchors() {
+        let mut v = viewer(r#"{"a":1} {"b":2}"#);
+        let roots = v.document_roots().to_vec();
+        assert_eq!(roots.len(), 2);
+        assert_eq!(v.focused_node, roots[0]);
+        assert_eq!(v.absolute_anchor_line, v.document_header_absolute(roots[0]));
+
+        // Enter the first document, then move back to its header and across
+        // the root sibling. The parsed root identities remain unchanged.
+        v.perform_action(Action::MoveRight);
+        assert_eq!(path(&v), ".a");
+        v.perform_action(Action::FocusParentOrPreviousSibling);
+        assert_eq!(v.focused_node, roots[0]);
+        assert_eq!(v.absolute_anchor_line, v.document_header_absolute(roots[0]));
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(v.focused_node, roots[1]);
+        assert_eq!(v.absolute_anchor_line, v.document_header_absolute(roots[1]));
+    }
+
+    #[test]
+    fn sibling_motion_from_a_document_row_does_not_descend_by_stale_depth() {
+        let mut v = viewer(r#"{"a":1} {"b":2}"#);
+        let roots = v.document_roots().to_vec();
+
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusPrevSibling(1));
+        assert_eq!(v.focused_node, roots[0]);
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(v.focused_node, roots[1]);
+        assert_eq!(v.absolute_anchor_line, v.document_header_absolute(roots[1]));
+    }
+
+    #[test]
+    fn sequence_document_collapse_is_independent_of_root_array_body_state() {
+        let mut v = viewer("[1,2] {\"tail\":3}");
+        let roots = v.document_roots().to_vec();
+        let first = roots[0];
+        assert!(v.layout.nodes[first].inline_array);
+
+        // Expanding the root array's body is separate from collapsing its
+        // sequence row and must not change the document state.
+        v.perform_action(Action::MoveRight);
+        assert_ne!(v.focused_node, first);
+        v.perform_action(Action::FocusParent);
+        assert_eq!(v.focused_node, first);
+        v.perform_action(Action::MoveDown(1));
+        assert_eq!(v.focused_node, first);
+        assert!(!v.focused_document_header());
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[first].is_collapsed());
+        assert!(!v.is_document_collapsed(first));
+        v.perform_action(Action::MoveRight);
+        assert!(!v.flatjson[first].is_collapsed());
+        assert!(!v.focused_document_header());
+        assert_eq!(
+            v.absolute_anchor_line, v.layout.nodes[first].body_line,
+            "reopening a root array body preserves its body anchor"
+        );
+        v.perform_action(Action::FocusTop);
+        assert!(!v.is_document_collapsed(first));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.is_document_collapsed(first));
+        assert_eq!(v.focused_node, first);
+        assert_eq!(v.focused_line_index(), 0);
+
+        v.perform_action(Action::MoveRight);
+        assert!(!v.is_document_collapsed(first));
+        assert_eq!(v.focused_node, first);
+        v.perform_action(Action::MoveRight);
+        assert_eq!(path(&v), "[0]");
+    }
+
+    #[test]
+    fn scalar_sequence_search_reveal_keeps_body_line_anchor() {
+        let mut v = viewer("1 2");
+        let roots = v.document_roots().to_vec();
+        let second = roots[1];
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.is_document_collapsed(roots[0]));
+        v.perform_action(Action::FocusNode {
+            node: second,
+            source: Some(v.flatjson[second].range.start),
+        });
+        assert!(!v.is_document_collapsed(second));
+        assert_eq!(v.focused_node, second);
+        assert_ne!(v.absolute_anchor_line, v.document_header_absolute(second));
+        v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
+            width: 24,
+            height: 8,
+        }));
+        assert_eq!(v.focused_node, second);
+        assert!(!v.focused_document_header());
+        assert_eq!(
+            v.absolute_anchor_line, v.layout.nodes[second].body_line,
+            "resizing preserves a scalar root body anchor"
+        );
+    }
+
+    #[test]
+    fn root_bulk_collapse_works_from_a_scalar_body_anchor() {
+        for action in [
+            Action::CollapseNodeAndSiblings,
+            Action::DeepCollapseNodeAndSiblings,
+        ] {
+            let mut v = viewer("1 2 3");
+            let roots = v.document_roots().to_vec();
+            v.perform_action(Action::MoveDown(1));
+            assert_eq!(v.focused_node, roots[0]);
+            assert!(!v.focused_document_header());
+            v.perform_action(action);
+            assert!(roots.iter().all(|&root| v.is_document_collapsed(root)));
+            assert_eq!(v.focused_line_index(), 0);
+            assert_eq!(
+                v.absolute_anchor_line,
+                v.document_header_absolute(roots[0]),
+                "collapsing the document rows recovers the hidden body anchor"
+            );
+        }
+    }
+
+    #[test]
+    fn scalar_and_empty_sequence_bodies_do_not_mutate_parsed_collapse() {
+        let mut v = viewer("1 {}");
+        let first = v.document_roots()[0];
+        v.perform_action(Action::MoveDown(1));
+        assert!(!v.focused_document_header());
+
+        v.perform_action(Action::ToggleCollapsed);
+        v.perform_action(Action::MoveLeft);
+        assert!(!v.flatjson[first].is_collapsed());
+        assert!(!v.is_document_collapsed(first));
+        assert_eq!(v.focused_node, first);
+    }
+
+    #[test]
+    fn collapsed_header_jump_selects_without_revealing_document() {
+        let mut v = viewer("1 2");
+        let roots = v.document_roots().to_vec();
+        let first_header = v.document_header_absolute(roots[0]);
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.is_document_collapsed(roots[0]));
+
+        // This is the action emitted for a click on header text or its
+        // collapsed preview. Search uses FocusNode and still reveals.
+        v.perform_action(Action::JumpTo {
+            line: first_header,
+            make_visible: false,
+        });
+        assert!(v.is_document_collapsed(roots[0]));
+        assert_eq!(v.focused_node, roots[0]);
+        assert_eq!(v.focused_line_index(), 0);
+
+        v.perform_action(Action::JumpTo {
+            line: first_header,
+            make_visible: true,
+        });
+        assert!(v.is_document_collapsed(roots[0]));
+        assert_eq!(v.focused_line_index(), 0);
+    }
+
+    #[test]
+    fn header_right_reopens_a_collapsed_root_array_body() {
+        let mut v = viewer("[1,2] {}");
+        let first = v.document_roots()[0];
+
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[first].is_collapsed());
+
+        v.perform_action(Action::FocusTop);
+        assert!(v.focused_document_header());
+        v.perform_action(Action::MoveRight);
+        assert!(!v.flatjson[first].is_collapsed());
+        assert_eq!(path(&v), "[0]");
+    }
+
+    #[test]
+    fn structural_root_focus_stays_on_document_header_after_body_collapse() {
+        let mut v = viewer("[1,2] {}");
+        let root = v.document_roots()[0];
+
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[root].is_collapsed());
+        assert!(!v.is_document_collapsed(root));
+
+        // Clicking the generated row's arrow must target the document row,
+        // while retaining the parsed body collapse state.
+        v.perform_action(Action::ClickArrow(1));
+        assert!(v.is_document_collapsed(root));
+        assert!(v.flatjson[root].is_collapsed());
+        assert!(v.focused_document_header());
+    }
+
+    #[test]
+    fn deep_document_expand_restores_root_body_state() {
+        let mut v = viewer("[1,2] {} 3");
+        let roots = v.document_roots().to_vec();
+        let first = roots[0];
+
+        // Collapse the array body independently, then use a deep operation
+        // from the structural header to restore every root's body state.
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        assert_eq!(v.focused_node, first);
+        assert!(!v.focused_document_header());
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[first].is_collapsed());
+        v.perform_action(Action::FocusTop);
+        v.perform_action(Action::DeepExpandNodeAndSiblings);
+        assert!(roots.iter().all(|&root| !v.is_document_collapsed(root)));
+        assert!(roots.iter().all(|&root| !v.flatjson[root].is_collapsed()));
+    }
+
+    #[test]
+    fn shallow_document_expand_does_not_leave_object_root_body_collapsed() {
+        let mut v = viewer(r#"{"a":1,"nested":{"b":2}} 7"#);
+        let roots = v.document_roots().to_vec();
+        let root = roots[0];
+        let first = v.flatjson[root].first_child().unwrap();
+        let nested = v.flatjson[first].next_sibling.unwrap();
+
+        v.perform_action(Action::DeepCollapseNodeAndSiblings);
+        assert!(v.is_document_collapsed(root));
+        assert!(!v.flatjson[root].is_collapsed());
+        assert!(v.flatjson[nested].is_collapsed());
+
+        v.perform_action(Action::ExpandNodeAndSiblings);
+        assert!(!v.is_document_collapsed(root));
+        v.perform_action(Action::MoveRight);
+        assert_eq!(path(&v), ".a");
+        assert!(v.flatjson[nested].is_collapsed());
+    }
     fn act(v: &mut JsonViewer, actions: &[Action]) {
         for &action in actions {
             v.perform_action(action);
@@ -1186,7 +1736,10 @@ mod tests {
             true,
         );
         assert_eq!(v.visible.len(), 3);
-        assert_eq!(v.visible[1].line.text, "  - .inf  # WARN Non-finite number");
+        assert_eq!(
+            v.visible[1].line.text,
+            "  - .inf  # WARN Non-finite number at [0]"
+        );
         assert_eq!(v.layout.warnings.len(), 1);
         v.perform_action(Action::MoveLeft);
         assert!(
@@ -1436,12 +1989,37 @@ mod tests {
     }
 
     #[test]
+    fn jump_to_hidden_root_array_content_selects_the_body_control() {
+        let mut v = viewer("[1,2] {}");
+        let root = v.document_roots()[0];
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[root].is_collapsed());
+
+        let child_line = v.layout.nodes[v.flatjson[root].first_child().as_usize()].line;
+        v.perform_action(Action::JumpTo {
+            line: child_line,
+            make_visible: false,
+        });
+        assert_eq!(v.focused_node, root);
+        assert!(!v.focused_document_header());
+        assert_eq!(v.absolute_anchor_line, v.layout.nodes[root].body_line);
+    }
+
+    #[test]
     fn separator_jumps_skip_annotations_and_empty_roots_remain_selectable() {
         let mut v = JsonViewer::new(parse_top_level_yaml("---\n{}\n---\n42\n".into()).unwrap());
         let first = v.focused_node;
         v.perform_action(Action::MoveDown(1));
+        assert_eq!(
+            first, v.focused_node,
+            "the first root body keeps root identity"
+        );
+        v.perform_action(Action::MoveDown(1));
         assert_ne!(first, v.focused_node);
-        assert!(!v.visible[v.focused_line_index()].line.separator);
+        assert!(v.is_document_header(v.focused_line_index()));
         v.perform_action(Action::MoveUp(1));
         assert_eq!(v.focused_node, first);
         v.perform_action(Action::JumpTo {
@@ -1874,6 +2452,22 @@ mod tests {
         v.refresh_projection();
 
         assert_eq!(v.visible[v.top_visible_line].absolute, tail_absolute);
+    }
+
+    #[test]
+    fn projection_reflow_preserves_a_sequence_body_at_the_top() {
+        let mut v = viewer("1 2");
+        let root = v.document_roots()[0];
+        let body = v.layout.nodes[root].body_line;
+        v.top_visible_line = v
+            .visible
+            .iter()
+            .position(|line| line.absolute == body)
+            .unwrap();
+
+        v.rebuild_layout();
+
+        assert_eq!(v.visible[v.top_visible_line].absolute, body);
     }
 
     #[test]

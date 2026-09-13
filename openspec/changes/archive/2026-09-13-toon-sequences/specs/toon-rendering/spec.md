@@ -1,33 +1,4 @@
-# toon-rendering Specification
-
-## Purpose
-
-Provide one syntax-colored TOON document view with predictable collapse annotations, optional gutters, and stable layout across terminal sizes.
-
-## Requirements
-
-### Requirement: One rendering contract
-
-The viewer SHALL render every supported input format with the TOON 3.0 profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering, and TOON input and export SHALL be available in every build profile. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
-
-#### Scenario: Equivalent inputs
-
-- **WHEN** JSON, YAML, and TOON inputs produce equivalent parsed data
-- **THEN** their fully expanded document text SHALL match
-- **AND** input-format selectors SHALL NOT select a different rendering mode
-
-#### Scenario: Obsolete mode controls
-
-- **WHEN** a user passes `--mode` or `-m`
-- **THEN** argument parsing SHALL report an unsupported option
-- **AND** interactive `m` SHALL have no mode-switch action
-- **AND** current help SHALL NOT advertise alternate modes or closing-delimiter navigation
-
-#### Scenario: Minimal build
-
-- **WHEN** tless is built without default features and opens JSON
-- **THEN** the viewer SHALL still render TOON
-- **AND** TOON input, export, and interactive commands SHALL remain available
+## MODIFIED Requirements
 
 ### Requirement: Native TOON layout
 
@@ -102,32 +73,6 @@ Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when co
 - **THEN** descendant collapse states SHALL be restored
 - **AND** the underlying data and layout choice SHALL be unchanged
 
-### Requirement: Gutters and terminal width
-
-Optional absolute and relative line numbers SHALL remain available outside the document text with existing visibility defaults. Absolute numbers SHALL identify lines in the fully expanded TOON layout, beginning at 1; collapsed descendants SHALL produce gaps. Relative numbers SHALL count visible display-line motions. Automatic primitive-array layouts SHALL be recalculated on terminal-width or gutter-visibility changes while preserving logical selection and collapse states. Explicit multiline choices SHALL survive resize and collapse/reopen. Absolute addresses SHALL follow the current fully expanded layout. With wrapping disabled, long individual values and table rows SHALL use horizontal scrolling without soft wrapping. With wrapping enabled, expanded lines SHALL follow the optional line wrapping requirement. Continuation rows SHALL NOT add absolute addresses or relative motion distance. On lines using horizontal scrolling, `,` and `.` SHALL scroll left and right by ten terminal cells per press, multiplied by any numeric prefix and clamped at the line boundaries. Rendering SHALL escape control characters and respect terminal cell widths.
-
-#### Scenario: Shared-line numbering
-
-- **WHEN** focus moves between cells on a table row or elements in an inline array
-- **THEN** the absolute line number SHALL remain unchanged
-- **AND** relative vertical distance between those values SHALL be 0
-
-#### Scenario: Narrow viewport
-
-- **WHEN** the terminal cannot fit the full content or preview
-- **THEN** expanded content SHALL remain reachable by horizontal scrolling when wrapping is disabled and by vertical viewport scrolling when wrapping is enabled
-- **AND** collapsed previews SHALL truncate with `…` at a valid character boundary
-- **AND** preview space SHALL be removed before object-count or warning space
-- **AND** warnings that still do not fit SHALL remain reachable by horizontal scrolling on unwrapped lines and vertical viewport scrolling on wrapped lines
-
-#### Scenario: Application controls
-
-- **WHEN** focus, search, status, or command entry is active
-- **THEN** status and commands SHALL remain outside document text
-- **AND** focus and search SHALL highlight existing spans without inserting text
-- **AND** default-theme focus SHALL use bright foreground colors instead of bold and SHALL apply on all visible physical rows belonging to the selected logical display line
-- **AND** default-theme line numbers and collapse arrows SHALL use dark gray ordinarily and light gray on the selected display line
-
 ### Requirement: Optional line wrapping
 
 Ctrl+L in the document view SHALL toggle wrapping for all eligible lines for the current session, initially disabled. Each press SHALL toggle once regardless of a numeric prefix. Command and search prompts SHALL retain their input-editor behavior. The application SHALL report whether wrapping is on or off and document the key in interactive help.
@@ -175,13 +120,3 @@ Collapsed container lines, including their previews, counts, and warnings, SHALL
 - **THEN** primitive-array inline versus multiline choices and table structure SHALL remain unchanged
 - **AND** source escape sequences SHALL remain displayed escapes rather than interpreted control characters
 - **AND** copying, exporting, and redirected stdout SHALL contain no soft-wrap newlines or placeholders
-
-### Requirement: Theme selection background fills the row
-
-When a theme defines a distinct selection background, each visible physical row of the selected logical display line SHALL fill the terminal width with it, including indentation, spaces, gutters, and clipping markers. Themes without a distinct selection background SHALL retain their appearance. Search matches SHALL retain their theme search style over the row background.
-
-#### Scenario: Borealis selected row
-
-- **WHEN** a short document line is selected under Borealis
-- **THEN** the selection background SHALL extend through unused columns to the terminal edge
-- **AND** search spans SHALL retain their search background

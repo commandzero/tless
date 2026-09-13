@@ -10,8 +10,8 @@ mod vim;
 #[cfg(feature = "colorscheme")]
 use crate::terminal::LIGHT_BLUE;
 use crate::terminal::{
-    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_YELLOW, LINE_HIGHLIGHT, MAGENTA, RED,
-    Style, WHITE, YELLOW,
+    BLUE, CYAN, Color, GREEN, LIGHT_BLACK, LIGHT_CYAN, LIGHT_WHITE, LIGHT_YELLOW, LINE_HIGHLIGHT,
+    MAGENTA, RED, Style, WHITE, YELLOW,
 };
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
@@ -235,6 +235,7 @@ pub enum StyleRole {
     Ellipsis,
     PreviewText,
     PreviewCount,
+    DocumentPosition,
     LineNumber,
     EmptyRowMarker,
     TruncationIndicator,
@@ -488,6 +489,7 @@ impl Theme {
             (StyleRole::Ellipsis, _) => ThemeColor::Ellipsis,
             (StyleRole::PreviewText, _) => ThemeColor::PreviewText,
             (StyleRole::PreviewCount, _) => ThemeColor::PreviewCount,
+            (StyleRole::DocumentPosition, _) => ThemeColor::PreviewText,
             (StyleRole::LineNumber, _) => ThemeColor::LineNumber,
             (StyleRole::EmptyRowMarker, _) => ThemeColor::EmptyRowMarker,
             (StyleRole::TruncationIndicator, _) => ThemeColor::TruncationIndicator,
@@ -582,28 +584,14 @@ impl Theme {
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => CYAN,
             }),
-            StyleRole::ArrayIndex | StyleRole::LineNumber | StyleRole::Ellipsis => {
-                color(LIGHT_BLACK)
-            }
+            StyleRole::ArrayIndex => Style::default(),
+            StyleRole::LineNumber | StyleRole::Ellipsis => color(LIGHT_BLACK),
             StyleRole::Punctuation | StyleRole::StatusText => Style::default(),
-            StyleRole::PrimitiveTrailingComma => match self.legacy_name() {
-                LegacyTheme::Classic => Style::default(),
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            },
-            StyleRole::ContainerDelimiter => match self.legacy_name() {
-                LegacyTheme::Classic => color(LIGHT_BLACK),
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    dimmed: true,
-                    ..Style::default()
-                },
-            },
+            StyleRole::PrimitiveTrailingComma => Style::default(),
+            StyleRole::ContainerDelimiter => Style::default(),
             StyleRole::PreviewText => color(LIGHT_BLACK),
             StyleRole::PreviewCount | StyleRole::EmptyRowMarker => color(LIGHT_BLACK),
+            StyleRole::DocumentPosition => color(LIGHT_BLACK),
             StyleRole::TruncationIndicator => color(LIGHT_BLACK),
             StyleRole::StatusBar => Style {
                 fg: crate::terminal::BLACK,
@@ -666,7 +654,10 @@ impl Theme {
                 }
             }
             (StyleRole::ArrayIndex, FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style { fg: WHITE, ..style },
+                LegacyTheme::Classic => Style {
+                    fg: LIGHT_WHITE,
+                    ..style
+                },
                 #[cfg(feature = "colorscheme")]
                 LegacyTheme::Cyan => Style {
                     inverted: true,
@@ -950,13 +941,14 @@ mod tests {
 
         for (role, expected) in [
             (StyleRole::ObjectKey, fg(CYAN)),
-            (StyleRole::ArrayIndex, fg(LIGHT_BLACK)),
+            (StyleRole::ArrayIndex, Style::default()),
             (StyleRole::Punctuation, Style::default()),
             (StyleRole::PrimitiveTrailingComma, Style::default()),
-            (StyleRole::ContainerDelimiter, fg(LIGHT_BLACK)),
+            (StyleRole::ContainerDelimiter, Style::default()),
             (StyleRole::Ellipsis, fg(LIGHT_BLACK)),
             (StyleRole::PreviewText, fg(LIGHT_BLACK)),
             (StyleRole::PreviewCount, fg(LIGHT_BLACK)),
+            (StyleRole::DocumentPosition, fg(LIGHT_BLACK)),
             (StyleRole::LineNumber, fg(LIGHT_BLACK)),
             (StyleRole::EmptyRowMarker, fg(LIGHT_BLACK)),
             (StyleRole::TruncationIndicator, fg(LIGHT_BLACK)),
@@ -986,6 +978,21 @@ mod tests {
     }
 
     #[test]
+    fn focused_array_counts_match_toon_punctuation() {
+        let theme = Theme::default();
+        let state = StyleState::main().focused();
+
+        assert_eq!(
+            theme.style(StyleRole::ArrayIndex, state),
+            theme.style(StyleRole::Punctuation, state)
+        );
+        assert_eq!(
+            theme.style(StyleRole::ArrayIndex, state),
+            theme.style(StyleRole::PrimitiveTrailingComma, state)
+        );
+    }
+
+    #[test]
     #[cfg(feature = "colorscheme")]
     fn cyan_palette_contains_only_specified_base_differences() {
         let default_theme = Theme::built_in(ThemeName::Default);
@@ -1001,18 +1008,13 @@ mod tests {
             fg(MAGENTA)
         );
         assert_eq!(cyan.style(StyleRole::ObjectKey, state), fg(CYAN));
-        assert_eq!(
-            cyan.style(StyleRole::PrimitiveTrailingComma, state),
-            Style {
-                dimmed: true,
-                ..Style::default()
-            }
-        );
-
         for role in [
             StyleRole::JsonValue(JsonValueKind::Number),
             StyleRole::JsonValue(JsonValueKind::String),
             StyleRole::Punctuation,
+            StyleRole::PrimitiveTrailingComma,
+            StyleRole::ArrayIndex,
+            StyleRole::ContainerDelimiter,
             StyleRole::LineNumber,
             StyleRole::StatusBar,
             StyleRole::Message(MessageSeverity::Error),

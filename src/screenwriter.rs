@@ -217,7 +217,7 @@ impl ScreenWriter {
                 .layout
                 .lines
                 .get(*absolute)
-                .is_some_and(|line| viewer.flatjson[line.owner].is_collapsed())
+                .is_some_and(|line| viewer.effective_collapsed(line.owner))
         });
         self.last_focus = None;
     }
@@ -255,6 +255,12 @@ impl ScreenWriter {
             let line = &viewer.visible[index].line;
             let (node, source) =
                 lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
+            if source.is_none() && viewer.is_document_body(index) {
+                return Action::JumpTo {
+                    line: viewer.visible[index].absolute,
+                    make_visible: false,
+                };
+            }
             return Action::FocusNodeAt {
                 node,
                 source,
@@ -263,6 +269,11 @@ impl ScreenWriter {
         }
         if column >= number_width && column < number_width + 2 {
             Action::ClickArrow(row)
+        } else if viewer.is_document_header(index) {
+            Action::JumpTo {
+                line: viewer.visible[index].absolute,
+                make_visible: false,
+            }
         } else {
             let viewport = self.line_viewport(&viewer.visible[index]);
             let column = viewport.source_column(column.saturating_sub(number_width + 2));
@@ -277,7 +288,14 @@ impl ScreenWriter {
                 std::borrow::Cow::Borrowed(line)
             };
             let (node, source) = lp::hit_test(&fitted, column);
-            Action::FocusNode { node, source }
+            if source.is_none() && viewer.is_document_body(index) {
+                Action::JumpTo {
+                    line: viewer.visible[index].absolute,
+                    make_visible: false,
+                }
+            } else {
+                Action::FocusNode { node, source }
+            }
         }
     }
 
@@ -312,10 +330,7 @@ impl ScreenWriter {
             let visible = &viewer.visible[index];
             let line = &visible.line;
             if number_width > 0 {
-                let relative = viewer.visible[index.min(focused)..index.max(focused)]
-                    .iter()
-                    .filter(|line| !line.line.separator)
-                    .count();
+                let relative = viewer.visible[index.min(focused)..index.max(focused)].len();
                 let number = if self.show_relative_line_numbers
                     && (index != focused || !self.show_line_numbers)
                 {
@@ -353,19 +368,26 @@ impl ScreenWriter {
                 },
                 index == focused,
             ))?;
-            let arrow =
-                if physical.first && viewer.layout.nodes[line.owner].collapsible && !line.separator
-                {
-                    if viewer.flatjson[line.owner].is_collapsed()
-                        || viewer.layout.nodes[line.owner].inline_array
+            let arrow = if physical.first && viewer.line_is_collapsible(index) {
+                if viewer.is_document_header(index) {
+                    if viewer
+                        .document_root_for_line(index)
+                        .is_some_and(|root| viewer.is_document_collapsed(root))
                     {
                         '▸'
                     } else {
                         '▾'
                     }
+                } else if viewer.effective_collapsed(line.owner)
+                    || viewer.layout.nodes[line.owner].inline_array
+                {
+                    '▸'
                 } else {
-                    ' '
-                };
+                    '▾'
+                }
+            } else {
+                ' '
+            };
             self.terminal.write_char(arrow)?;
             if available == 1 {
                 continue;

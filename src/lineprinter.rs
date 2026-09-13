@@ -298,7 +298,10 @@ fn grapheme_style(
     if let Some(span) = span {
         let annotation = matches!(
             span.role,
-            TokenRole::Preview | TokenRole::Count | TokenRole::Warning
+            TokenRole::Preview
+                | TokenRole::Count
+                | TokenRole::DocumentPosition
+                | TokenRole::Warning
         );
         let quoted_key_delimiter = matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition)
             && line.text[span.range.clone()].starts_with('"')
@@ -322,6 +325,7 @@ fn grapheme_style(
                 TokenRole::Warning => StyleRole::Message(crate::theme::MessageSeverity::Warn),
                 TokenRole::Preview => StyleRole::PreviewText,
                 TokenRole::Count => StyleRole::PreviewCount,
+                TokenRole::DocumentPosition => StyleRole::DocumentPosition,
             }
         };
         let focus = if focused.contains(&span.node) && !annotation {
@@ -367,9 +371,11 @@ fn grapheme_style(
                     TokenRole::Boolean => crate::terminal::BLUE,
                     TokenRole::Null => crate::terminal::WHITE,
                     TokenRole::Warning => crate::terminal::YELLOW,
-                    TokenRole::Count | TokenRole::Preview => crate::terminal::LIGHT_BLACK,
-                    TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
+                    TokenRole::Count | TokenRole::Preview | TokenRole::DocumentPosition => {
                         crate::terminal::LIGHT_BLACK
+                    }
+                    TokenRole::ArrayIndex | TokenRole::ContainerDelimiter => {
+                        crate::terminal::DEFAULT
                     }
                     TokenRole::PrimitiveTrailingComma | TokenRole::Punctuation => {
                         crate::terminal::DEFAULT
@@ -904,6 +910,38 @@ mod tests {
             fitted.text[warning.range.clone()].contains("WARN")
                 || fitted.text[warning.range.clone()].contains("warning")
         );
+    }
+
+    #[test]
+    fn sequence_position_is_kept_before_a_fitted_document_preview() {
+        let mut flat = parse_top_level_json(r#"{"name":"Ada","active":true} 7"#.into()).unwrap();
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        let projected =
+            layout.project_with_documents(&flat, &std::collections::HashSet::from([roots[0]]));
+        let fitted = fit_annotations(&projected[0].line, 24);
+        assert!(fitted.text.starts_with("--- (1 of 2)"));
+        assert!(fitted.text.contains('…'));
+        assert_eq!(
+            fitted.spans[1].role,
+            TokenRole::DocumentPosition,
+            "the sequence position is its own annotation rather than preview text"
+        );
+        assert!(
+            fitted
+                .spans
+                .iter()
+                .filter(|span| span.role == TokenRole::Preview)
+                .all(|span| span.source.is_none())
+        );
+        flat.expand(roots[0]);
+        assert_eq!(layout.project(&flat)[0].line.text, "--- (1 of 2)");
     }
     #[test]
     fn expanded_scalars_have_distinct_styles_and_only_annotations_are_dimmed() {

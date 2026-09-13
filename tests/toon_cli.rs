@@ -465,6 +465,140 @@ mod terminal_commands {
     }
 
     #[test]
+    fn sequence_headers_show_positions_and_collapse_only_their_document() {
+        let input = "{\"name\":\"Ada\",\"active\":true}\n[10,20]\n7\n{}\n[]";
+        for commands in ["q", " q", "  q"] {
+            let output = session(input, commands);
+            assert!(!output.contains("Multiple document roots"));
+            let rows = rendered_rows(&output, 120, 24);
+            let headers: Vec<_> = rows.iter().filter(|row| row.contains("--- (")).collect();
+            assert_eq!(headers.len(), 5, "{:?}", rows);
+            for (index, header) in headers.iter().enumerate() {
+                assert!(header.contains(&format!("({} of 5)", index + 1)));
+            }
+            if commands == " q" {
+                assert!(headers[0].contains("▸ --- (1 of 5) name: Ada; active: true"));
+                assert!(!rows.iter().any(|row| row.trim_end().ends_with("active: true") && !row.contains("---")));
+            } else {
+                assert!(headers[0].ends_with("▾ --- (1 of 5)"), "{:?}", rows);
+                let field = rows.iter().find(|row| row.contains("name: Ada")).unwrap();
+                assert_eq!(
+                    headers[0][..headers[0].find("---").unwrap()]
+                        .chars()
+                        .count(),
+                    field[..field.find("name:").unwrap()].chars().count()
+                );
+            }
+            assert!(headers[1].ends_with("▾ --- (2 of 5)"));
+            assert!(rows.iter().any(|row| row.contains("[2]: 10,20")));
+            assert_eq!(
+                rows.iter()
+                    .filter(|row| row.contains('▾') || row.contains('▸'))
+                    .count(),
+                6,
+                "Only the five document headers and nonempty array body have arrows: {:?}",
+                rows
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_navigation_search_and_mouse_keep_value_targets() {
+        let input = "{\"name\":\"Ada\",\"details\":{\"needle\":\"MATCH\"}}\n[10,20]\n7\n{}\n[]";
+        for (commands, expected) in [
+            ("l]Jpp q", "7\r\n\r\nPress any key to continue."),
+            (
+                " pp q",
+                "{\n  \"name\": \"Ada\",\n  \"details\": {\n    \"needle\": \"MATCH\"\n  }\n}",
+            ),
+            (
+                " /MATCH\npp q",
+                "\"MATCH\"\r\n\r\nPress any key to continue.",
+            ),
+            ("4Gpp q", "\"MATCH\"\r\n\r\nPress any key to continue."),
+        ] {
+            let output = session(input, commands);
+            assert!(
+                output
+                    .replace("\r\n", "\n")
+                    .contains(&expected.replace("\r\n", "\n")),
+                "{}",
+                output
+            );
+        }
+        // Disable numbers so the arrow is at column one. Collapse the first
+        // document by mouse, then select the scalar document's header by click.
+        let commands = ":set nonumber\n\x1b[<0;1;1M\x1b[<0;7;4Mpp q";
+        let output = session(input, commands);
+        assert!(strip_styles(&output).contains("▸ --- (1 of 5)"));
+        assert!(
+            output.contains("7\r\n\r\nPress any key to continue."),
+            "{}",
+            output
+        );
+    }
+
+    #[test]
+    fn sequence_array_body_retains_inline_array_controls() {
+        let output = session("[10,20] 7", "jlpp q");
+        assert!(
+            output.replace("\r\n", "\n").contains("[\n  10,\n  20\n]"),
+            "{}",
+            output
+        );
+        let rows = rendered_rows(&session("[10,20] 7", "j q"), 120, 24);
+        assert!(rows.iter().any(|row| row.ends_with("▾ --- (1 of 2)")));
+        assert!(rows.iter().any(|row| row.contains("  - 10")), "{:?}", rows);
+    }
+
+    #[test]
+    fn sequence_search_ignores_positions_and_preserves_duplicate_identity() {
+        let input = "{\"status\":\"queued\",\"status\":\"done\"} 7";
+        let output = session(input, " /done\npp q");
+        assert!(output.contains("\"done\"\r\n\r\nPress any key to continue."));
+        assert!(strip_styles(&output).contains("occurrence 2 of 2"));
+        let output = strip_styles(&session(input, " /1 of 2\nq"));
+        assert!(output.contains("Pattern not found: 1 of 2"), "{}", output);
+    }
+
+    #[test]
+    fn sequence_document_collapse_preserves_whole_document_json_write() {
+        let target = std::env::temp_dir().join(format!(
+            "tless-sequence-export-{}-{}.json",
+            std::process::id(),
+            NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let output = session(
+            "{\"a\":1} [2,3] 7 {} []",
+            &format!("c:write {}\nq", target.display()),
+        );
+        assert!(output.contains("written"), "{}", output);
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "{\n  \"a\": 1\n}\n[\n  2,\n  3\n]\n7\n{}\n[]\n"
+        );
+        std::fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn sequence_bulk_collapse_from_body_and_header_click_keep_document_state() {
+        let output = session("1 2 3", "jcq");
+        let rows = rendered_rows(&output, 120, 24);
+        for index in 1..=3 {
+            assert!(
+                rows.iter()
+                    .any(|row| row.contains(&format!("▸ --- ({} of 3) {}", index, index))),
+                "{:?}",
+                rows
+            );
+        }
+        let output = session("{\"name\":\"Ada\"} 7", ":set nonumber\n \x1b[<0;7;1Mq");
+        let rows = rendered_rows(&output, 120, 24);
+        assert!(rows[0].contains("▸ --- (1 of 2) name: Ada"), "{:?}", rows);
+        assert!(rows[1].contains("▾ --- (2 of 2)"), "{:?}", rows);
+    }
+
+    #[test]
     fn right_expands_inline_arrays_into_navigable_lines() {
         let output = session(r#"["alpha","beta"]"#, "ljpp q");
         let clean = strip_styles(&output);
@@ -893,7 +1027,7 @@ mod terminal_commands {
             .unwrap();
         file.write_all(b"original contents with a long suffix")
             .unwrap();
-        let output = session("1 2", &format!(":wt! {}\nq", target.display()));
+        let output = session("1 2", &format!(" :wt! {}\nq", target.display()));
         assert!(output.contains("requires exactly one root"));
         assert_eq!(
             std::fs::read_to_string(&target).unwrap(),
@@ -914,7 +1048,7 @@ mod terminal_commands {
         session("42", &format!(":wt! {}\nq", target.display()));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "42");
         std::fs::remove_file(&target).unwrap();
-        let output = session("1 2", &format!(":wt! {}\nq", target.display()));
+        let output = session("1 2", &format!(" :wt! {}\nq", target.display()));
         assert!(output.contains("requires exactly one root"));
         assert!(!target.exists());
     }
