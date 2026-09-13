@@ -75,8 +75,17 @@ pub struct DisplayLine {
 }
 #[derive(Clone, Debug, Default)]
 pub struct NodeLayout {
+    /// Primary structural anchor. For a sequence root this is its generated
+    /// document header; descendants and single-root nodes use their data line.
     pub line: usize,
+    /// Parsed body anchor retained when a sequence root owns a generated
+    /// header. This lets array body presentation remain independent from
+    /// document-row collapse.
+    pub body_line: usize,
     pub extent: Range<usize>,
+    /// Body-only extent. For sequence roots, `extent` includes the document
+    /// header while this range starts at the standalone root body.
+    pub body_extent: Range<usize>,
     pub header_end: usize,
     pub collapsible: bool,
     pub entry_count: usize,
@@ -95,7 +104,6 @@ pub enum WarningKind {
     NonFiniteNumber,
     NonCanonicalNumber,
     NonStringKey,
-    MultipleRoots,
     NonStandardStringEscape,
 }
 impl WarningKind {
@@ -105,7 +113,6 @@ impl WarningKind {
             Self::NonFiniteNumber => "Non-finite number",
             Self::NonCanonicalNumber => "Non-canonical number",
             Self::NonStringKey => "Non-string key",
-            Self::MultipleRoots => "Multiple document roots",
             Self::NonStandardStringEscape => "Non-standard string escape",
         }
     }
@@ -219,6 +226,14 @@ impl Layout {
             inline_limit: limit,
             expanded_arrays: expanded_arrays.clone(),
         };
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.parent.is_nil() && !r.is_closing_of_container())
+            .map(|(i, _)| i)
+            .collect();
+        let sequence = roots.len() > 1;
         for (i, row) in flat.0.iter().enumerate() {
             if row.is_closing_of_container() {
                 continue;
@@ -269,8 +284,14 @@ impl Layout {
             };
             let kids = children(flat, i);
             result.nodes[i].entry_count = kids.len();
-            result.nodes[i].collapsible =
-                !kids.is_empty() && !(row.parent.is_nil() && !row.is_array());
+            result.nodes[i].collapsible = if sequence && row.parent.is_nil() {
+                // A sequence document has a presentation row even when its
+                // parsed root is scalar or empty. The row is the collapse
+                // anchor; the parsed value and parent links remain unchanged.
+                true
+            } else {
+                !kids.is_empty() && !(row.parent.is_nil() && !row.is_array())
+            };
             if row.is_opening_of_container() && !row.is_array() {
                 let mut counts = HashMap::new();
                 // Read typed YAML keys or decode JSON keys before child caches exist.
@@ -310,30 +331,33 @@ impl Layout {
                     result.nodes[i].descendant_warnings + result.own_warnings[i].len();
             }
         }
-        let roots: Vec<_> = flat
-            .0
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| r.parent.is_nil() && !r.is_closing_of_container())
-            .map(|(i, _)| i)
-            .collect();
-        for &root in &roots {
-            if roots.len() > 1 {
-                let mut line = DisplayLine::new(root, "---".into());
+        for (position, &root) in roots.iter().enumerate() {
+            let header = if sequence {
+                let header = result.lines.len();
+                let mut line = DisplayLine::new(root, String::new());
                 line.separator = true;
+                line.token("---", root, TokenRole::ContainerDelimiter, None);
                 line.token(
-                    "  # WARN Multiple document roots",
+                    &format!(" ({} of {})", position + 1, roots.len()),
                     root,
-                    TokenRole::Warning,
+                    TokenRole::Count,
                     None,
                 );
                 result.lines.push(line);
-                result.warnings.push(Warning {
-                    node: root,
-                    kind: WarningKind::MultipleRoots,
-                });
-            }
+                Some(header)
+            } else {
+                None
+            };
             result.render(flat, root, 0, false);
+            if let Some(header) = header {
+                // `render` owns the canonical body extent. Move only the
+                // primary anchor to the generated document row so all body
+                // lines retain their normal TOON owners and indentation.
+                let end = result.nodes[root].extent.end;
+                result.nodes[root].line = header;
+                result.nodes[root].extent = header..end;
+                result.previews[root] = result.document_preview(flat, root);
+            }
         }
         for i in 0..n {
             if flat[i].is_closing_of_container() {
@@ -343,7 +367,18 @@ impl Layout {
         result.line_containers = vec![vec![]; result.lines.len()];
         for i in 0..n {
             if result.nodes[i].collapsible && !flat[i].is_closing_of_container() {
-                result.line_containers[result.nodes[i].line].push(i);
+                let line = result.nodes[i].line;
+                result.line_containers[line].push(i);
+                // A sequence root's document row is its structural anchor,
+                // but an array body still owns its normal inline/multiline
+                // presentation controls. Empty arrays have no body arrow.
+                if sequence
+                    && flat[i].parent.is_nil()
+                    && flat[i].is_array()
+                    && result.nodes[i].body_line != line
+                {
+                    result.line_containers[result.nodes[i].body_line].push(i);
+                }
             }
             if result.previews[i].text.is_empty() && flat[i].is_opening_of_container() {
                 result.previews[i] = result.preview(flat, i);
@@ -481,6 +516,7 @@ impl Layout {
     fn render(&mut self, flat: &FlatJson, node: usize, depth: usize, list: bool) {
         let start = self.lines.len();
         self.nodes[node].line = start;
+        self.nodes[node].body_line = start;
         let kids = children(flat, node);
         let mut line = DisplayLine::new(node, "  ".repeat(depth));
         if list {
@@ -650,6 +686,7 @@ impl Layout {
                 self.lines.push(line);
             }
         }
+        self.nodes[node].body_extent = start..self.lines.len();
         self.nodes[node].extent = start..self.lines.len();
         self.previews[node] = self.preview(flat, node);
     }
@@ -699,6 +736,27 @@ impl Layout {
                 break;
             }
         }
+        preview
+    }
+
+    /// Preview text used by a collapsed sequence header. Document previews
+    /// deliberately have no source mapping: the header is generated
+    /// presentation metadata, while search continues to operate on parsed
+    /// lines and source ranges.
+    fn document_preview(&self, flat: &FlatJson, node: usize) -> Preview {
+        let mut preview = self.preview(flat, node);
+        if preview.text.is_empty() {
+            match flat[node].value {
+                Value::EmptyObject => preview.text.push_str("{}"),
+                Value::EmptyArray => preview.text.push_str("[]"),
+                Value::String | Value::Number | Value::Boolean | Value::Null => {
+                    preview_append(&mut preview, &self.scalars[node], None)
+                }
+                _ => preview.text.push('…'),
+            }
+        }
+        preview.source = None;
+        preview.source_map.clear();
         preview
     }
     fn annotate(&mut self, flat: &FlatJson, line: usize) {
@@ -811,42 +869,66 @@ impl Layout {
     }
 
     /// Applies current collapse flags without changing the cached expanded grammar.
+    #[cfg(test)]
     pub fn project(&self, flat: &FlatJson) -> Vec<VisibleLine> {
+        self.project_with_documents(flat, &HashSet::new())
+    }
+
+    /// Applies parsed-node collapse flags and the viewer's presentation-only
+    /// document collapse set without changing the cached expanded grammar.
+    ///
+    /// Sequence roots are still identified by their parsed node ids. Keeping
+    /// the optional set here lets the viewer collapse a scalar or empty root
+    /// without mutating `FlatJson` or changing copy/path semantics.
+    pub fn project_with_documents(
+        &self,
+        flat: &FlatJson,
+        document_collapsed: &HashSet<usize>,
+    ) -> Vec<VisibleLine> {
         let mut visible = vec![];
         let mut absolute = 0;
         while absolute < self.lines.len() {
             let original = &self.lines[absolute];
             let mut line = original.clone();
-            if !line.separator {
-                let collapsed = self.line_containers[absolute]
-                    .iter()
-                    .copied()
-                    .filter(|&i| flat[i].is_collapsed())
-                    .min_by_key(|&i| flat[i].depth);
-                if let Some(node) = collapsed {
-                    let info = &self.nodes[node];
+            let collapsed = self.line_containers[absolute]
+                .iter()
+                .copied()
+                .filter(|&i| {
+                    (flat[i].is_collapsed() && !original.separator)
+                        || (original.separator && document_collapsed.contains(&i))
+                })
+                .min_by_key(|&i| flat[i].depth);
+            if let Some(node) = collapsed {
+                let info = &self.nodes[node];
+                let document = original.separator;
+                if !document {
                     line.text.truncate(info.header_end);
                     line.spans.retain(|s| s.range.end <= info.header_end);
-                    line.owner = node;
-                    if !flat[node].is_array() {
-                        let count = info.entry_count;
-                        line.token(&format!(" ({count})"), node, TokenRole::Count, None);
-                    }
-                    let mut messages: Vec<_> = self.own_warnings[node]
-                        .iter()
-                        .map(|w| w.message().to_owned())
-                        .collect();
-                    if info.descendant_warnings > 0 {
-                        messages.push(format!(
-                            "Contains {} hidden warnings",
-                            info.descendant_warnings
-                        ));
-                    }
-                    let warning = if messages.is_empty() {
-                        String::new()
-                    } else {
-                        format!("  # WARN {}", messages.join("; "))
-                    };
+                }
+                line.owner = node;
+                if !document && !flat[node].is_array() {
+                    let count = info.entry_count;
+                    line.token(&format!(" ({count})"), node, TokenRole::Count, None);
+                }
+                let mut messages: Vec<_> = self.own_warnings[node]
+                    .iter()
+                    .map(|w| w.message().to_owned())
+                    .collect();
+                if info.descendant_warnings > 0 {
+                    messages.push(format!(
+                        "Contains {} hidden warnings",
+                        info.descendant_warnings
+                    ));
+                }
+                let warning = if messages.is_empty() {
+                    String::new()
+                } else {
+                    format!("  # WARN {}", messages.join("; "))
+                };
+                // A sequence document's preview is always subdued generated
+                // text, including a short primitive array. Ordinary inline
+                // primitive arrays retain their existing syntax styling.
+                let inline_rendered = if !document {
                     if let Some(inline) = self.collapsed_inline_array(
                         flat,
                         node,
@@ -854,36 +936,50 @@ impl Layout {
                         UnicodeWidthStr::width(warning.as_str()),
                     ) {
                         line = inline;
-                    } else if !self.previews[node].text.is_empty() {
-                        let preview = &self.previews[node];
-                        let start = line.text.len();
-                        let rendered = format!(" {}", preview.text);
-                        line.text.push_str(&rendered);
-                        let display_offset = start + 1;
-                        let source_map = preview
-                            .source_map
-                            .iter()
-                            .map(|map| SourceMap {
-                                source: map.source.clone(),
-                                display: display_offset + map.display.start
-                                    ..display_offset + map.display.end,
-                            })
-                            .collect();
-                        line.spans.push(Span {
-                            range: start..line.text.len(),
-                            node,
-                            role: TokenRole::Preview,
-                            source: preview.source.clone(),
-                            source_map,
-                        });
+                        true
+                    } else {
+                        false
                     }
-                    if !messages.is_empty() {
-                        line.token(&warning, node, TokenRole::Warning, None);
-                    }
-                    visible.push(VisibleLine { absolute, line });
-                    absolute = info.extent.end.max(absolute + 1);
-                    continue;
+                } else {
+                    false
+                };
+                if !inline_rendered && !self.previews[node].text.is_empty() {
+                    let preview = &self.previews[node];
+                    let start = line.text.len();
+                    let rendered = format!(" {}", preview.text);
+                    line.text.push_str(&rendered);
+                    let display_offset = start + 1;
+                    let source_map = preview
+                        .source_map
+                        .iter()
+                        .map(|map| SourceMap {
+                            source: map.source.clone(),
+                            display: display_offset + map.display.start
+                                ..display_offset + map.display.end,
+                        })
+                        .collect();
+                    line.spans.push(Span {
+                        range: start..line.text.len(),
+                        node,
+                        role: TokenRole::Preview,
+                        source: preview.source.clone(),
+                        source_map,
+                    });
                 }
+                if !messages.is_empty() {
+                    line.token(&warning, node, TokenRole::Warning, None);
+                }
+                visible.push(VisibleLine { absolute, line });
+                let end = if !document
+                    && absolute == info.body_line
+                    && info.body_extent.start != info.extent.start
+                {
+                    info.body_extent.end
+                } else {
+                    info.extent.end
+                };
+                absolute = end.max(absolute + 1);
+                continue;
             }
             visible.push(VisibleLine { absolute, line });
             absolute += 1;
@@ -1464,8 +1560,212 @@ mod tests {
         );
         assert_eq!(
             text(&yaml("---\n{}\n---\n7\n")),
-            "---  # WARN Multiple document roots\n\n---  # WARN Multiple document roots\n7"
+            "--- (1 of 2)\n\n--- (2 of 2)\n7"
         );
+    }
+
+    #[test]
+    fn sequence_headers_preserve_roots_and_collapse_each_shape() {
+        let flat = json(r#"{"name":"Ada"} 7 {} []"#);
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        assert_eq!(roots.len(), 4);
+        let layout = Layout::canonical(&flat);
+        assert_eq!(layout.lines[0].text, "--- (1 of 4)");
+        assert_eq!(layout.lines[1].text, "name: Ada");
+        assert_eq!(layout.lines[2].text, "--- (2 of 4)");
+        assert_eq!(layout.lines[3].text, "7");
+        assert_eq!(layout.lines[4].text, "--- (3 of 4)");
+        assert_eq!(layout.lines[5].text, "");
+        assert_eq!(layout.lines[6].text, "--- (4 of 4)");
+        assert_eq!(layout.lines[7].text, "[0]:");
+        assert_eq!(layout.nodes[roots[0]].line, 0);
+        assert_eq!(layout.nodes[roots[1]].line, 2);
+        assert_eq!(layout.nodes[roots[2]].line, 4);
+        assert_eq!(layout.nodes[roots[3]].line, 6);
+        assert_eq!(layout.nodes[roots[3]].body_line, 7);
+        assert_eq!(layout.nodes[roots[3]].body_extent, 7..8);
+        assert!(layout.warnings.is_empty());
+
+        let document_collapsed = roots.iter().copied().collect::<HashSet<_>>();
+        let visible = layout.project_with_documents(&flat, &document_collapsed);
+        assert_eq!(
+            visible
+                .iter()
+                .map(|line| line.line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "--- (1 of 4) name: Ada",
+                "--- (2 of 4) 7",
+                "--- (3 of 4) {}",
+                "--- (4 of 4) []",
+            ]
+        );
+        assert!(
+            visible
+                .iter()
+                .all(|line| line.line.separator && line.line.owner < flat.0.len())
+        );
+        assert!(
+            visible
+                .iter()
+                .flat_map(|line| line.line.spans.iter())
+                .filter(|span| span.role == TokenRole::Preview)
+                .all(|span| span.source.is_none())
+        );
+    }
+
+    #[test]
+    fn sequence_root_warning_moves_to_collapsed_header() {
+        let flat = yaml("---\n.inf\n---\n7\n");
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        assert_eq!(layout.warnings.len(), 1);
+        assert_eq!(layout.warnings[0].kind, WarningKind::NonFiniteNumber);
+        let document_collapsed = HashSet::from([roots[0]]);
+        let header = &layout.project_with_documents(&flat, &document_collapsed)[0].line;
+        assert_eq!(header.text, "--- (1 of 2) .inf  # WARN Non-finite number");
+        assert!(
+            header
+                .spans
+                .iter()
+                .all(|span| span.source.is_none() || span.role != TokenRole::Preview)
+        );
+    }
+
+    #[test]
+    fn root_array_body_collapse_keeps_document_header_expanded() {
+        let mut flat = json(r#"[{"a":1},{"a":2}] {}"#);
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        assert_ne!(
+            layout.nodes[roots[0]].body_line,
+            layout.nodes[roots[0]].line
+        );
+        flat.collapse(roots[0]);
+        let visible = layout.project_with_documents(&flat, &HashSet::new());
+        assert_eq!(visible[0].line.text, "--- (1 of 2)");
+        assert_eq!(visible[1].absolute, layout.nodes[roots[0]].body_line);
+        assert_eq!(visible[2].absolute, layout.nodes[roots[1]].line);
+    }
+
+    #[test]
+    fn collapsed_sequence_header_aggregates_nested_duplicate_warnings() {
+        let flat = json(r#"{"nested":{"a":1,"a":2}} 7"#);
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let nested = children(&flat, roots[0])[0];
+        let layout = Layout::canonical(&flat);
+        assert_eq!(layout.nodes[nested].descendant_warnings, 2);
+        let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
+        assert_eq!(visible[0].line.owner, roots[0]);
+        assert!(
+            visible[0]
+                .line
+                .text
+                .ends_with("# WARN Contains 2 hidden warnings")
+        );
+        assert!(!visible[0].line.text.contains("Multiple document roots"));
+    }
+
+    #[test]
+    fn json_and_yaml_sequences_have_equivalent_document_layouts() {
+        let json_layout = Layout::canonical(&json(r#"{"a":1} {"b":2}"#));
+        let yaml_layout = Layout::canonical(&yaml("---\na: 1\n---\nb: 2\n"));
+        let json_lines: Vec<_> = json_layout
+            .lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect();
+        let yaml_lines: Vec<_> = yaml_layout
+            .lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect();
+        assert_eq!(json_lines, yaml_lines);
+        assert_eq!(
+            json_lines,
+            vec!["--- (1 of 2)", "a: 1", "--- (2 of 2)", "b: 2"]
+        );
+        assert!(
+            json_layout
+                .warnings
+                .iter()
+                .all(|warning| warning.kind != WarningKind::NonStringKey)
+        );
+        assert!(
+            yaml_layout
+                .warnings
+                .iter()
+                .all(|warning| warning.kind != WarningKind::NonStringKey)
+        );
+    }
+
+    #[test]
+    fn expanding_a_document_restores_descendant_collapse_state() {
+        let mut flat = json(r#"{"outer":{"x":1,"y":2},"tail":0} {}"#);
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let outer = children(&flat, roots[0])[0];
+        let layout = Layout::canonical(&flat);
+        flat.collapse(outer);
+        let collapsed_document = HashSet::from([roots[0]]);
+        let hidden = layout.project_with_documents(&flat, &collapsed_document);
+        assert_eq!(hidden[0].line.text, "--- (1 of 2) outer: …; tail: 0");
+        assert_eq!(hidden[1].line.text, "--- (2 of 2)");
+        let reopened = layout.project_with_documents(&flat, &HashSet::new());
+        assert!(reopened.iter().any(|visible| {
+            visible.line.owner == outer && visible.line.text.starts_with("outer:")
+        }));
+        let outer_line = reopened
+            .iter()
+            .find(|visible| visible.line.owner == outer)
+            .unwrap();
+        assert!(outer_line.line.text.contains("x: 1; y: 2"));
+    }
+
+    #[test]
+    fn collapsed_scalar_document_preview_is_bounded() {
+        let input = format!("\"{}\" 0", "x".repeat(10_000));
+        let flat = json(&input);
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
+        assert!(visible[0].line.text.len() <= "--- (1 of 2) ".len() + 256);
+        assert!(visible[0].line.text.ends_with('…'));
     }
     #[test]
     fn shared_header_mapping_and_table_rows_remain_visible() {

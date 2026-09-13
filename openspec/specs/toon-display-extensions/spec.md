@@ -8,7 +8,7 @@ Preserve parsed data that standard TOON cannot represent faithfully and make eac
 
 ### Requirement: Explicit display extension boundary
 
-The viewer SHALL preserve the values, types, entry occurrences, and order available in its parsed model. It SHALL NOT coerce, discard, or reject such data solely to fit standard TOON. Extended content SHALL be labeled with generated subdued comments beginning `# WARN `. This extension SHALL be a display contract, not an alternate view mode or an additional input/export format. Existing parser normalization, parse errors, resource limits, and export behavior SHALL remain unchanged.
+The viewer SHALL preserve the values, types, entry occurrences, and order available in its parsed model. It SHALL NOT coerce, discard, or reject such data solely to fit standard TOON. Extended content SHALL be labeled with generated subdued comments beginning `# WARN `, except multiple roots SHALL use sequence document rows without a multiple-roots warning. This extension SHALL be a display contract, not an alternate view mode or an additional input/export format. Existing parser normalization, parse errors, resource limits, and export behavior SHALL remain unchanged.
 
 #### Scenario: Standard data
 
@@ -57,7 +57,7 @@ Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, o
 
 ### Requirement: Non-string keys and multiple roots
 
-A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>` with `# WARN Non-string key`. Compact keys SHALL retain their parsed type using JSON-style strings, literals, arrays, and ordered object entries, with the numeric extensions where needed. String keys that could resemble extension syntax SHALL be quoted. Multiple parsed roots SHALL retain their order, each preceded by `---  # WARN Multiple document roots`. The viewer SHALL NOT wrap roots in a synthetic array or rename non-string keys into strings.
+A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>` with `# WARN Non-string key`. Compact keys SHALL retain their parsed type using JSON-style strings, literals, arrays, and ordered object entries, with the numeric extensions where needed. String keys that could resemble extension syntax SHALL be quoted. Multiple parsed roots SHALL retain their order, each represented by a selectable `---` sequence document row with a subdued position in both states and a contents preview only when collapsed. Multiple roots alone SHALL NOT generate a warning. The viewer SHALL NOT wrap roots in a synthetic array or rename non-string keys into strings.
 
 #### Scenario: Numeric and string keys
 
@@ -69,8 +69,8 @@ A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>
 #### Scenario: Several documents
 
 - **WHEN** parsing yields an object root and a primitive root
-- **THEN** each SHALL retain its root shape after its warning separator
-- **AND** the separator SHALL NOT be a selectable data value
+- **THEN** each SHALL retain its root shape under its sequence document row without extra indentation
+- **AND** each document row SHALL be selectable and collapsible and SHALL identify its existing parsed root without introducing a serialized value
 
 ### Requirement: Unsupported control-character escapes
 
@@ -85,7 +85,7 @@ String values and string keys containing control characters other than LF, CR, a
 
 ### Requirement: Warning placement and collapse
 
-Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages ordered first by parsed-node encounter order. Within each node, messages SHALL follow this kind order: duplicate key, non-finite number, non-canonical number, non-string key, multiple roots, non-standard string escape. Any `Contains N hidden warnings` summary SHALL follow the container's own messages and appear last. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
+Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages ordered first by parsed-node encounter order. Within each node, messages SHALL follow this kind order: duplicate key, non-finite number, non-canonical number, non-string key, non-standard string escape. Any `Contains N hidden warnings` summary SHALL follow the container's own messages and appear last. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
 
 #### Scenario: Hidden duplicate
 

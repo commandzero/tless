@@ -905,6 +905,33 @@ mod tests {
                 || fitted.text[warning.range.clone()].contains("warning")
         );
     }
+
+    #[test]
+    fn sequence_position_is_kept_before_a_fitted_document_preview() {
+        let mut flat = parse_top_level_json(r#"{"name":"Ada","active":true} 7"#.into()).unwrap();
+        let roots: Vec<_> = flat
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
+            .map(|(node, _)| node)
+            .collect();
+        let layout = Layout::canonical(&flat);
+        let projected =
+            layout.project_with_documents(&flat, &std::collections::HashSet::from([roots[0]]));
+        let fitted = fit_annotations(&projected[0].line, 24);
+        assert!(fitted.text.starts_with("--- (1 of 2)"));
+        assert!(fitted.text.contains('…'));
+        assert!(
+            fitted
+                .spans
+                .iter()
+                .filter(|span| span.role == TokenRole::Preview)
+                .all(|span| span.source.is_none())
+        );
+        flat.expand(roots[0]);
+        assert_eq!(layout.project(&flat)[0].line.text, "--- (1 of 2)");
+    }
     #[test]
     fn expanded_scalars_have_distinct_styles_and_only_annotations_are_dimmed() {
         let flat = parse_top_level_json(r#"[1,true,null,"hello"]"#.into()).unwrap();

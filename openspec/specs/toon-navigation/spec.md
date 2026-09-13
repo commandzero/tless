@@ -24,7 +24,7 @@ The viewer SHALL distinguish container focus from child-value focus even when th
 
 ### Requirement: Vertical and structural motion
 
-Up/down and counted vertical motions SHALL move over visible logical display lines, excluding root-separator annotation lines and soft-wrap continuations. A wrapped line SHALL count as one entry for counted motions. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. `J` SHALL stop at the final sibling without moving to the parent or wrapping, including when a numeric count exceeds the remaining siblings. Moving into an inline array with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. Closing-delimiter matching SHALL have no action or help entry.
+Up/down and counted vertical motions SHALL move over visible logical display lines, including sequence document rows and excluding soft-wrap continuations. A wrapped line SHALL count as one entry for counted motions. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. `J` SHALL stop at the final sibling without moving to the parent or wrapping, including when a numeric count exceeds the remaining siblings. Moving into an inline array from its data line with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. From a collapsed sequence document row, `l` or Right Arrow SHALL first expand the document and keep its row selected. From an expanded document row it SHALL focus the first logical child, if any, without an intermediate root selection. Closing-delimiter matching SHALL have no action or help entry.
 
 #### Scenario: Parent and next entry at the parent level
 
@@ -44,7 +44,7 @@ Up/down and counted vertical motions SHALL move over visible logical display lin
 
 #### Scenario: Expand an inline array
 
-- **WHEN** an inline array is selected and the user presses `l` or Right Arrow
+- **WHEN** an inline array data line is selected and the user presses `l` or Right Arrow
 - **THEN** its values SHALL move onto individual list lines and the array SHALL remain selected
 - **AND** the next child motion SHALL focus its first element
 - **AND** opening a collapsed inline array with that motion SHALL also select multiline presentation
@@ -57,10 +57,24 @@ Up/down and counted vertical motions SHALL move over visible logical display lin
 
 #### Scenario: Root focus
 
-- **WHEN** parent motion reaches a nonempty root object
+- **WHEN** parent motion reaches a nonempty object in a single-root input
 - **THEN** root selection SHALL be available through its first display line and application status
 - **AND** the viewer SHALL NOT insert a synthetic root heading
 - **AND** an empty root SHALL remain selectable using one blank viewport row
+
+#### Scenario: Sequence parent and sibling motion
+
+- **WHEN** a top-level field in document 1 of a sequence is selected
+- **THEN** `[` SHALL select document 1's row
+- **AND** `]` SHALL select document 2's row if it exists, preserving its collapse state
+- **AND** from a document row, sibling motions SHALL move between document rows
+- **AND** existing fallback and boundary rules SHALL apply at the first and last documents
+
+#### Scenario: Vertical motion through document rows
+
+- **WHEN** the user moves vertically through a sequence with expanded and collapsed documents
+- **THEN** each visible document row SHALL be a selectable step and count toward relative navigation distance
+- **AND** a collapsed document SHALL contribute only its document row
 
 ### Requirement: Search maps data to rendered spans
 
@@ -96,7 +110,7 @@ Wrap toggles, resize, gutter or indentation changes, collapse, expansion, and vi
 
 ### Requirement: Numbered jumps follow TOON lines
 
-Absolute line jumps SHALL address the fully expanded TOON layout used by absolute gutters. A target hidden by collapse SHALL select the visible collapsed ancestor unless the command explicitly requests revealing the target. A jump to a separator SHALL select the following root. All values sharing a TOON line SHALL share its jump address; a line jump SHALL initially focus the line's owning node.
+Absolute line jumps SHALL address the fully expanded TOON layout used by absolute gutters. A target hidden by collapse SHALL select the visible collapsed ancestor unless the command explicitly requests revealing the target. A jump to a sequence document row SHALL select that row and preserve its collapse state. All values sharing a TOON line SHALL share its jump address; a line jump SHALL initially focus the line's owning node.
 
 #### Scenario: Jump into collapsed content
 
