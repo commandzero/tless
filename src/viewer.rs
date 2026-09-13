@@ -181,7 +181,8 @@ impl JsonViewer {
 
     /// Collapse state used by app-level search tracking and rendering.
     pub fn effective_collapsed(&self, node: Index) -> bool {
-        self.flatjson[node].is_collapsed() || self.is_document_collapsed(node)
+        self.flatjson[node].is_collapsed()
+            || (self.is_sequence() && self.is_document_collapsed(node))
     }
 
     fn visible_ancestor(&self, node: Index) -> Index {
@@ -497,11 +498,22 @@ impl JsonViewer {
     fn focus(&mut self, node: usize) {
         self.focus_byte_range = None;
         self.focused_node = self.visible_ancestor(node);
-        self.absolute_anchor_line = if self.is_document_root(self.focused_node) {
-            self.document_header_absolute(self.focused_node)
+        if self.is_document_root(self.focused_node) {
+            let header = self.document_header_absolute(self.focused_node);
+            let body_anchor = self.flatjson[self.focused_node].is_collapsed()
+                && !self.is_document_collapsed(self.focused_node)
+                && self.layout.nodes[self.focused_node].body_line != header;
+            self.absolute_anchor_line = if body_anchor {
+                self.layout.nodes[self.focused_node].body_line
+            } else {
+                header
+            };
+            if self.absolute_anchor_line == header {
+                self.desired_depth = self.flatjson[self.focused_node].depth;
+            }
         } else {
-            self.layout.nodes[self.focused_node].line
-        };
+            self.absolute_anchor_line = self.layout.nodes[self.focused_node].line;
+        }
     }
 
     fn reveal(&mut self, node: usize, source: Option<usize>) {
@@ -565,6 +577,7 @@ impl JsonViewer {
                     .min(self.visible.len().saturating_sub(1))
             });
         self.rebuild_physical_rows();
+        self.layout_generation = self.layout_generation.wrapping_add(1);
     }
 
     fn ensure_visible(&mut self) {
@@ -1338,6 +1351,19 @@ mod tests {
     }
 
     #[test]
+    fn sibling_motion_from_a_document_row_does_not_descend_by_stale_depth() {
+        let mut v = viewer(r#"{"a":1} {"b":2}"#);
+        let roots = v.document_roots().to_vec();
+
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusPrevSibling(1));
+        assert_eq!(v.focused_node, roots[0]);
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(v.focused_node, roots[1]);
+        assert_eq!(v.absolute_anchor_line, v.document_header_absolute(roots[1]));
+    }
+
+    #[test]
     fn sequence_document_collapse_is_independent_of_root_array_body_state() {
         let mut v = viewer("[1,2] {\"tail\":3}");
         let roots = v.document_roots().to_vec();
@@ -1919,6 +1945,26 @@ mod tests {
             "shared key header is the display anchor"
         );
         assert_eq!(path(&v), ".users[1].name");
+    }
+
+    #[test]
+    fn jump_to_hidden_root_array_content_selects_the_body_control() {
+        let mut v = viewer("[1,2] {}");
+        let root = v.document_roots()[0];
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::FocusParent);
+        v.perform_action(Action::MoveDown(1));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[root].is_collapsed());
+
+        let child_line = v.layout.nodes[v.flatjson[root].first_child().as_usize()].line;
+        v.perform_action(Action::JumpTo {
+            line: child_line,
+            make_visible: false,
+        });
+        assert_eq!(v.focused_node, root);
+        assert!(!v.focused_document_header());
+        assert_eq!(v.absolute_anchor_line, v.layout.nodes[root].body_line);
     }
 
     #[test]

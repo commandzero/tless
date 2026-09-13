@@ -217,7 +217,7 @@ impl ScreenWriter {
                 .layout
                 .lines
                 .get(*absolute)
-                .is_some_and(|line| viewer.effective_collapsed(line.owner))
+                .is_some_and(|line| !line.separator && viewer.effective_collapsed(line.owner))
         });
         self.last_focus = None;
     }
