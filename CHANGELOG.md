@@ -5,6 +5,10 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+### Added
+
+- Suggest long-form command names at the `:` prompt, with inline hints and Tab/Shift-Tab cycling. [#9](https://github.com/commandzero/tless/issues/9).
+
 ## [0.1.2] - 2026-09-13
 
 ### Changed

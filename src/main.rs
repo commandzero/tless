@@ -19,7 +19,7 @@ use termion::raw::IntoRawMode;
 use termion::screen::IntoAlternateScreen;
 
 mod app;
-#[cfg(feature = "colorscheme")]
+mod command;
 mod commandline;
 #[cfg(feature = "colorscheme")]
 mod config;

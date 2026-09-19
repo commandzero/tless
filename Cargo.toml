@@ -26,7 +26,7 @@ sexp = []
 logos = "0.16.1"
 unicode-width = "0.2.2"
 unicode-segmentation = "1.13.3"
-rustyline = { version = "18.0.1", default-features = false }
+rustyline = { version = "18.0.1", default-features = false, features = ["custom-bindings"] }
 regex = "1.13.1"
 lazy_static = "1.5.0"
 termion = "4.0.6"

@@ -9,6 +9,7 @@ use termion::event::MouseButton::{Left, WheelDown, WheelUp};
 use termion::event::MouseEvent::Press;
 use termion::screen::{ToAlternateScreen, ToMainScreen};
 
+use crate::command::{Command, WriteFormat};
 #[cfg(feature = "colorscheme")]
 use crate::config::Config;
 use crate::flatjson;
@@ -65,29 +66,6 @@ enum ContentTarget {
     DotPath,
     BracketPath,
     QueryPath,
-}
-
-#[derive(Copy, Clone)]
-enum WriteFormat {
-    Json,
-    Toon,
-    #[cfg(feature = "sexp")]
-    Sexp,
-}
-
-enum Command {
-    #[cfg(feature = "colorscheme")]
-    Colorscheme(String),
-    Quit,
-    Help,
-    SetShowLineNumber(Option<bool>),
-    SetShowRelativeLineNumber(Option<bool>),
-    WriteFile {
-        filename: String,
-        overwrite_existing: bool,
-        write_format: WriteFormat,
-    },
-    Unknown,
 }
 
 // Help contents that we pipe to less.
@@ -515,7 +493,7 @@ impl App {
                         }
                         Key::Char(':') => {
                             if let Some(command) = self.readline(":", "command") {
-                                match Self::parse_command(&command) {
+                                match Command::parse(&command) {
                                     Command::Quit => break,
                                     Command::Help => self.show_help(),
                                     #[cfg(feature = "colorscheme")]
@@ -831,63 +809,6 @@ impl App {
             node: destination,
             source: Some(self.search_state.current_match_range().start),
         })
-    }
-
-    fn parse_command(command: &str) -> Command {
-        #[cfg(feature = "colorscheme")]
-        if let Some(name) = command.trim().strip_prefix("colorscheme") {
-            if name.starts_with(char::is_whitespace) && !name.trim().is_empty() {
-                return Command::Colorscheme(name.trim().to_string());
-            }
-        }
-        let args: Vec<&str> = command.split(" ").filter(|s| !s.is_empty()).collect();
-
-        match args.as_slice() {
-            ["h" | "help"] => Command::Help,
-            ["q" | "quit" | "quit()" | "exit" | "exit()"] => Command::Quit,
-            ["set", arg] => match *arg {
-                "number" => Command::SetShowLineNumber(Some(true)),
-                "number!" => Command::SetShowLineNumber(None),
-                "nonumber" => Command::SetShowLineNumber(Some(false)),
-                "relativenumber" => Command::SetShowRelativeLineNumber(Some(true)),
-                "relativenumber!" => Command::SetShowRelativeLineNumber(None),
-                "norelativenumber" => Command::SetShowRelativeLineNumber(Some(false)),
-                _ => Command::Unknown,
-            },
-            ["w" | "write", filename] => Command::WriteFile {
-                filename: filename.to_string(),
-                overwrite_existing: false,
-                write_format: WriteFormat::Json,
-            },
-            ["w!" | "write!", filename] => Command::WriteFile {
-                filename: filename.to_string(),
-                overwrite_existing: true,
-                write_format: WriteFormat::Json,
-            },
-            ["wt" | "writetoon", filename] => Command::WriteFile {
-                filename: filename.to_string(),
-                overwrite_existing: false,
-                write_format: WriteFormat::Toon,
-            },
-            ["wt!" | "writetoon!", filename] => Command::WriteFile {
-                filename: filename.to_string(),
-                overwrite_existing: true,
-                write_format: WriteFormat::Toon,
-            },
-            #[cfg(feature = "sexp")]
-            ["ws" | "writesexp", filename] => Command::WriteFile {
-                filename: filename.to_string(),
-                overwrite_existing: false,
-                write_format: WriteFormat::Sexp,
-            },
-            #[cfg(feature = "sexp")]
-            ["ws!" | "writesexp!", filename] => Command::WriteFile {
-                filename: filename.to_string(),
-                overwrite_existing: true,
-                write_format: WriteFormat::Sexp,
-            },
-            _ => Command::Unknown,
-        }
     }
 
     fn show_help(&mut self) {
