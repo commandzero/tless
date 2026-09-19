@@ -534,10 +534,6 @@ impl ScreenWriter {
                 let wrapped_char = if just_wrapped { 'W' } else { ' ' };
                 write!(self.terminal, " {wrapped_char} {match_tracker}")?;
             }
-        } else {
-            self.terminal
-                .set_style(&self.theme.style(StyleRole::StatusText, StyleState::main()))?;
-            write!(self.terminal, ":")?;
         }
 
         self.terminal.position_cursor(
@@ -551,8 +547,8 @@ impl ScreenWriter {
         self.terminal
             .write_str(std::str::from_utf8(input_buffer).unwrap())?;
 
-        // Position the cursor better for random debugging prints. (2 so it's after ':')
-        self.terminal.position_cursor_col(2)?;
+        // Position the cursor better for random debugging prints.
+        self.terminal.position_cursor_col(1)?;
 
         Ok(())
     }

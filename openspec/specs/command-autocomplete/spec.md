@@ -111,7 +111,7 @@ Tab SHALL insert the first match and successive Tab presses SHALL cycle forward 
 
 ### Requirement: Prompt isolation and terminal presentation
 
-Command completion and hints SHALL be enabled only for `:` input. The `/` and `?` prompts SHALL retain their existing search editing and submission behavior. Closing or reopening a prompt SHALL clear any completion cycle. Hints SHALL fit in the available command-row cells without wrapping into document or status rows; a hint that does not fit SHALL be clipped or omitted. Completion redraws SHALL preserve command foreground and background styling, distinguish hint text, and remove stale hints after edits, cancellation, submission, resizing, and theme changes. Interactive help SHALL describe selection, hint acceptance, submission, and the command-name-only scope.
+Command completion and hints SHALL be enabled only for `:` input. The `/` and `?` prompts SHALL retain their existing search editing and submission behavior. The `:` marker SHALL appear while command input is active and SHALL be absent during normal viewing after submission or cancellation. Closing or reopening a prompt SHALL clear any completion cycle. Hints SHALL fit in the available command-row cells without wrapping into document or status rows; a hint that does not fit SHALL be clipped or omitted. Completion redraws SHALL preserve command foreground and background styling, distinguish hint text, and remove stale hints after edits, cancellation, submission, resizing, and theme changes. Interactive help SHALL describe selection, hint acceptance, submission, and the command-name-only scope.
 
 #### Scenario: Switch to search
 
@@ -129,3 +129,9 @@ Command completion and hints SHALL be enabled only for `:` input. The `/` and `?
 
 - **WHEN** the user closes a prompt during completion and opens `:` again
 - **THEN** completion SHALL start from the new input with no prior selection or hint
+
+#### Scenario: Hide the command marker outside input
+
+- **WHEN** the viewer is not accepting command input because no command prompt is open or the previous command was submitted or cancelled
+- **THEN** the status row SHALL NOT display `:`
+- **AND** pressing `:` SHALL display the marker for the active command prompt

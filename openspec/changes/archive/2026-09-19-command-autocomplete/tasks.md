@@ -8,6 +8,7 @@
 - [x] 2.1 Make the command-line helper available in every build and set command or search context for each prompt. Verify base completion with no default features and absence of command hints and candidates in both search directions.
 - [x] 2.2 Add inline suffix hints, exact-name suppression, Right-arrow acceptance, and explicit circular Tab/Shift-Tab selection using the locked Rustyline version. Verify Shift-Tab starts at the last match, Escape restores the pre-cycle buffer and cursor while keeping the prompt open, original-input restoration during cycling, editing after selection, Enter submitting only buffered text, and Ctrl-C cancellation in pseudoterminal tests.
 - [x] 2.3 Preserve theme styling and hint cleanup across prompt closure, reopening, and theme changes. Verify narrow-width and resize behavior without document/status-row corruption, including full suffix acceptance when a hint is clipped.
+- [x] 2.4 Show the `:` marker only while command input is active. Verify the initial screen and redraws after submission and cancellation leave the idle status row clear.
 
 ## 3. User guidance and integrated verification
 

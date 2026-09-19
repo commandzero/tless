@@ -33,6 +33,46 @@ mod terminal_commands {
     }
 
     #[test]
+    fn command_marker_is_visible_only_while_command_input_is_active() {
+        let output = session("[]", ":set nonumber\n:\x03q");
+        let prompt_start = "\x1b[?2004h";
+        let prompt_end = "\x1b[?2004l";
+        let starts: Vec<_> = output
+            .match_indices(prompt_start)
+            .map(|(index, _)| index)
+            .collect();
+        let ends: Vec<_> = output
+            .match_indices(prompt_end)
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(starts.len(), 2, "{output:?}");
+        assert_eq!(ends.len(), 2, "{output:?}");
+
+        let initial = rendered_rows(&output[..starts[0]], 120, 24);
+        assert!(initial[23].is_empty(), "initial status row: {initial:?}");
+
+        let command_prompt = strip_styles(&output[starts[0]..ends[0]]);
+        assert!(
+            command_prompt.contains(":set nonumber"),
+            "{command_prompt:?}"
+        );
+
+        let after_command = rendered_rows(&output[..starts[1]], 120, 24);
+        assert!(
+            after_command[23].is_empty(),
+            "status row after command: {after_command:?}"
+        );
+
+        let cancelled_prompt = strip_styles(&output[starts[1]..ends[1]]);
+        assert!(cancelled_prompt.contains(':'), "{cancelled_prompt:?}");
+        let after_cancel = rendered_rows(&output, 120, 24);
+        assert!(
+            after_cancel[23].is_empty(),
+            "status row after cancellation: {after_cancel:?}"
+        );
+    }
+
+    #[test]
     fn autocomplete_cycles_forward_backward_and_restores_input() {
         let cases = [
             (":wri\t\nq", "write"),

@@ -40,6 +40,8 @@ Hints use the same candidates, but only for a nonempty, incomplete token at the 
 
 Style the inline hint distinctly using existing terminal attributes, while preserving the command background and restoring typed-text styling after the hint. No new theme configuration is needed. Use the editor's terminal-width handling where it meets the spec; verify clipping, resizing, and cleanup through a pseudoterminal. Hint acceptance must insert the full suffix even if its visual presentation is clipped.
 
+Let Rustyline paint the `:` marker only while its command prompt is active. The normal status-bar renderer leaves the idle command row blank, including after a command is submitted or cancelled.
+
 ## Risks / Trade-offs
 
 - Rustyline hint refresh and circular-selection details could differ from assumptions. Verify the locked version with focused terminal tests before expanding integration; keep any adaptation in the helper/editor boundary.

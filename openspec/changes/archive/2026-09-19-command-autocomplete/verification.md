@@ -8,7 +8,7 @@
 | Completion scope and text preservation | `candidates` restricts matching to the end of the first token. Unit tests cover empty input, spaces, arguments, cursor positions, case, and Unicode. The terminal write test completes before an existing filename and verifies the resulting file. |
 | Suggestions while typing | Helper tests check exact-name suppression, mode isolation, and clipping. Terminal tests distinguish dim hints from input, accept hints with Right, and show that Enter submits only typed text. |
 | Completion selection and execution | Terminal tests check forward/backward initiation, direction changes, restoration, Escape, editing and cursor movement after selection, and cancellation without overwriting an existing file. Rustyline owns replacement ranges and cursor restoration. |
-| Prompt isolation and terminal presentation | Terminal tests cover both search directions, prompt reopening, six-column clipping, accepting a clipped hint, resize, cursor movement, cancellation cleanup, and foreground/background preservation after theme switches. Interactive help documents the controls and scope. |
+| Prompt isolation and terminal presentation | Terminal tests cover both search directions, prompt reopening, idle marker removal before input and after submission or cancellation, six-column clipping, accepting a clipped hint, resize, cursor movement, cancellation cleanup, and foreground/background preservation after theme switches. Interactive help documents the controls and scope. |
 
 ## Validation
 
