@@ -10,10 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::MAX_BUFFER_SIZE;
-#[cfg(feature = "colorscheme")]
-use crate::commandline::CommandLineHighlighter;
-#[cfg(not(feature = "colorscheme"))]
-type CommandLineHighlighter = ();
+use crate::commandline::CommandLineHelper;
 use crate::flatjson::{Index, PathType};
 use crate::lineprinter as lp;
 use crate::options::Opt;
@@ -31,7 +28,7 @@ pub type TerminalOutput = termion::input::MouseTerminal<
 
 pub struct ScreenWriter {
     pub stdout: TerminalOutput,
-    pub command_editor: Editor<CommandLineHighlighter, DefaultHistory>,
+    pub command_editor: Editor<CommandLineHelper, DefaultHistory>,
     pub dimensions: TTYDimensions,
     pub terminal: AnsiTerminal,
     theme: Theme,
@@ -83,13 +80,21 @@ impl ScreenWriter {
         stdout: TerminalOutput,
         dimensions: TTYDimensions,
     ) -> Self {
-        let command_editor = Editor::new().expect("Unable to initialize command input");
-        #[cfg(feature = "colorscheme")]
-        let mut command_editor = command_editor;
-        #[cfg(feature = "colorscheme")]
-        command_editor.set_helper(Some(CommandLineHighlighter::new(
+        // The viewer already paints terminal styles. Keep the editor's highlighter
+        // active as well, so hints remain distinguishable from entered text.
+        let config = rustyline::Config::builder()
+            .color_mode(rustyline::ColorMode::Forced)
+            .completion_type(rustyline::CompletionType::Circular)
+            .build();
+        let mut command_editor =
+            Editor::with_config(config).expect("Unable to initialize command input");
+        command_editor.set_helper(Some(CommandLineHelper::new(
             theme.style(StyleRole::StatusText, StyleState::main()),
         )));
+        command_editor.bind_sequence(
+            rustyline::Event::Any,
+            command_editor.helper().unwrap().bindings(),
+        );
         ScreenWriter {
             stdout,
             command_editor,
@@ -108,10 +113,13 @@ impl ScreenWriter {
     #[cfg(feature = "colorscheme")]
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
-        self.command_editor
-            .set_helper(Some(CommandLineHighlighter::new(
-                theme.style(StyleRole::StatusText, StyleState::main()),
-            )));
+        self.command_editor.set_helper(Some(CommandLineHelper::new(
+            theme.style(StyleRole::StatusText, StyleState::main()),
+        )));
+        self.command_editor.bind_sequence(
+            rustyline::Event::Any,
+            self.command_editor.helper().unwrap().bindings(),
+        );
         let _ = self.terminal.reset_style();
     }
 
@@ -439,7 +447,9 @@ impl ScreenWriter {
         let _ = self.terminal.position_cursor(1, self.dimensions.height);
         self.terminal.flush_contents(&mut self.stdout)?;
 
+        self.command_editor.helper_mut().unwrap().set_prompt(prompt);
         let result = self.command_editor.readline(prompt);
+        self.command_editor.helper_mut().unwrap().set_prompt("");
         write!(self.stdout, "{}", termion::cursor::Hide)?;
 
         let _ = self.terminal.position_cursor(1, self.dimensions.height);

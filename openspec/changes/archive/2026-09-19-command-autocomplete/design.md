@@ -2,7 +2,7 @@
 
 See [the proposal](proposal.md) for motivation and [the spec](specs/command-autocomplete/spec.md) for the interaction contract. `ScreenWriter` owns one Rustyline editor shared by command and search prompts. Its helper currently implements styling with empty completion and hint traits. Both the helper module and its installation are gated by `colorscheme`; minimal builds use `()`.
 
-`App::parse_command` recognizes explicit aliases and feature-gated commands. It does not accept arbitrary abbreviations. Rustyline 18.0.1 is already locked in the project, with default features disabled. Its local source exposes `Completer`, `Hinter`, circular completion, and Right-arrow hint acceptance. These provide the intended interaction without another dependency.
+`App::parse_command` recognizes explicit aliases and feature-gated commands. It does not accept arbitrary abbreviations. Rustyline 18.0.1 is already locked in the project, with default features disabled. Its local source exposes `Completer`, `Hinter`, circular completion, and Right-arrow hint acceptance. Enable its `custom-bindings` feature for direction-aware completion handling. This adds `radix_trie`, `nibble_vec`, and `endian-type` to the committed lockfile without upgrading Rustyline.
 
 ## Goals / Non-goals
 
@@ -16,7 +16,7 @@ See [the proposal](proposal.md) for motivation and [the spec](specs/command-auto
 
 The proposed interaction is an inline suffix while typing, Tab and Shift-Tab cycling, and Right-arrow hint acceptance at end of input. Tab starts at the first match and Shift-Tab starts at the last match. Escape restores the pre-cycle buffer and cursor while keeping the prompt open. Ctrl-C cancels the prompt. Tab-only completion would be simpler but would not expose suggestions as users type, as requested in issue #9. A popup would require additional layout and dismissal behavior on a prompt placed at the bottom of the terminal.
 
-Configure circular completion explicitly. Reuse Rustyline cycling and its original-input restore position where they match the contract. The locked version starts its circular loop at index zero, so backward initiation needs an explicit integration check and adaptation to start at the last candidate. Do not assume binding Shift-Tab alone provides that behavior. Enter continues through the existing submission path and never accepts a hint implicitly. Suppress hints for exact long-form candidates, so typing `write` does not suggest upgrading it to `write!`. The user can still select overwrite forms explicitly with Tab.
+Use native circular completion for replacements, cursor positioning, Escape, and the original-input restore position. The locked Rustyline version starts its loop at index zero and does not initiate completion on Shift-Tab. A conditional key handler starts either direction with the native completion command. For backward initiation, the completer reverses the candidates and the handler translates subsequent forward/backward keys. Other keys clear the direction state and retain their default editor behavior. Share prompt mode and direction state between the helper and handler; reset both for each prompt. Enter continues through the existing submission path and never accepts a hint implicitly. Suppress hints for exact long-form candidates, so typing `write` does not suggest upgrading it to `write!`. The user can still select overwrite forms explicitly with Tab.
 
 ### Make the helper available in every build
 

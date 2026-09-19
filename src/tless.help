@@ -16,6 +16,23 @@
 
   ^z               Suspend tless.
 
+                               [1mCOMMAND INPUT[0m
+
+      At the : prompt, a dimmed suffix suggests a matching long command name.
+      Short aliases still work when typed. Completion covers command names
+      only, not filenames, settings, or theme names. Search input is unchanged.
+
+  Tab             Insert the first match, then cycle forward.
+  Shift-Tab       Insert the last match, then cycle backward.
+  Right           Accept a visible suggestion at the end of input.
+  Escape          Restore the input from before cycling; keep the prompt open.
+  Ctrl-C          Cancel the prompt without executing a command.
+  Enter           Execute the current input, without accepting a dimmed hint.
+
+      Cycling includes the original input before repeating. Editing or moving
+      the cursor ends the cycle. Complete overwrite forms such as write!
+      explicitly with Tab; exact command names do not suggest a suffix.
+
                                     [1mMOVING[0m
 
   j  DownArrow  *  Move focus down one line (or [4mN[0m lines).

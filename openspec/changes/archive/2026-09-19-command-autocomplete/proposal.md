@@ -22,4 +22,4 @@ None. Existing command execution, theme switching, and search requirements remai
 
 ## Impact
 
-The implementation will touch the Rustyline helper in `src/commandline.rs`, editor setup and prompt context in `src/screenwriter.rs`, module gating in `src/main.rs`, and command-name definitions used by `src/app.rs`. It will add completion and terminal behavior tests, help text, and an Unreleased changelog entry. No new dependency, CLI flag, configuration field, or minimum Rust version change is planned.
+The implementation will touch the Rustyline helper in `src/commandline.rs`, editor setup and prompt context in `src/screenwriter.rs`, module gating in `src/main.rs`, and command-name definitions used by `src/app.rs`. It will add completion and terminal behavior tests, help text, and an Unreleased changelog entry. Enable the existing Rustyline dependency's `custom-bindings` feature and record its transitive dependencies in the lockfile. No dependency version upgrade, CLI flag, configuration field, or minimum Rust version change is needed.

@@ -33,6 +33,138 @@ mod terminal_commands {
     }
 
     #[test]
+    fn autocomplete_cycles_forward_backward_and_restores_input() {
+        let cases = [
+            (":wri\t\nq", "write"),
+            (":wri\x1b[Z\t\nq", "wri"),
+            (":wri\x1b[Z\x1b[Z\t\nq", "writetoon!"),
+            (":unknown\t\nq", "unknown"),
+            (":set other\t\nq", "set other"),
+            (":wri\t\t\nq", "write!"),
+            (":wri\x1b[Z\nq", "writetoon!"),
+            (":wri\x1b[Z\x1b[Z\nq", "writetoon"),
+            (":wri\t\x1b[Z\nq", "wri"),
+            (":wri\t\x1b\nq", "wri"),
+            (":wri\t\x7f\t\nq", "write"),
+            (":wri\t\x1b[D\x1b[C\x1b[Z\nq", "writetoon!"),
+        ];
+        let error = regex::Regex::new(r"Unknown command: ([^\x1b\r\n]*)").unwrap();
+        for (keys, expected) in cases {
+            let output = session("{}", keys);
+            let actual = error
+                .captures(&output)
+                .map(|capture| capture[1].trim_end().to_owned());
+            assert_eq!(actual.as_deref(), Some(expected), "{keys:?}: {output:?}");
+        }
+        let count = if cfg!(feature = "sexp") { 6 } else { 4 };
+        let keys = format!(":wri{}\nq", "\t".repeat(count + 1));
+        assert!(strip_styles(&session("{}", &keys)).contains("Unknown command: wri"));
+    }
+
+    #[test]
+    fn autocomplete_hints_require_acceptance_and_do_not_enter_search() {
+        let output = session(r#"{"se":1}"#, ":se\n:se\x1b[C number\n/se\t\n?se\t\nq");
+        assert!(output.contains("\x1b[2mt"), "{output:?}");
+        let plain = strip_styles(&output);
+        assert!(plain.contains("Unknown command: se"));
+        assert!(!plain.contains("Unknown command: set number"));
+        let search = output.split("/se").last().unwrap();
+        assert!(!search.contains("\x1b[2mt"), "{search:?}");
+        assert!(!plain.contains("/set"));
+        assert!(!plain.contains("?set"));
+    }
+
+    #[test]
+    fn autocomplete_preserves_arguments_and_cancellation_has_no_write_effect() {
+        let path = std::env::temp_dir().join(format!("tless-complete-{}.json", std::process::id()));
+        let filename = path.to_str().unwrap();
+        let input = r#"{"a":1}"#;
+        // Move from the end of an existing filename to the end of the command.
+        let left = "\x1b[D".repeat(filename.len() + 1);
+        let keys = format!(":  wri {filename}{left}\t\nq");
+        let output = session(input, &keys);
+        assert!(strip_styles(&output).contains("written"));
+        let original = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&original).unwrap(),
+            serde_json::json!({"a":1})
+        );
+        let keys = format!(":wri\t\t {filename}\x03:wri\x1b[Z\x03:se\nq");
+        let output = strip_styles(&session(r#"{"changed":true}"#, &keys));
+        assert!(output.contains("Unknown command: se"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn autocomplete_hints_clip_without_wrapping_and_clear_after_cancel() {
+        let output = session_with_width("{}", ":wri\x03q", None, 6);
+        assert!(output.contains("\x1b[2mt\x1b[0m"), "{output:?}");
+        assert!(!output.contains("\x1b[2mte"));
+        let output = session_with_width("{}", ":wri\x1b[C\nq", None, 6);
+        assert!(strip_styles(&output).contains(":write"));
+    }
+
+    #[test]
+    fn autocomplete_redraws_hints_on_resize_and_cursor_movement() {
+        let output = session("{}", ":          wri\x12\x1b[D\x1b[C\x7f\x03q");
+        assert!(
+            output.contains("\x1b[2mte\x1b[0m"),
+            "full hint before resize"
+        );
+        assert!(
+            output.contains("\x1b[2mt\x1b[0m"),
+            "clipped hint after resize"
+        );
+        let frames: Vec<_> = output
+            .split("\x1b[?2026h")
+            .skip(1)
+            .filter_map(|frame| frame.split_once("\x1b[?2026l").map(|(frame, _)| frame))
+            .collect();
+        assert!(
+            frames.iter().all(|frame| !frame.contains('\n')),
+            "hint redraw must not wrap: {frames:?}"
+        );
+        assert!(
+            frames
+                .iter()
+                .any(|frame| strip_styles(frame).contains(":          wri")
+                    && !frame.contains("\x1b[2m")),
+            "moving into the token removes the hint"
+        );
+        let last_close = output.rfind("\x1b[?2004l").unwrap();
+        assert!(
+            !output[last_close..].contains("\x1b[2m"),
+            "cancel clears the hint"
+        );
+    }
+
+    #[cfg(feature = "colorscheme")]
+    #[test]
+    fn autocomplete_keeps_theme_styles_after_switching() {
+        let output = session(
+            "{}",
+            ":colorscheme borealis\n:se\x03:colorscheme default\n:se\t number\nq",
+        );
+        let frames: Vec<_> = output
+            .split("\x1b[?2026h")
+            .skip(1)
+            .filter_map(|frame| frame.split_once("\x1b[?2026l").map(|(frame, _)| frame))
+            .collect();
+        assert!(
+            frames.iter().any(|frame| {
+                strip_styles(frame).contains(":set")
+                    && frame.contains("\x1b[2mt")
+                    && frame.contains("\x1b[38;2;202;211;226m")
+                    && frame.contains("\x1b[48;2;5;15;33m")
+            }),
+            "Borealis foreground and background must survive hint rendering"
+        );
+        assert!(!strip_styles(&output).contains("Unknown command:"));
+        assert!(!strip_styles(&output).contains("Unknown colorscheme"));
+    }
+
+    #[test]
     fn output_selection_leaves_terminal_view_and_json_print_unchanged() {
         for option in [
             "--output-format=json",
@@ -184,11 +316,9 @@ mod terminal_commands {
                     for _ in 0..cursor_requests(&output, &mut scanned_cursor_requests) {
                         master.write_all(b"\x1b[1;1R").unwrap();
                     }
-                    let ready = if piped {
-                        output.windows(6).any(|bytes| bytes == b"\x1b[1;1H")
-                    } else {
-                        String::from_utf8_lossy(&output).contains("tless-pty-")
-                    };
+                    // The filename is clipped on narrow terminals. Cursor
+                    // positioning marks the initial draw at every width.
+                    let ready = output.windows(6).any(|bytes| bytes == b"\x1b[1;1H");
                     if !sent && ready {
                         sent = true;
                         deadline = Instant::now() + Duration::from_secs(10);
@@ -234,7 +364,7 @@ mod terminal_commands {
                         entering_command = true;
                         waiting_for_prompt = Some(output.len());
                     }
-                    if key == b'\n' {
+                    if key == b'\n' || (entering_command && key == 0x03) {
                         entering_command = false;
                         waiting_for_redraw = Some(output.len());
                     }
@@ -252,7 +382,13 @@ mod terminal_commands {
                     }
                     master.write_all(&input).unwrap();
                     next_key_at = Instant::now()
-                        + Duration::from_millis(if key == b':' || key == b'\n' { 50 } else { 10 });
+                        + Duration::from_millis(if input == [0x1b] {
+                            600
+                        } else if key == b':' || key == b'\n' {
+                            50
+                        } else {
+                            10
+                        });
                 }
             }
             // Read until terminal EOF/EIO, including bytes queued before exit.
