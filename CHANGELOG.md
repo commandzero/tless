@@ -5,6 +5,8 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-19
+
 ### Added
 
 - Suggest long-form command names at the `:` prompt, with inline hints and Tab/Shift-Tab cycling. [#9](https://github.com/commandzero/tless/issues/9).
@@ -75,7 +77,8 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/CommandZero/tless/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/CommandZero/tless/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/CommandZero/tless/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/CommandZero/tless/compare/35f1c7686bd096ecce2ce73016dc70191869bb6c...v0.1.0
