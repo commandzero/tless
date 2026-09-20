@@ -1,25 +1,32 @@
-use crate::flatjson::{self, FlatJson, Index, OptionIndex, Value};
-
-lazy_static::lazy_static! {
-    static ref JSON_NUMBER: regex::Regex = regex::Regex::new(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$").unwrap();
-}
-
+use crate::flatjson::{self, FlatJson, Index, KeyValue, OptionIndex, Value};
 #[derive(Default, Clone, Copy)]
 pub struct EncodeOptions {
     _private: (),
 }
 
+#[cfg(test)]
 pub fn encode_document(
     document: &FlatJson,
     options: EncodeOptions,
 ) -> Result<String, ToonDiagnostic> {
-    if document.0.is_empty() || document[0].next_sibling.is_some() {
+    let roots = crate::path_filter::document_roots(document);
+    encode_roots(document, &roots, options)
+}
+
+/// Encode one selected root. TOON's standard document form intentionally
+/// rejects empty and multi-root selections rather than inventing a wrapper.
+pub fn encode_roots(
+    document: &FlatJson,
+    roots: &[Index],
+    options: EncodeOptions,
+) -> Result<String, ToonDiagnostic> {
+    if roots.len() != 1 {
         return Err(ToonDiagnostic::new(
             ToonErrorKind::UnsupportedMultiRoot,
             "TOON output requires exactly one root",
         ));
     }
-    encode_value(document, 0, options)
+    encode_value(document, roots[0], options)
 }
 
 pub fn encode_value(
@@ -27,20 +34,13 @@ pub fn encode_value(
     index: Index,
     _options: EncodeOptions,
 ) -> Result<String, ToonDiagnostic> {
-    let index = if document[index].is_closing_of_container() {
-        document[index].pair_index().unwrap()
-    } else {
-        index
-    };
-    let end = if document[index].is_opening_of_container() {
-        document[index].pair_index().unwrap()
-    } else {
-        index
-    };
+    let range = document.subtree_range(index);
+    let (index, end) = (*range.start(), *range.end());
+    let base_depth = document[index].depth;
     for row in &document.0[index..=end] {
         if (row.is_opening_of_container()
             || matches!(row.value, Value::EmptyArray | Value::EmptyObject))
-            && row.depth - document[index].depth + 1 > 256
+            && row.depth.saturating_sub(base_depth) + 1 > 256
         {
             return Err(ToonDiagnostic::new(
                 ToonErrorKind::UnsafeNesting,
@@ -81,17 +81,22 @@ fn export_value(
                     &format!("{}[{}]", path, child_row.index_in_parent),
                 )?);
             } else {
-                let key_text = &document.1[child_row.key_range.clone().unwrap()];
-                let key: String = serde_json::from_str(key_text).map_err(|_| {
-                    ToonDiagnostic::new(
-                        ToonErrorKind::UnsupportedValue,
-                        format!(
-                            "{} entry {}: object key is not a string",
-                            path,
-                            child_row.index_in_parent + 1
-                        ),
-                    )
-                })?;
+                let key: String = match child_row.key_value.as_ref() {
+                    Some(KeyValue::String(key)) => key.clone(),
+                    _ => {
+                        let key_text = &document.1[child_row.key_range.clone().unwrap()];
+                        serde_json::from_str(key_text).map_err(|_| {
+                            ToonDiagnostic::new(
+                                ToonErrorKind::UnsupportedValue,
+                                format!(
+                                    "{} entry {}: object key is not a string",
+                                    path,
+                                    child_row.index_in_parent + 1
+                                ),
+                            )
+                        })?
+                    }
+                };
                 let child_path = format!("{}[{}]", path, serde_json::to_string(&key).unwrap());
                 object.insert(key, export_value(document, index, &child_path)?);
             }
@@ -104,17 +109,23 @@ fn export_value(
         })
     } else if matches!(row.value, Value::Number) {
         let text = &document.1[row.range.clone()];
-        if !JSON_NUMBER.is_match(text) {
-            return Err(ToonDiagnostic::new(
-                ToonErrorKind::UnsupportedValue,
-                format!("{}: not a finite JSON number", path),
-            ));
-        }
-        text.parse::<serde_json::Number>()
+        let normalized = crate::output::json_number(text).map_err(|error| {
+            ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{path}: {error}"))
+        })?;
+        normalized
+            .parse::<serde_json::Number>()
             .map(serde_json::Value::Number)
             .map_err(|e| {
                 ToonDiagnostic::new(ToonErrorKind::UnsupportedNumber, format!("{path}: {e}"))
             })
+    } else if matches!(row.value, Value::String) {
+        if let Some(value) = row.string_value.as_ref() {
+            Ok(serde_json::Value::String(value.clone()))
+        } else {
+            serde_json::from_str(&document.1[row.range.clone()]).map_err(|e| {
+                ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{}: {}", path, e))
+            })
+        }
     } else {
         serde_json::from_str(&document.1[row.range.clone()]).map_err(|e| {
             ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{}: {}", path, e))
@@ -522,5 +533,38 @@ mod tests {
                 .unwrap();
         assert_eq!(actual.1, expected.1);
         assert_eq!(format!("{:?}", actual.0), format!("{:?}", expected.0));
+    }
+    #[test]
+    fn selected_roots_reject_empty_and_multiple_values() {
+        let document = crate::flatjson::parse_top_level_json("1 2".to_owned()).unwrap();
+        assert_eq!(
+            super::encode_roots(&document, &[], super::EncodeOptions::default())
+                .unwrap_err()
+                .kind,
+            super::ToonErrorKind::UnsupportedMultiRoot
+        );
+        assert_eq!(
+            super::encode_roots(&document, &[0, 1], super::EncodeOptions::default())
+                .unwrap_err()
+                .kind,
+            super::ToonErrorKind::UnsupportedMultiRoot
+        );
+        assert_eq!(
+            super::encode_roots(&document, &[1], super::EncodeOptions::default()).unwrap(),
+            "2"
+        );
+    }
+
+    #[test]
+    fn selected_toon_depth_limit_is_relative_to_root() {
+        let input = format!("{}0{}", "[".repeat(257), "]".repeat(257));
+        let document = crate::flatjson::parse_top_level_json(input).unwrap();
+        assert!(super::encode_roots(&document, &[1], super::EncodeOptions::default()).is_ok());
+        assert_eq!(
+            super::encode_roots(&document, &[0], super::EncodeOptions::default())
+                .unwrap_err()
+                .kind,
+            super::ToonErrorKind::UnsafeNesting
+        );
     }
 }

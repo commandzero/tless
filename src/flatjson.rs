@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::{Debug, Write};
 use std::ops::Range;
 
@@ -6,7 +7,8 @@ use crate::lineprinter;
 use crate::yamlparser;
 
 #[cfg(feature = "sexp")]
-use crate::jsonstringunescaper::{UnescapeError, unsafe_unescape_json_string};
+use crate::jsonstringunescaper::UnescapeError;
+use crate::jsonstringunescaper::unsafe_unescape_json_string;
 
 pub type Index = usize;
 
@@ -135,24 +137,14 @@ impl FlatJson {
         self.0[index].collapse();
     }
 
-    pub fn first_visible_ancestor(&self, mut index: Index) -> Index {
-        let mut visible_ancestor = index;
-        while let OptionIndex::Index(parent) = self[index].parent {
-            if self[parent].is_collapsed() {
-                visible_ancestor = parent;
-            }
-            index = parent;
-        }
-        visible_ancestor
-    }
-
     pub fn build_path_to_node(&self, path_type: PathType, index: Index) -> Result<String, String> {
         let mut buf = String::new();
 
-        // Some special handling for top-level elements.
+        // A copied top-level value is the complete-document filter path.
         if self[index].parent.is_nil() {
             match path_type {
-                PathType::Dot | PathType::Bracket => {
+                PathType::Dot => return Ok(".".to_owned()),
+                PathType::Bracket => {
                     return Err("Cannot build path to top-level element".to_string());
                 }
                 PathType::Query => {
@@ -195,6 +187,22 @@ impl FlatJson {
                 }
 
                 write!(buf, "[{key}]")
+            } else if path_type == PathType::Dot {
+                // yp is an input-compatible representation, so it must use
+                // decoded key values and JSON escaping rather than YAML's
+                // display spelling. This matters for quotes, backslashes,
+                // controls, and Unicode escapes in YAML keys.
+                let decoded = self.decoded_string_key(index)?;
+                let Some(decoded) = decoded else {
+                    return Err("Unable to decode string object key".to_owned());
+                };
+                if lineprinter::JS_IDENTIFIER.is_match(&decoded) {
+                    write!(buf, ".{decoded}")
+                } else {
+                    let quoted = serde_json::to_string(&decoded)
+                        .map_err(|error| format!("Unable to escape object key: {error}"))?;
+                    write!(buf, "[{quoted}]")
+                }
             } else {
                 if path_type != PathType::Bracket && lineprinter::JS_IDENTIFIER.is_match(key) {
                     write!(buf, ".{key}")
@@ -236,40 +244,40 @@ impl FlatJson {
 
         res.map_err(|e| e.to_string())
     }
-
-    pub fn pretty_printed(&self) -> String {
-        let mut buf = String::new();
-
-        for row in self.0.iter() {
-            for _ in 0..row.depth {
-                buf.push_str("  ");
-            }
-            if let Some(ref key_range) = row.key_range {
-                buf.push_str(&self.1[key_range.clone()]);
-                buf.push_str(": ");
-            }
-            let mut trailing_comma = row.parent.is_some() && row.next_sibling.is_some();
-            if let Some(container_type) = row.value.container_type() {
-                if row.value.is_opening_of_container() {
-                    buf.push_str(container_type.open_str());
-                    // Don't print trailing commas after { or [.
-                    trailing_comma = false;
+    pub fn decoded_string_key(&self, index: Index) -> Result<Option<Cow<'_, str>>, String> {
+        let row = &self[index];
+        match &row.key_value {
+            Some(KeyValue::String(text)) => Ok(Some(Cow::Borrowed(text))),
+            Some(_) => Ok(None),
+            None => {
+                let Some(range) = &row.key_range else {
+                    return Ok(None);
+                };
+                let raw = &self.1[range.start + 1..range.end - 1];
+                if raw.as_bytes().contains(&b'\\') {
+                    unsafe_unescape_json_string(raw)
+                        .map(Cow::Owned)
+                        .map(Some)
+                        .map_err(|error| format!("Unable to decode object key: {error}"))
                 } else {
-                    buf.push_str(container_type.close_str());
-                    // Check container opening to see if we have a next sibling.
-                    trailing_comma = row.parent.is_some()
-                        && self[row.pair_index().unwrap()].next_sibling.is_some();
+                    Ok(Some(Cow::Borrowed(raw)))
                 }
-            } else {
-                buf.push_str(&self.1[row.range.clone()]);
             }
-            if trailing_comma {
-                buf.push(',');
-            }
-            buf.push('\n');
         }
+    }
 
-        buf
+    /// Inclusive flat-row span of a value, accepting its opening or closing row.
+    pub fn subtree_range(&self, index: Index) -> std::ops::RangeInclusive<Index> {
+        let start = if self[index].is_closing_of_container() {
+            self[index].pair_index().unwrap()
+        } else {
+            index
+        };
+        let end = match self[start].pair_index() {
+            OptionIndex::Index(end) => end,
+            OptionIndex::Nil => start,
+        };
+        start..=end
     }
 
     #[cfg(feature = "sexp")]
@@ -334,72 +342,84 @@ impl FlatJson {
     }
 
     #[cfg(feature = "sexp")]
-    fn write_sexp_atom(&self, buf: &mut String, range: Range<usize>) -> Result<(), UnescapeError> {
-        let quoteless_range = (range.start + 1)..(range.end - 1);
-        let string_value = &self.1[quoteless_range];
-
-        match unsafe_unescape_json_string(string_value) {
-            Ok(unescaped) => {
-                if Self::sexp_atom_needs_escaping(&unescaped) {
-                    Self::escape_and_write_sexp_atom(buf, &unescaped);
-                } else {
-                    buf.push_str(&unescaped);
-                }
-                Ok(())
-            }
-            Err(err) => Err(err),
+    fn write_sexp_atom(
+        &self,
+        buf: &mut String,
+        range: Range<usize>,
+        decoded: Option<&str>,
+    ) -> Result<(), UnescapeError> {
+        let unescaped;
+        let value = if let Some(value) = decoded {
+            value
+        } else {
+            unescaped = unsafe_unescape_json_string(&self.1[range.start + 1..range.end - 1])?;
+            &unescaped
+        };
+        if Self::sexp_atom_needs_escaping(value) {
+            Self::escape_and_write_sexp_atom(buf, value);
+        } else {
+            buf.push_str(value);
         }
+        Ok(())
     }
 
     #[cfg(feature = "sexp")]
-    pub fn sexp_string(&self) -> Result<String, UnescapeError> {
+    pub fn sexp_string(&self, roots: &[Index]) -> Result<String, UnescapeError> {
         let mut buf = String::new();
 
-        for row in self.0.iter() {
-            // Write a space between elements
-            if row.parent.is_some() && row.prev_sibling.is_some() {
-                buf.push(' ');
-            }
-
-            // Write start of key-value tuple
-            if let Some(ref key_range) = row.key_range {
-                buf.push('(');
-                self.write_sexp_atom(&mut buf, key_range.clone())?;
-                buf.push(' ');
-            }
-
-            match &row.value {
-                Value::Null | Value::EmptyObject | Value::EmptyArray => buf.push_str("()"),
-                Value::Boolean | Value::Number => buf.push_str(&self.1[row.range.clone()]),
-                Value::String => self.write_sexp_atom(&mut buf, row.range.clone())?,
-                Value::OpenContainer { .. } => buf.push('('),
-                Value::CloseContainer { .. } => buf.push(')'),
-            }
-
-            // Close key-value tuple if we wrote a primitive. If we wrote the closing of a
-            // container, check if the opening had a key, and close it.
-            if row.is_primitive() && row.key_range.is_some() {
-                buf.push(')');
-            } else if row.is_closing_of_container() {
-                let opening_of_container_row = &self.0[row.pair_index().unwrap()];
-                if opening_of_container_row.key_range.is_some() {
-                    buf.push(')');
+        for &root in roots {
+            let range = self.subtree_range(root);
+            let (root, end) = (*range.start(), *range.end());
+            for index in range {
+                let row = &self[index];
+                if index != root && row.parent.is_some() && row.prev_sibling.is_some() {
+                    buf.push(' ');
                 }
-            }
+                if index != root {
+                    if let Some(key_range) = &row.key_range {
+                        buf.push('(');
+                        let decoded = match &row.key_value {
+                            Some(KeyValue::String(value)) => Some(value.as_str()),
+                            _ => None,
+                        };
+                        self.write_sexp_atom(&mut buf, key_range.clone(), decoded)?;
+                        buf.push(' ');
+                    }
+                }
 
-            // Write newline after every top-level sexp.
-            if row.value.is_closing_of_container() && row.parent.is_nil() {
-                buf.push('\n');
+                match &row.value {
+                    Value::Null | Value::EmptyObject | Value::EmptyArray => buf.push_str("()"),
+                    Value::Boolean | Value::Number => buf.push_str(&self.1[row.range.clone()]),
+                    Value::String => self.write_sexp_atom(
+                        &mut buf,
+                        row.range.clone(),
+                        row.string_value.as_deref(),
+                    )?,
+                    Value::OpenContainer { .. } => buf.push('('),
+                    Value::CloseContainer { .. } => buf.push(')'),
+                }
+
+                // Close key-value tuple if we wrote a primitive. If we wrote the closing of a
+                // container, check if the opening had a key, and close it.
+                if index != root && row.is_primitive() && row.key_range.is_some() {
+                    buf.push(')');
+                } else if row.is_closing_of_container() {
+                    let opening = row.pair_index().unwrap();
+                    if opening != root && self[opening].key_range.is_some() {
+                        buf.push(')');
+                    }
+                }
+
+                // Write newline after every top-level sexp.
+                if index == end {
+                    buf.push('\n');
+                }
             }
         }
 
         Ok(buf)
     }
 
-    // A lot of the code here is almost identical to pretty_printed, but
-    // there are some subtle enough differences, and the code isn't that
-    // complicated, that I don't think it's worth it to try to have them
-    // share an implementation.
     pub fn pretty_printed_value(&self, value_index: Index) -> Result<String, std::fmt::Error> {
         if self[value_index].is_primitive() {
             return Ok(self.1[self[value_index].range.clone()].to_string());
@@ -813,22 +833,6 @@ mod tests {
     }
 
     #[test]
-    fn test_first_visible_ancestor() {
-        let mut fj = parse_top_level_json(NESTED_OBJECT.to_owned()).unwrap();
-        assert_eq!(fj.first_visible_ancestor(3), 3);
-        assert_eq!(fj.first_visible_ancestor(6), 6);
-        fj.collapse(5);
-        assert_eq!(fj.first_visible_ancestor(6), 5);
-        assert_eq!(fj.first_visible_ancestor(5), 5);
-        fj.collapse(1);
-        assert_eq!(fj.first_visible_ancestor(6), 1);
-        fj.expand(5);
-        assert_eq!(fj.first_visible_ancestor(6), 1);
-        fj.collapse(0);
-        assert_eq!(fj.first_visible_ancestor(6), 0);
-    }
-
-    #[test]
     fn test_move_by_visible_rows_simple() {
         let fj = parse_top_level_json(OBJECT.to_owned()).unwrap();
 
@@ -981,7 +985,7 @@ mod tests {
 
         let fj = parse_top_level_json(ROOT_OBJECT.to_owned()).unwrap();
 
-        assert!(fj.build_path_to_node(Dot, 0).is_err());
+        assert_eq!(".", fj.build_path_to_node(Dot, 0).unwrap());
         assert!(fj.build_path_to_node(Bracket, 0).is_err());
         assert_eq!(".", fj.build_path_to_node(Query, 0).unwrap());
         assert_eq!("", fj.build_path_to_node(DotWithTopLevelIndex, 0).unwrap());
@@ -1014,7 +1018,7 @@ mod tests {
 
         let fj = parse_top_level_json(ROOT_ARRAY.to_owned()).unwrap();
 
-        assert!(fj.build_path_to_node(Dot, 0).is_err());
+        assert_eq!(".", fj.build_path_to_node(Dot, 0).unwrap());
         assert!(fj.build_path_to_node(Bracket, 0).is_err());
         assert_eq!(".", fj.build_path_to_node(Query, 0).unwrap());
         assert_eq!("", fj.build_path_to_node(DotWithTopLevelIndex, 0).unwrap());
@@ -1052,7 +1056,7 @@ mod tests {
 
         let fj = parse_top_level_json(MULTI_TOP_LEVEL.to_owned()).unwrap();
 
-        assert!(fj.build_path_to_node(Dot, 0).is_err());
+        assert_eq!(".", fj.build_path_to_node(Dot, 0).unwrap());
         assert!(fj.build_path_to_node(Bracket, 0).is_err());
         assert_eq!(".", fj.build_path_to_node(Query, 0).unwrap());
         assert_eq!(
@@ -1060,7 +1064,7 @@ mod tests {
             fj.build_path_to_node(DotWithTopLevelIndex, 0).unwrap()
         );
 
-        assert!(fj.build_path_to_node(Dot, 7).is_err());
+        assert_eq!(".", fj.build_path_to_node(Dot, 7).unwrap());
         assert!(fj.build_path_to_node(Bracket, 7).is_err());
         assert_eq!(".", fj.build_path_to_node(Query, 7).unwrap());
         assert_eq!(
@@ -1096,6 +1100,16 @@ mod tests {
         assert_eq!("[[1, 1]]", fj.build_path_to_node(Dot, 1).unwrap());
         assert_eq!("[[1, 1]]", fj.build_path_to_node(Bracket, 1).unwrap());
         assert!(fj.build_path_to_node(Query, 1).is_err());
+    }
+
+    #[test]
+    fn test_yp_escapes_yaml_string_keys() {
+        use PathType::Dot;
+
+        let flat = parse_top_level_yaml("---\n\"a\\\"b\\\\c\": value\n".to_owned()).unwrap();
+        let formatted = flat.build_path_to_node(Dot, 1).unwrap();
+        let path = crate::path_filter::PathFilter::parse(&formatted).unwrap();
+        assert_eq!(vec![1], path.resolve(&flat).unwrap());
     }
 
     #[track_caller]
@@ -1143,7 +1157,15 @@ mod tests {
 ]
 "#;
         let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(PRETTY, fj.pretty_printed());
+        assert_eq!(
+            PRETTY,
+            crate::output::serialize_roots(
+                &fj,
+                crate::options::OutputFormat::Json,
+                &crate::path_filter::document_roots(&fj),
+            )
+            .unwrap()
+        );
     }
 
     #[test]
@@ -1155,7 +1177,11 @@ mod tests {
 (d (1 ((e 7))))
 "#;
         let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(PRETTY, fj.sexp_string().unwrap());
+        assert_eq!(
+            PRETTY,
+            fj.sexp_string(&crate::path_filter::document_roots(&fj))
+                .unwrap()
+        );
     }
 
     #[test]
@@ -1167,7 +1193,11 @@ mod tests {
 ("\n\t\r\b" "\000\031\127")
 "#;
         let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(PRETTY, fj.sexp_string().unwrap());
+        assert_eq!(
+            PRETTY,
+            fj.sexp_string(&crate::path_filter::document_roots(&fj))
+                .unwrap()
+        );
     }
 
     #[test]

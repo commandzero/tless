@@ -31,6 +31,7 @@ mod jsontokenizer;
 mod lineprinter;
 mod options;
 mod output;
+mod path_filter;
 mod screenwriter;
 mod search;
 mod terminal;
@@ -52,6 +53,20 @@ use theme::Theme;
 
 fn main() {
     let opt = Opt::parse();
+    // Validate before reading input, without echoing untrusted path bytes through
+    // Clap's invalid-value diagnostic (paths may contain terminal controls).
+    let path = match opt
+        .path
+        .as_deref()
+        .map(path_filter::PathFilter::parse)
+        .transpose()
+    {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
 
     let (input_string, input_filename) = match get_input_and_filename(&opt) {
         Ok(input_and_filename) => input_and_filename,
@@ -69,12 +84,35 @@ fn main() {
         }
     };
 
+    let document = match output::parse_input(input_string, data_format) {
+        Ok(document) => document,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    };
+    let roots = match &path {
+        Some(path) => match path.resolve(&document) {
+            Ok(roots) => roots,
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        },
+        None => path_filter::document_roots(&document),
+    };
+
     if !io::stdout().is_terminal() {
-        if let Err(error) = print_output(input_string, data_format, opt.output) {
+        if let Err(error) = print_output(&document, &roots, opt.output) {
             eprintln!("{}", error);
             std::process::exit(1);
         }
         std::process::exit(0);
+    }
+
+    if roots.is_empty() {
+        eprintln!("Unable to view input: no documents");
+        std::process::exit(1);
     }
 
     #[cfg(feature = "colorscheme")]
@@ -105,32 +143,26 @@ fn main() {
             .unwrap(),
     ));
 
-    let mut app = match App::new(
+    let mut app = App::new(
         &opt,
         theme,
         #[cfg(feature = "colorscheme")]
         config,
-        input_string,
-        data_format,
+        document,
+        roots,
         input_filename,
         raw_stdout,
-    ) {
-        Ok(jl) => jl,
-        Err(err) => {
-            eprintln!("{err}");
-            std::process::exit(1);
-        }
-    };
+    );
 
     app.run(Box::new(input::get_input()));
 }
 
 fn print_output(
-    input: String,
-    data_format: DataFormat,
+    document: &flatjson::FlatJson,
+    roots: &[usize],
     output_format: options::OutputFormat,
 ) -> Result<(), String> {
-    let output = output::serialize(input, data_format, output_format)?;
+    let output = output::serialize_roots(document, output_format, roots)?;
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
     stdout

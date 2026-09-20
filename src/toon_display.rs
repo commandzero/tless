@@ -141,6 +141,7 @@ pub struct Layout {
     inline_width: usize,
     inline_limit: usize,
     expanded_arrays: HashSet<usize>,
+    root_by_node: Vec<usize>,
 }
 
 pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
@@ -150,6 +151,7 @@ pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
         node
     }
 }
+
 fn children(flat: &FlatJson, node: usize) -> Vec<usize> {
     let mut result = Vec::new();
     let mut next = flat[node].first_child();
@@ -159,6 +161,7 @@ fn children(flat: &FlatJson, node: usize) -> Vec<usize> {
     }
     result
 }
+
 fn string_key(flat: &FlatJson, node: usize) -> Option<String> {
     match &flat[node].key_value {
         Some(KeyValue::String(text)) => Some(text.clone()),
@@ -176,6 +179,7 @@ fn scalar(flat: &FlatJson, node: usize) -> bool {
         Value::String | Value::Number | Value::Boolean | Value::Null
     )
 }
+
 impl DisplayLine {
     fn new(owner: usize, prefix: String) -> Self {
         Self {
@@ -197,15 +201,28 @@ impl DisplayLine {
         });
     }
 }
+
 impl Layout {
     /// Unconstrained canonical layout for the retained TOON grammar fixtures.
     #[cfg(test)]
     pub fn canonical(flat: &FlatJson) -> Self {
-        Self::build(flat, usize::MAX, usize::MAX, &HashSet::new())
+        let roots = crate::path_filter::document_roots(flat);
+        Self::build(flat, usize::MAX, usize::MAX, &HashSet::new(), roots)
     }
 
+    #[cfg(test)]
     pub fn for_view(flat: &FlatJson, width: usize, expanded_arrays: &HashSet<usize>) -> Self {
-        Self::build(flat, width, 5, expanded_arrays)
+        let roots = crate::path_filter::document_roots(flat);
+        Self::build(flat, width, 5, expanded_arrays, roots)
+    }
+
+    pub fn for_view_with_roots(
+        flat: &FlatJson,
+        width: usize,
+        expanded_arrays: &HashSet<usize>,
+        roots: &[usize],
+    ) -> Self {
+        Self::build(flat, width, 5, expanded_arrays, roots.to_vec())
     }
 
     fn build(
@@ -213,8 +230,15 @@ impl Layout {
         width: usize,
         limit: usize,
         expanded_arrays: &HashSet<usize>,
+        roots: Vec<usize>,
     ) -> Self {
+        // Resolved roots are disjoint subtrees. Index membership once, including
+        // closing rows, instead of scanning roots and ancestors in every pass.
         let n = flat.0.len();
+        let mut root_by_node = vec![crate::flatjson::NIL; n];
+        for &root in &roots {
+            root_by_node[flat.subtree_range(root)].fill(root);
+        }
         let mut result = Self {
             lines: vec![],
             nodes: vec![NodeLayout::default(); n],
@@ -228,20 +252,14 @@ impl Layout {
             inline_width: width,
             inline_limit: limit,
             expanded_arrays: expanded_arrays.clone(),
+            root_by_node,
         };
-        let roots: Vec<_> = flat
-            .0
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| r.parent.is_nil() && !r.is_closing_of_container())
-            .map(|(i, _)| i)
-            .collect();
         let sequence = roots.len() > 1;
         for (i, row) in flat.0.iter().enumerate() {
-            if row.is_closing_of_container() {
+            if row.is_closing_of_container() || result.active_root_for(i).is_none() {
                 continue;
             }
-            if let Some(range) = &row.key_range {
+            if let Some(range) = row.key_range.as_ref().filter(|_| !result.is_active_root(i)) {
                 let raw = &flat.1[range.clone()];
                 if let Some(key) = &row.key_value {
                     match key {
@@ -287,13 +305,13 @@ impl Layout {
             };
             let kids = children(flat, i);
             result.nodes[i].entry_count = kids.len();
-            result.nodes[i].collapsible = if sequence && row.parent.is_nil() {
+            result.nodes[i].collapsible = if sequence && result.is_active_root(i) {
                 // A sequence document has a presentation row even when its
                 // parsed root is scalar or empty. The row is the collapse
                 // anchor; the parsed value and parent links remain unchanged.
                 true
             } else {
-                !kids.is_empty() && !(row.parent.is_nil() && !row.is_array())
+                !kids.is_empty() && !(result.is_active_root(i) && !row.is_array())
             };
             if row.is_opening_of_container() && !row.is_array() {
                 let mut counts = HashMap::new();
@@ -320,18 +338,24 @@ impl Layout {
         }
         for i in 0..n {
             result.own_warnings[i].sort();
+            if result.active_root_for(i).is_none() {
+                continue;
+            }
             for &kind in &result.own_warnings[i] {
                 result.warnings.push(Warning { node: i, kind });
             }
         }
         // Bottom-up aggregation counts semantic records once, including warnings in complex keys.
         for i in (0..n).rev() {
-            if flat[i].is_closing_of_container() {
+            if flat[i].is_closing_of_container() || result.active_root_for(i).is_none() {
                 continue;
             }
+            let own_count = result.own_warnings[i].len();
             if let OptionIndex::Index(parent) = flat[i].parent {
-                result.nodes[parent].descendant_warnings +=
-                    result.nodes[i].descendant_warnings + result.own_warnings[i].len();
+                if result.active_root_for(parent).is_some() {
+                    result.nodes[parent].descendant_warnings +=
+                        result.nodes[i].descendant_warnings + own_count;
+                }
             }
         }
         for (position, &root) in roots.iter().enumerate() {
@@ -351,7 +375,7 @@ impl Layout {
             } else {
                 None
             };
-            result.render(flat, root, 0, false);
+            result.render(flat, root, 0, false, true);
             if let Some(header) = header {
                 // `render` owns the canonical body extent. Move only the
                 // primary anchor to the generated document row so all body
@@ -362,28 +386,34 @@ impl Layout {
                 result.document_previews[root] = result.document_preview(flat, root);
             }
         }
+        result.line_containers = vec![vec![]; result.lines.len()];
         for i in 0..n {
-            if flat[i].is_closing_of_container() {
+            if flat[i].is_closing_of_container() && result.active_root_for(i).is_some() {
                 result.nodes[i] = result.nodes[normalize_node(flat, i)].clone();
             }
         }
-        result.line_containers = vec![vec![]; result.lines.len()];
         for i in 0..n {
-            if result.nodes[i].collapsible && !flat[i].is_closing_of_container() {
+            if result.nodes[i].collapsible
+                && !flat[i].is_closing_of_container()
+                && result.active_root_for(i).is_some()
+            {
                 let line = result.nodes[i].line;
                 result.line_containers[line].push(i);
                 // A sequence root's document row is its structural anchor,
                 // but an array body still owns its normal inline/multiline
                 // presentation controls. Empty arrays have no body arrow.
                 if sequence
-                    && flat[i].parent.is_nil()
+                    && result.is_active_root(i)
                     && flat[i].is_array()
                     && result.nodes[i].body_line != line
                 {
                     result.line_containers[result.nodes[i].body_line].push(i);
                 }
             }
-            if result.previews[i].text.is_empty() && flat[i].is_opening_of_container() {
+            if result.active_root_for(i).is_some()
+                && result.previews[i].text.is_empty()
+                && flat[i].is_opening_of_container()
+            {
                 result.previews[i] = result.preview(flat, i);
             }
         }
@@ -447,7 +477,8 @@ impl Layout {
             .iter()
             .enumerate()
             .filter(|(node, info)| {
-                !flat[*node].is_closing_of_container()
+                result.active_root_for(*node).is_some()
+                    && !flat[*node].is_closing_of_container()
                     && info.inline_array
                     && UnicodeWidthStr::width(result.lines[info.body_line].text.as_str()) > width
             })
@@ -455,9 +486,20 @@ impl Layout {
             .collect();
         if !overflowing.is_empty() {
             result.expanded_arrays.extend(overflowing);
-            return Self::build(flat, width, limit, &result.expanded_arrays);
+            return Self::build(flat, width, limit, &result.expanded_arrays, roots);
         }
         result
+    }
+
+    pub fn active_root_for(&self, node: usize) -> Option<usize> {
+        self.root_by_node
+            .get(node)
+            .copied()
+            .filter(|root| *root != crate::flatjson::NIL)
+    }
+
+    fn is_active_root(&self, node: usize) -> bool {
+        self.active_root_for(node) == Some(node)
     }
     fn key(&self, flat: &FlatJson, node: usize) -> String {
         match &self.keys[node] {
@@ -516,7 +558,14 @@ impl Layout {
             Some(flat[node].range.clone()),
         );
     }
-    fn render(&mut self, flat: &FlatJson, node: usize, depth: usize, list: bool) {
+    fn render(
+        &mut self,
+        flat: &FlatJson,
+        node: usize,
+        depth: usize,
+        list: bool,
+        root_relative: bool,
+    ) {
         let start = self.lines.len();
         self.nodes[node].line = start;
         self.nodes[node].body_line = start;
@@ -526,8 +575,9 @@ impl Layout {
             line.token("-", node, TokenRole::ContainerDelimiter, None);
         }
         let object = matches!(flat[node].value, Value::EmptyObject)
-            || (flat[node].is_opening_of_container() && !flat[node].is_array());
-        if object && flat[node].key_range.is_none() {
+            || (flat[node].is_opening_of_container() && !flat[node].is_array())
+            || (root_relative && flat[node].is_opening_of_container() && !flat[node].is_array());
+        if object && (root_relative || flat[node].key_range.is_none()) {
             self.nodes[node].header_end = line.text.len();
             if kids.is_empty() {
                 self.lines.push(line);
@@ -536,7 +586,7 @@ impl Layout {
                     // A root object in a sequence has no extra indentation;
                     // list items retain the indentation required by TOON.
                     let child_depth = if list { depth + 1 } else { depth };
-                    self.render(flat, child, child_depth, false);
+                    self.render(flat, child, child_depth, false, false);
                     if list && ordinal == 0 {
                         let first = &mut self.lines[start];
                         // The first object's field occupies the hyphen line; nested content
@@ -558,7 +608,7 @@ impl Layout {
             if list {
                 line.text.push(' ');
             }
-            if flat[node].key_range.is_some() {
+            if !root_relative && flat[node].key_range.is_some() {
                 line.token(
                     &self.key(flat, node),
                     node,
@@ -672,7 +722,7 @@ impl Layout {
                         }
                     } else {
                         for &child in &kids {
-                            self.render(flat, child, depth + 1, true);
+                            self.render(flat, child, depth + 1, true, false);
                         }
                     }
                 }
@@ -681,10 +731,10 @@ impl Layout {
                 self.nodes[node].header_end = line.text.len();
                 self.lines.push(line);
                 for &child in &kids {
-                    self.render(flat, child, depth + 1, false);
+                    self.render(flat, child, depth + 1, false, false);
                 }
             } else {
-                if flat[node].key_range.is_some() {
+                if !root_relative && flat[node].key_range.is_some() {
                     line.token(": ", node, TokenRole::Punctuation, None);
                 }
                 self.value_token(flat, &mut line, node);
@@ -795,7 +845,9 @@ impl Layout {
         let mut messages = vec![];
         for node in ids {
             for warning in &self.own_warnings[node] {
-                let locator = if self.nodes[node].table_cell {
+                let locator = if self.is_active_root(node) {
+                    String::new()
+                } else if self.nodes[node].table_cell {
                     format!(
                         " at field {}",
                         quote_json(self.keys[node].as_deref().unwrap_or(""))
@@ -2210,5 +2262,71 @@ mod tests {
                 .text
                 .ends_with("# WARN Non-finite number; Non-string key; Contains 1 hidden warnings")
         );
+    }
+    #[test]
+    fn selected_nested_root_renders_at_baseline_without_excluded_lines() {
+        let flat = json(r#"{"outer":{"kept":1},"tail":{"excluded":2}}"#);
+        let selected = children(&flat, 0)[0];
+        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[selected]);
+        let text = layout
+            .lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(text, vec!["kept: 1"]);
+        assert_eq!(layout.nodes[selected].line, 0);
+        assert!(layout.nodes[0].spans.is_empty());
+        assert!(
+            layout
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .all(|span| { layout.active_root_for(span.node) == Some(selected) })
+        );
+    }
+
+    #[test]
+    fn selected_root_omits_key_warnings_even_when_collapsed() {
+        let mut flat = json(r#"{"k\u0001":[1,2,3,4,5,6,7]}"#);
+        let root = children(&flat, 0)[0];
+        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
+        assert!(layout.warnings.is_empty());
+        flat.collapse(root);
+        assert!(!layout.project(&flat)[0].line.text.contains("# WARN"));
+
+        let flat = json(r#"{"k\u0001":"v\u0001"}"#);
+        let root = children(&flat, 0)[0];
+        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
+        assert_eq!(layout.warnings.len(), 1);
+        assert_eq!(
+            layout.warnings[0].kind,
+            WarningKind::NonStandardStringEscape
+        );
+        assert!(layout.lines[0].text.contains("# WARN"));
+    }
+
+    #[test]
+    fn selected_array_element_warning_has_no_excluded_parent_locator() {
+        let flat = yaml("- .inf\n- 1\n");
+        let root = children(&flat, 0)[0];
+        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
+        assert_eq!(layout.warnings[0].kind, WarningKind::NonFiniteNumber);
+        assert!(!layout.lines[0].text.contains("at [0]"));
+    }
+
+    #[test]
+    fn selected_root_warnings_and_sequence_numbers_are_filtered() {
+        let flat = yaml("- a: .inf\n- b: .nan\n");
+        let rows = children(&flat, 0);
+        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[rows[0]]);
+        assert_eq!(layout.lines.len(), 1);
+        assert!(layout.lines[0].text.contains("Non-finite number"));
+        assert!(!layout.lines[0].text.contains("b:"));
+        let stream = json(r#"{"a":1} {"b":2} {"c":3}"#);
+        let roots = crate::path_filter::document_roots(&stream);
+        let filtered =
+            Layout::for_view_with_roots(&stream, 120, &HashSet::new(), &[roots[2], roots[0]]);
+        assert_eq!(filtered.lines[0].text, "--- (1 of 2)");
+        assert_eq!(filtered.lines[2].text, "--- (2 of 2)");
     }
 }

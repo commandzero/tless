@@ -104,10 +104,25 @@ impl SearchState {
         })
     }
 
+    #[cfg(test)]
     pub fn initialize_search(
         search_input: String,
         haystack: &str,
         direction: SearchDirection,
+    ) -> Result<SearchState, String> {
+        Self::initialize_search_in_ranges(
+            search_input,
+            haystack,
+            direction,
+            std::iter::once(0..haystack.len()),
+        )
+    }
+
+    pub fn initialize_search_in_ranges(
+        search_input: String,
+        haystack: &str,
+        direction: SearchDirection,
+        ranges: impl IntoIterator<Item = Range<usize>>,
     ) -> Result<SearchState, String> {
         let (regex_input, case_sensitive) =
             Self::extract_search_term_and_case_sensitivity(&search_input);
@@ -125,7 +140,14 @@ impl SearchState {
             .build()
             .map_err(|e| format!("{e}").replace('\n', " "))?;
 
-        let matches: Vec<Range<usize>> = regex.find_iter(haystack).map(|m| m.range()).collect();
+        let matches = ranges
+            .into_iter()
+            .flat_map(|range| {
+                regex
+                    .find_iter(&haystack[range.clone()])
+                    .map(move |found| (range.start + found.start())..(range.start + found.end()))
+            })
+            .collect();
 
         Ok(SearchState {
             direction,
@@ -361,6 +383,30 @@ mod tests {
     use super::JumpDirection::*;
     use super::SearchDirection::*;
     use super::SearchState;
+
+    #[test]
+    fn filtered_search_excludes_owning_keys_and_other_documents() {
+        let mut flat = parse_top_level_json(
+            r#"{"needle":{"inside":"needle"},"outside":"needle"} {"needle":{"inside":"needle"}}"#
+                .into(),
+        )
+        .unwrap();
+        let roots = crate::path_filter::PathFilter::parse(".needle")
+            .unwrap()
+            .resolve(&flat)
+            .unwrap();
+        flat.collapse(roots[0]);
+        let ranges = roots.iter().map(|&root| flat[root].range.clone());
+        let mut search =
+            SearchState::initialize_search_in_ranges("needle".into(), &flat.1, Forward, ranges)
+                .unwrap();
+        assert_eq!(search.num_matches(), 2);
+        let first = search.jump_to_match(roots[0], &flat, Next, 1);
+        assert_eq!(flat[first].parent.unwrap(), roots[1]);
+        let second = search.jump_to_match(first, &flat, Next, 1);
+        assert_eq!(flat[second].parent.unwrap(), roots[0]);
+        assert_eq!(search.jump_to_match(second, &flat, Next, 1), first);
+    }
 
     const SEARCHABLE: &str = r#"{
         "1": "aaa",

@@ -1,26 +1,4 @@
-# toon-navigation Specification
-
-## Purpose
-
-Keep every parsed value reachable and identifiable when TOON places multiple logical values on one display line or hides them through collapse.
-
-## Requirements
-
-### Requirement: Logical focus independent of lines
-
-The viewer SHALL distinguish container focus from child-value focus even when they share a display line. It SHALL support focus on individual inline-array elements, table row objects, and table cells without changing the TOON layout. A cell's path SHALL include its array index and field key. A duplicate occurrence SHALL retain a distinct selection identity even if its textual path equals another occurrence's path.
-
-#### Scenario: Table cell identity
-
-- **WHEN** a user focuses `Lin` in the second row of `users[2]{id,name}:`
-- **THEN** its path SHALL identify `users[1].name`
-- **AND** copying the selected value SHALL select the string `Lin`, not the row or column header
-
-#### Scenario: Duplicate occurrence identity
-
-- **WHEN** a user moves between duplicate `status` entries
-- **THEN** each entry SHALL remain independently selectable
-- **AND** status SHALL show `occurrence 1 of 2` or `occurrence 2 of 2` alongside its path
+## MODIFIED Requirements
 
 ### Requirement: Vertical and structural motion
 
@@ -106,22 +84,6 @@ With a path filter active, search and repeat-search SHALL enumerate matches only
 - **WHEN** a search term exists only outside the selected subtrees
 - **THEN** search SHALL report no match and SHALL leave the active filter unchanged
 
-### Requirement: Viewport and selection stability
-
-Wrap toggles, resize, gutter or indentation changes, collapse, expansion, and viewport scrolling SHALL preserve logical focus where that value remains visible. Hiding the focused value SHALL move focus to the nearest visible collapsed ancestor. Mouse selection SHALL resolve data spans to their values; clicking a collapse arrow SHALL affect its owning container. Clicking a generated warning SHALL select its owning node without treating warning text as data.
-
-#### Scenario: Collapse focused ancestor
-
-- **WHEN** a command collapses an ancestor of the focused cell
-- **THEN** focus SHALL move to that ancestor
-- **AND** later expansion SHALL preserve the node's data identity and descendant collapse states
-
-#### Scenario: Mouse selection and resize
-
-- **WHEN** a user clicks an inline-array element and resizes the terminal
-- **THEN** that element SHALL remain selected
-- **AND** the viewer SHALL scroll as needed to keep its data span visible
-
 ### Requirement: Numbered jumps follow TOON lines
 
 Absolute line jumps SHALL address the fully expanded TOON layout used by absolute gutters. A target hidden by collapse SHALL select the visible collapsed ancestor unless the command explicitly requests revealing the target. A jump to a sequence document row SHALL select that row and preserve its collapse state. All values sharing a TOON line SHALL share its jump address; a line jump SHALL initially focus the line's owning node.
@@ -138,41 +100,3 @@ With a path filter active, absolute gutters and jumps SHALL address the fully ex
 
 - **WHEN** a subtree with original-document lines preceding it becomes the selected root
 - **THEN** its filtered layout SHALL start at line 1 and line jumps SHALL NOT address excluded original-document lines
-
-### Requirement: Physical viewport scrolling for wrapped lines
-
-With wrapping enabled, viewport scroll commands and the mouse wheel SHALL move in physical screen rows. Full-page and half-page commands SHALL use the document viewport height and their existing overlap and count conventions, measured in physical rows. These commands SHALL be able to reveal every continuation of a line taller than the viewport. They SHALL preserve the focused logical node while any part of its line remains visible, moving focus to a visible logical entry only when the entire focused line leaves the viewport. Scroll padding SHALL yield when a focused line cannot fit in the available height.
-
-Logical focus motions and numbered jumps SHALL reveal the destination's selected span, or the first row for a line-owner jump. Search SHALL reveal the row containing the start of the active match, and show the whole match if it fits in the viewport. Top, middle, and bottom screen selection commands SHALL resolve the physical target row to its owning logical entry. Repositioning the focused line SHALL align the selected span's row to the requested screen position, clamped at document boundaries.
-
-A click on continuation text SHALL select the original value or cell using its original span mapping. A click in a blank continuation gutter SHALL NOT toggle collapse. Reflow SHALL preserve logical focus and the active search match, and reveal that match or selected span after rebuilding the viewport.
-
-#### Scenario: Move past a wrapped value
-
-- **WHEN** focus is on a value occupying 4 physical rows and the user moves down once
-- **THEN** focus SHALL move to the next logical display line
-- **AND** moving up once SHALL return to the wrapped value
-- **AND** counted motions and relative numbering SHALL count the value once
-- **AND** absolute jumps SHALL retain the addresses of the unwrapped logical layout
-
-#### Scenario: Read a value taller than the screen
-
-- **WHEN** one expanded value occupies more rows than the document viewport
-- **THEN** Ctrl+E, Ctrl+Y, page commands, and the mouse wheel SHALL allow traversal of all its continuations
-- **AND** scrolling within that value SHALL retain its selection and path
-- **AND** repeated scrolling SHALL stop at document boundaries without skipping an unreachable portion
-
-#### Scenario: Search and click in continuations
-
-- **WHEN** a search match or clicked table cell appears on a continuation row
-- **THEN** the viewer SHALL select its original logical node and preserve its path and copy target
-- **AND** a search match spanning a wrap boundary SHALL retain highlighting on both sides
-- **AND** the active match's start SHALL be visible after search reveal
-- **AND** clicking the blank continuation gutter SHALL leave collapse states unchanged
-
-#### Scenario: Reflow while viewing a long value
-
-- **WHEN** wrapping is toggled or the terminal, gutters, or indentation reduction changes while a long value or search match is selected
-- **THEN** the same logical node and match SHALL remain selected
-- **AND** the viewer SHALL recompute physical rows and reveal the selection or match within the document viewport
-- **AND** collapse states and explicit multiline-array choices SHALL survive

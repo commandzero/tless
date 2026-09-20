@@ -139,6 +139,7 @@ tless --help
 tless --version
 printf '{"answer":42}' | tless --input-format json -
 tless --max-input-bytes 1073741824 large.json
+tless --path '.hits[0].name' response.json
 ```
 
 - No filename or `-` reads from `stdin`
@@ -147,6 +148,7 @@ tless --max-input-bytes 1073741824 large.json
 - Use `-o <format>` or `--output-format <format>` to select the non-terminal output format
 - Supported input/output formats are `toon`, `json`, and `yaml`
 - Default input limit of 512 MiB, use `--max-input-bytes 0` to remove it
+- Use `--path` to select a subtree before viewing or exporting; the full input is still parsed
 
 ```sh
 cat file.json | tless | cat                 # TOON output
@@ -154,6 +156,21 @@ cat file.json | tless -o json | consumer    # preserve JSON pipeline behavior
 tless --input-format yaml -o yaml file.yaml > normalized.yaml
 tless --input-format toon --output-format=json file.toon > converted.json
 ```
+
+## Path filtering
+
+Use `--path '.hits.0.name'`, `--path '.hits[0].name'`, or the strict JSON pointer
+`--path './hits/0/name'`. In the viewer, enter the same path at `:`, for example
+`:.hits[0].name`. Paths copied with `yp` can be pasted unchanged into either
+entry point, including `["a.b"][0].name` and root-array paths such as `[0].name`.
+`yq` remains a jq query; `yb` remains an external-language path, not a promised
+filter input.
+
+`.` restores the original roots; CLI `--path ''` is equivalent. `./` instead
+selects an empty object key. Filters are absolute, apply to every input document,
+and fail atomically if any document cannot resolve the path. Navigation, search,
+and whole-document exports use the selected subtrees. See the
+[path-filter guide](docs/toon-view.md#path-filtering) for escaping and state rules.
 
 ## Color themes
 

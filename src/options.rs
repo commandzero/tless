@@ -38,6 +38,20 @@ pub struct Opt {
     )]
     pub output: OutputFormat,
 
+    /// Select absolute subtrees for viewing and export, atomically in every document.
+    ///
+    /// Examples: --path '.hits[0].name', --path .hits.hits.0, --path /hits/hits/0.
+    /// Friendly dot/yp paths support zero-based [0] and JSON-quoted ["a.b"] keys,
+    /// including leading brackets. Paste yp paths unchanged; yq remains a jq query
+    /// and yb is an external representation without a filter round-trip guarantee.
+    /// Strict RFC 6901 pointers begin / or ./; ~1 means / and ~0 means ~.
+    /// Use . or '' for original roots; ./ selects an empty key. In the viewer use
+    /// :["a.b"][0], :./a.b, or :. to reset. Writes/pipelines export selected roots.
+    /// The whole input is still parsed and held in memory: this is not a parser
+    /// shortcut or security boundary. No path completion or jq/JSONPath evaluation.
+    #[arg(long, value_name = "PATH")]
+    pub path: Option<String>,
+
     /// Maximum input bytes. Use 0 for unlimited input. The complete input stays in memory.
     #[arg(long, default_value_t = 536_870_912)]
     pub max_input_bytes: u64,

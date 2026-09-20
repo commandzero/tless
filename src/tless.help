@@ -139,24 +139,55 @@
   yk pk   Copy/print the selected object key. Quotes are omitted when the key
             is a valid JavaScript identifier.
 
-  yp pP   Copy/print the path from the top level JSON root to the currently
-            focused value. Object keys will be accessed using ".key" unless they
-            are not valid JavaScript identifiers.
+  yp pP   Copy/print the original absolute path to the focused value. Paste it
+            unchanged into --path or the : prompt: .hits[0].name, ["a.b"][0],
+            or [0].name. The root path is ".". Resolution errors still apply.
   yb pb   Same as yp, but use square brackets for all object key accesses.
             Useful if getting the path for use in an environment that doesn't
             support the ".key" syntax, e.g. Python.
+            This representation is not guaranteed to work as a path filter.
   yq pq   Copy/print a path that can be used by jq to filter the input JSON and
             return the currently focused value.
+            jq traversal (including []) is not concrete path-filter syntax.
+
+                                 PATH FILTERS
+
+  :.hits.0.name      Select by friendly dot path.
+  :.hits[0].name     Select using a concrete yp path; leading ["key"] or [0]
+                       selectors work too. Quoted keys use JSON escapes.
+  :["a.b"][0]       Select an element below the literal root key a.b.
+  :./a.b            Strict pointers treat dots in keys literally.
+  :./hits/0/name     Select by strict RFC 6901 pointer: ~1 means /, ~0 means ~.
+                       Thus ./~01 addresses key ~1. Other ~ escapes are errors.
+  :.                Restore the original roots. CLI --path '' is equivalent;
+                       ./ instead selects an empty object key.
+
+      --path accepts the same forms, plus bare /hits/0/name. Paths are absolute
+      against every original document, not relative to the current filter.
+      Whitespace in pointer keys is literal, including trailing spaces.
+      Every document must resolve; missing, ambiguous, or invalid paths leave
+      the current view unchanged. Wildcards, [], slices, and queries are not
+      supported. Numeric brackets select arrays; quoted brackets select keys.
+      Arrays reject signed indices, leading zeros, and out-of-range indices.
+
+      Navigation, numbering, search, and writes use the selected subtrees;
+      status and copied paths retain original ancestry. Successful changes reset
+      focus, scroll, and search, retaining descendant presentation choices.
+      The whole input is still parsed and held in memory; input limits apply.
+      Filtering is not a security boundary or parser shortcut. Path completion
+      and jq/JSONPath evaluation are unsupported.
 
                                     [1mWRITING[0m
 
-  :w[rite]  <name>   Write the input JSON to a file.
-  :w[rite]! <name>   Write the input JSON to a file, even if the file already
-                       exists.
+  :w[rite]  <name>   Write all active roots as JSON to a file.
+  :w[rite]! <name>   Write all active roots as JSON, even if the file exists.
+                       TOON and s-expression writes use the same filter scope.
+                       TOON still requires exactly one root. Failed encoding
+                       does not open or truncate the destination.
 
                                      [1mSEARCH[0m
 
-      tless supports full-text search over the input JSON.
+      tless supports full-text search inside the active roots, not omitted keys.
 
   /pattern  *  Search forward   for the given pattern (or its [4mN[0mth occurrence).
   ?pattern  *  Search backwards for the given pattern (or its [4mN[0mth occurrence).
