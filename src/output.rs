@@ -61,7 +61,13 @@ fn encode_root(
         let row = &document[index];
         let closing = row.is_closing_of_container();
         let is_root = index == start;
-        let relative_depth = row.depth.saturating_sub(base_depth);
+        // A closing delimiter belongs at its opening value's indentation.
+        let node = if closing {
+            &document[row.pair_index().unwrap()]
+        } else {
+            row
+        };
+        let relative_depth = node.depth.saturating_sub(base_depth);
         for _ in 0..relative_depth {
             output.push_str("  ");
         }
@@ -129,11 +135,6 @@ fn encode_root(
             Value::Boolean | Value::Null => output.push_str(&document.1[row.range.clone()]),
         }
 
-        let node = if closing {
-            &document[row.pair_index().unwrap()]
-        } else {
-            row
-        };
         if index != end && !is_root && node.next_sibling.is_some() {
             output.push(',');
         }

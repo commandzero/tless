@@ -49,6 +49,41 @@ fn path_selection_preserves_stream_framing_and_is_atomic() {
 }
 
 #[test]
+fn filtered_nested_containers_keep_matching_delimiter_indentation() {
+    let expected = "{\n  \"child\": {\n    \"leaf\": 1\n  },\n  \"items\": [\n    {\n      \"value\": 2\n    }\n  ]\n}\n";
+    for (input_format, input) in [
+        (
+            "json",
+            r#"{"outer":{"selected":{"child":{"leaf":1},"items":[{"value":2}]},"excluded":9}}"#,
+        ),
+        (
+            "yaml",
+            "outer:\n  selected:\n    child:\n      leaf: 1\n    items:\n      - value: 2\n  excluded: 9\n",
+        ),
+    ] {
+        for output_format in ["json", "yaml"] {
+            let output = success(
+                &[
+                    "-i",
+                    input_format,
+                    "--path",
+                    ".outer.selected",
+                    "-o",
+                    output_format,
+                ],
+                input,
+            );
+            let body = if output_format == "yaml" {
+                output.strip_prefix("---\n").unwrap()
+            } else {
+                output.as_str()
+            };
+            assert_eq!(body, expected, "{input_format} to {output_format}");
+        }
+    }
+}
+
+#[test]
 fn path_arguments_distinguish_syntax_errors_from_resolution_errors() {
     for args in [&["--path"][..], &["--path", ".a[]"], &["--path", "./a~2"]] {
         let output = run(args, "");
