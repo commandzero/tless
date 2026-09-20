@@ -141,7 +141,7 @@ pub struct Layout {
     inline_width: usize,
     inline_limit: usize,
     expanded_arrays: HashSet<usize>,
-    active_roots: Vec<usize>,
+    root_by_node: Vec<usize>,
 }
 
 pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
@@ -178,19 +178,6 @@ fn scalar(flat: &FlatJson, node: usize) -> bool {
         flat[node].value,
         Value::String | Value::Number | Value::Boolean | Value::Null
     )
-}
-
-fn in_active_root(flat: &FlatJson, node: usize, roots: &[usize]) -> bool {
-    let mut current = normalize_node(flat, node);
-    loop {
-        if roots.contains(&current) {
-            return true;
-        }
-        match flat[current].parent {
-            OptionIndex::Index(parent) => current = parent,
-            OptionIndex::Nil => return false,
-        }
-    }
 }
 
 impl DisplayLine {
@@ -245,18 +232,13 @@ impl Layout {
         expanded_arrays: &HashSet<usize>,
         roots: Vec<usize>,
     ) -> Self {
-        let roots = roots
-            .into_iter()
-            .filter(|root| *root < flat.0.len())
-            .map(|root| normalize_node(flat, root))
-            .filter(|root| !flat[*root].is_closing_of_container())
-            .fold(Vec::new(), |mut roots, root| {
-                if !roots.contains(&root) {
-                    roots.push(root);
-                }
-                roots
-            });
+        // Resolved roots are disjoint subtrees. Index membership once, including
+        // closing rows, instead of scanning roots and ancestors in every pass.
         let n = flat.0.len();
+        let mut root_by_node = vec![crate::flatjson::NIL; n];
+        for &root in &roots {
+            root_by_node[flat.subtree_range(root)].fill(root);
+        }
         let mut result = Self {
             lines: vec![],
             nodes: vec![NodeLayout::default(); n],
@@ -270,14 +252,14 @@ impl Layout {
             inline_width: width,
             inline_limit: limit,
             expanded_arrays: expanded_arrays.clone(),
-            active_roots: roots.clone(),
+            root_by_node,
         };
         let sequence = roots.len() > 1;
         for (i, row) in flat.0.iter().enumerate() {
-            if row.is_closing_of_container() || !in_active_root(flat, i, &roots) {
+            if row.is_closing_of_container() || result.active_root_for(i).is_none() {
                 continue;
             }
-            if let Some(range) = row.key_range.as_ref().filter(|_| !roots.contains(&i)) {
+            if let Some(range) = row.key_range.as_ref().filter(|_| !result.is_active_root(i)) {
                 let raw = &flat.1[range.clone()];
                 if let Some(key) = &row.key_value {
                     match key {
@@ -323,13 +305,13 @@ impl Layout {
             };
             let kids = children(flat, i);
             result.nodes[i].entry_count = kids.len();
-            result.nodes[i].collapsible = if sequence && roots.contains(&i) {
+            result.nodes[i].collapsible = if sequence && result.is_active_root(i) {
                 // A sequence document has a presentation row even when its
                 // parsed root is scalar or empty. The row is the collapse
                 // anchor; the parsed value and parent links remain unchanged.
                 true
             } else {
-                !kids.is_empty() && !(roots.contains(&i) && !row.is_array())
+                !kids.is_empty() && !(result.is_active_root(i) && !row.is_array())
             };
             if row.is_opening_of_container() && !row.is_array() {
                 let mut counts = HashMap::new();
@@ -356,7 +338,7 @@ impl Layout {
         }
         for i in 0..n {
             result.own_warnings[i].sort();
-            if !in_active_root(flat, i, &roots) {
+            if result.active_root_for(i).is_none() {
                 continue;
             }
             for &kind in &result.own_warnings[i] {
@@ -365,12 +347,12 @@ impl Layout {
         }
         // Bottom-up aggregation counts semantic records once, including warnings in complex keys.
         for i in (0..n).rev() {
-            if flat[i].is_closing_of_container() || !in_active_root(flat, i, &roots) {
+            if flat[i].is_closing_of_container() || result.active_root_for(i).is_none() {
                 continue;
             }
             let own_count = result.own_warnings[i].len();
             if let OptionIndex::Index(parent) = flat[i].parent {
-                if in_active_root(flat, parent, &roots) {
+                if result.active_root_for(parent).is_some() {
                     result.nodes[parent].descendant_warnings +=
                         result.nodes[i].descendant_warnings + own_count;
                 }
@@ -406,14 +388,14 @@ impl Layout {
         }
         result.line_containers = vec![vec![]; result.lines.len()];
         for i in 0..n {
-            if flat[i].is_closing_of_container() && in_active_root(flat, i, &roots) {
+            if flat[i].is_closing_of_container() && result.active_root_for(i).is_some() {
                 result.nodes[i] = result.nodes[normalize_node(flat, i)].clone();
             }
         }
         for i in 0..n {
             if result.nodes[i].collapsible
                 && !flat[i].is_closing_of_container()
-                && in_active_root(flat, i, &roots)
+                && result.active_root_for(i).is_some()
             {
                 let line = result.nodes[i].line;
                 result.line_containers[line].push(i);
@@ -421,14 +403,14 @@ impl Layout {
                 // but an array body still owns its normal inline/multiline
                 // presentation controls. Empty arrays have no body arrow.
                 if sequence
-                    && roots.contains(&i)
+                    && result.is_active_root(i)
                     && flat[i].is_array()
                     && result.nodes[i].body_line != line
                 {
                     result.line_containers[result.nodes[i].body_line].push(i);
                 }
             }
-            if in_active_root(flat, i, &roots)
+            if result.active_root_for(i).is_some()
                 && result.previews[i].text.is_empty()
                 && flat[i].is_opening_of_container()
             {
@@ -495,7 +477,7 @@ impl Layout {
             .iter()
             .enumerate()
             .filter(|(node, info)| {
-                in_active_root(flat, *node, &roots)
+                result.active_root_for(*node).is_some()
                     && !flat[*node].is_closing_of_container()
                     && info.inline_array
                     && UnicodeWidthStr::width(result.lines[info.body_line].text.as_str()) > width
@@ -507,6 +489,17 @@ impl Layout {
             return Self::build(flat, width, limit, &result.expanded_arrays, roots);
         }
         result
+    }
+
+    pub fn active_root_for(&self, node: usize) -> Option<usize> {
+        self.root_by_node
+            .get(node)
+            .copied()
+            .filter(|root| *root != crate::flatjson::NIL)
+    }
+
+    fn is_active_root(&self, node: usize) -> bool {
+        self.active_root_for(node) == Some(node)
     }
     fn key(&self, flat: &FlatJson, node: usize) -> String {
         match &self.keys[node] {
@@ -852,7 +845,7 @@ impl Layout {
         let mut messages = vec![];
         for node in ids {
             for warning in &self.own_warnings[node] {
-                let locator = if self.active_roots.contains(&node) {
+                let locator = if self.is_active_root(node) {
                     String::new()
                 } else if self.nodes[node].table_cell {
                     format!(
@@ -2288,9 +2281,7 @@ mod tests {
                 .lines
                 .iter()
                 .flat_map(|line| line.spans.iter())
-                .all(|span| {
-                    span.node == selected || in_active_root(&flat, span.node, &[selected])
-                })
+                .all(|span| { layout.active_root_for(span.node) == Some(selected) })
         );
     }
 

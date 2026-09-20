@@ -44,6 +44,7 @@
 - Archived-delta synchronization review: all 11 requirement blocks and their scenarios match the main specs; no removals or renames were required.
 - `scripts/preflight.sh` passed with Rust 1.97.1 and OpenSpec 1.11.0: formatting, both Clippy profiles, shell/workflow checks, release/OpenSpec gate regressions, documentation validation, and all five feature-profile test suites.
 - The committed-HEAD completion check against fetched `origin/main` passed with the review fields below: archived change valid and complete, original artifacts preserved, and all three affected main specs strictly valid.
+- Copilot review performance follow-up: replaced repeated root-list scans, ancestor walks, and redundant root deduplication with one flat-node-to-root index shared by layout and viewer membership. Actual debug-binary TUI startup medians over three runs improved from 0.2490s to 0.0184s for 1,500 scalar documents and from 2.6872s to 0.0458s for 6,000. Existing filtered-scope and sequence-navigation regressions passed; the disposable timing harness was removed.
 
 ```text
 OpenSpec-Change: path-filter

@@ -57,17 +57,6 @@ impl JsonViewer {
     }
 
     fn with_roots_impl(flatjson: FlatJson, roots: Vec<Index>, expand_roots: bool) -> Self {
-        let roots = roots
-            .into_iter()
-            .filter(|root| *root < flatjson.0.len())
-            .map(|root| normalize_node(&flatjson, root))
-            .filter(|root| !flatjson[*root].is_closing_of_container())
-            .fold(Vec::new(), |mut roots, root| {
-                if !roots.contains(&root) {
-                    roots.push(root);
-                }
-                roots
-            });
         let mut flatjson = flatjson;
         if expand_roots {
             for &root in &roots {
@@ -133,17 +122,6 @@ impl JsonViewer {
         viewer
     }
     pub fn set_roots(&mut self, roots: Vec<Index>) {
-        let roots = roots
-            .into_iter()
-            .filter(|root| *root < self.flatjson.0.len())
-            .map(|root| normalize_node(&self.flatjson, root))
-            .filter(|root| !self.flatjson[*root].is_closing_of_container())
-            .fold(Vec::new(), |mut roots, root| {
-                if !roots.contains(&root) {
-                    roots.push(root);
-                }
-                roots
-            });
         for &root in &roots {
             self.flatjson.expand(root);
             self.document_collapsed.remove(&root);
@@ -196,42 +174,18 @@ impl JsonViewer {
 
     /// Whether a parsed node belongs to one of the selected subtrees.
     pub fn contains_node(&self, node: Index) -> bool {
-        if node >= self.flatjson.0.len() {
-            return false;
-        }
-        let mut current = normalize_node(&self.flatjson, node);
-        loop {
-            if self.active_roots.contains(&current) {
-                return true;
-            }
-            match self.flatjson[current].parent {
-                OptionIndex::Index(parent) => current = parent,
-                OptionIndex::Nil => return false,
-            }
-        }
+        self.active_root_for(node).is_some()
     }
 
     fn active_root_for(&self, node: Index) -> Option<Index> {
-        if node >= self.flatjson.0.len() {
-            return None;
-        }
-        let mut current = normalize_node(&self.flatjson, node);
-        loop {
-            if self.active_roots.contains(&current) {
-                return Some(current);
-            }
-            match self.flatjson[current].parent {
-                OptionIndex::Index(parent) => current = parent,
-                OptionIndex::Nil => return None,
-            }
-        }
+        self.layout.active_root_for(node)
     }
 
     /// Selected roots are parentless only for interaction; source ancestry is
     /// left untouched for paths and copy operations.
     fn effective_parent(&self, node: Index) -> OptionIndex {
         let node = normalize_node(&self.flatjson, node);
-        if self.active_roots.contains(&node) {
+        if self.active_root_for(node) == Some(node) {
             OptionIndex::Nil
         } else if self.contains_node(node) {
             self.flatjson[node].parent
