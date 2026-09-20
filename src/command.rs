@@ -14,6 +14,7 @@ pub enum Command {
     Colorscheme(String),
     Quit,
     Help,
+    Path(String),
     SetShowLineNumber(Option<bool>),
     SetShowRelativeLineNumber(Option<bool>),
     WriteFile {
@@ -118,6 +119,10 @@ pub fn matching_names(prefix: &str) -> Vec<&'static str> {
 
 impl Command {
     pub fn parse(command: &str) -> Self {
+        let path = command.trim_start_matches(' ');
+        if path.starts_with('.') || path.starts_with('[') {
+            return Self::Path(path.to_owned());
+        }
         // Colorscheme has historically accepted Unicode whitespace and names
         // containing spaces. Other commands split only on ASCII spaces.
         #[cfg(feature = "colorscheme")]

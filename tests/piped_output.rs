@@ -30,6 +30,67 @@ fn success(args: &[&str], input: &str) -> String {
 }
 
 #[test]
+fn path_selection_preserves_stream_framing_and_is_atomic() {
+    let input = r#"{"a":1,"other":9} {"a":2}"#;
+    assert_eq!(success(&["--path", ".a", "-o", "json"], input), "1\n2\n");
+    assert_eq!(
+        success(&["--path", "/a", "-o", "yaml"], input),
+        "---\n1\n---\n2\n"
+    );
+    for input in [input, r#"{"a":1} {"b":2}"#, r#"{"a":1} {"broken":"#] {
+        let output = run(&["--path", ".a"], input);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+    }
+    let missing = run(&["--path", ".a", "-o", "json"], r#"{"a":1} {"b":2}"#);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(missing.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("2"));
+}
+
+#[test]
+fn path_arguments_distinguish_syntax_errors_from_resolution_errors() {
+    for args in [&["--path"][..], &["--path", ".a[]"], &["--path", "./a~2"]] {
+        let output = run(args, "");
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    for path in [".absent", ".a[01]", ".a[99]", ".a[-1]", ".a.0.child"] {
+        let output = run(&["--path", path, "-o", "json"], r#"{"a":[1]}"#);
+        // Bracket-index grammar errors are argument errors; valid but missing
+        // locations are resolution errors.
+        let expected = if matches!(path, ".a[01]" | ".a[-1]") {
+            2
+        } else {
+            1
+        };
+        assert_eq!(output.status.code(), Some(expected), "{path}");
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+fn path_filters_use_selected_data_but_validate_whole_input() {
+    let input = "a: 1\n1: .inf\n";
+    assert_eq!(
+        success(&["-i", "yaml", "--path", ".a", "-o", "json"], input),
+        "1\n"
+    );
+    assert_eq!(success(&["-i", "yaml", "--path", ".a"], input), "1");
+    for path in [".", ""] {
+        let output = run(&["-i", "yaml", "--path", path, "-o", "json"], input);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+    }
+    let input = r#"{"hits":[{"a.b":"value"}],"":7}"#;
+    assert_eq!(
+        success(&["--path", r#".hits[0]["a.b"]"#, "-o", "json"], input),
+        "\"value\"\n"
+    );
+    assert_eq!(success(&["--path", "./", "-o", "json"], input), "7\n");
+}
+
+#[test]
 fn selectors_and_conversion_matrix() {
     assert_eq!(
         success(&["-i", "json", "-o", "json"], "{\"a\":1}"),

@@ -17,7 +17,7 @@ use crate::input::TuiEvent;
 use crate::input::TuiEvent::{KeyEvent, MouseEvent, WinChEvent};
 use crate::jsonstringunescaper::safe_unescape_json_string;
 use crate::lineprinter::JS_IDENTIFIER;
-use crate::options::{DataFormat, Opt};
+use crate::options::{Opt, OutputFormat};
 use crate::screenwriter::{MessageSeverity, ScreenWriter};
 use crate::search::{JumpDirection, SearchDirection, SearchState};
 use crate::theme::Theme;
@@ -100,22 +100,21 @@ impl App {
         opt: &Opt,
         theme: Theme,
         #[cfg(feature = "colorscheme")] config: Config,
-        data: String,
-        data_format: DataFormat,
+        flatjson: flatjson::FlatJson,
+        roots: Vec<usize>,
         input_filename: String,
         stdout: crate::screenwriter::TerminalOutput,
-    ) -> Result<App, String> {
-        let flatjson = match Self::parse_input(data, data_format) {
-            Ok(flatjson) => flatjson,
-            Err(err) => return Err(format!("Unable to parse input: {err:?}")),
+    ) -> App {
+        let mut viewer = if opt.path.is_some() {
+            JsonViewer::with_roots(flatjson, roots)
+        } else {
+            JsonViewer::new(flatjson)
         };
-
-        let mut viewer = JsonViewer::new(flatjson);
         viewer.scrolloff_setting = opt.scrolloff;
 
         let screen_writer = ScreenWriter::init(opt, theme, stdout, TTYDimensions::default());
 
-        Ok(App {
+        App {
             #[cfg(feature = "colorscheme")]
             config,
             viewer,
@@ -126,14 +125,6 @@ impl App {
             search_state: SearchState::empty(),
             message: None,
             clipboard_context: Clipboard::new(),
-        })
-    }
-
-    fn parse_input(data: String, data_format: DataFormat) -> Result<flatjson::FlatJson, String> {
-        match data_format {
-            DataFormat::Json => flatjson::parse_top_level_json(data),
-            DataFormat::Yaml => flatjson::parse_top_level_yaml(data),
-            DataFormat::Toon => crate::toon::parse(&data).map_err(|e| e.to_string()),
         }
     }
 
@@ -496,6 +487,7 @@ impl App {
                                 match Command::parse(&command) {
                                     Command::Quit => break,
                                     Command::Help => self.show_help(),
+                                    Command::Path(path) => self.apply_path(&path),
                                     #[cfg(feature = "colorscheme")]
                                     Command::Colorscheme(name) => {
                                         match self.config.resolve(&name) {
@@ -677,6 +669,19 @@ impl App {
         self.message = Some((s, MessageSeverity::Error));
     }
 
+    fn apply_path(&mut self, input: &str) {
+        let roots = crate::path_filter::PathFilter::parse(input)
+            .and_then(|path| path.resolve(&self.viewer.flatjson));
+        match roots {
+            Ok(roots) => {
+                self.viewer.set_roots(roots);
+                self.search_state = SearchState::empty();
+                self.screen_writer.invalidate_focus();
+            }
+            Err(error) => self.set_error_message(error),
+        }
+    }
+
     // Get user input via a readline prompt. May fail to return input if
     // the user deliberately cancels the prompt via Ctrl-C or Ctrl-D, or
     // if an actual error occurs, in which case an error message is set.
@@ -747,7 +752,17 @@ impl App {
     }
 
     fn initialize_search(&mut self, direction: SearchDirection, search_term: String) -> bool {
-        match SearchState::initialize_search(search_term, &self.viewer.flatjson.1, direction) {
+        let ranges = self
+            .viewer
+            .active_roots()
+            .iter()
+            .map(|&root| self.viewer.flatjson[root].range.clone());
+        match SearchState::initialize_search_in_ranges(
+            search_term,
+            &self.viewer.flatjson.1,
+            direction,
+            ranges,
+        ) {
             Ok(ss) => {
                 self.search_state = ss;
                 true
@@ -979,18 +994,22 @@ impl App {
         write_format: WriteFormat,
     ) {
         let file_contents: Result<String, String> = match write_format {
-            WriteFormat::Json => Ok(self.viewer.flatjson.pretty_printed()),
+            WriteFormat::Json => crate::output::serialize_roots(
+                &self.viewer.flatjson,
+                OutputFormat::Json,
+                self.viewer.active_roots(),
+            ),
             #[cfg(feature = "sexp")]
             WriteFormat::Sexp => self
                 .viewer
                 .flatjson
-                .sexp_string()
-                .map_err(|e| e.to_string()),
-            WriteFormat::Toon => crate::toon::encode_document(
+                .sexp_string(self.viewer.active_roots())
+                .map_err(|error| error.to_string()),
+            WriteFormat::Toon => crate::output::serialize_roots(
                 &self.viewer.flatjson,
-                crate::toon::EncodeOptions::default(),
-            )
-            .map_err(|e| e.to_string()),
+                OutputFormat::Toon,
+                self.viewer.active_roots(),
+            ),
         };
         let file_contents = match file_contents {
             Ok(contents) => contents,

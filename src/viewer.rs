@@ -31,6 +31,7 @@ pub struct JsonViewer {
     /// separate from `FlatJson` so a root's document row can be collapsed
     /// independently from a root array's TOON body layout.
     document_collapsed: HashSet<Index>,
+    active_roots: Vec<Index>,
     document_roots: Vec<Index>,
     document_header_by_root: Vec<Option<usize>>,
     document_root_by_header: Vec<Option<Index>>,
@@ -45,10 +46,44 @@ pub struct JsonViewer {
 
 impl JsonViewer {
     pub fn new(flatjson: FlatJson) -> Self {
-        let layout =
-            Self::layout_for_view(&flatjson, TTYDimensions::default(), true, &HashSet::new());
+        let roots = crate::path_filter::document_roots(&flatjson);
+        Self::with_roots_impl(flatjson, roots, false)
+    }
+
+    /// Construct directly from already-resolved active roots. This avoids
+    /// briefly constructing a full excluded layout during startup filtering.
+    pub fn with_roots(flatjson: FlatJson, roots: Vec<Index>) -> Self {
+        Self::with_roots_impl(flatjson, roots, true)
+    }
+
+    fn with_roots_impl(flatjson: FlatJson, roots: Vec<Index>, expand_roots: bool) -> Self {
+        let roots = roots
+            .into_iter()
+            .filter(|root| *root < flatjson.0.len())
+            .map(|root| normalize_node(&flatjson, root))
+            .filter(|root| !flatjson[*root].is_closing_of_container())
+            .fold(Vec::new(), |mut roots, root| {
+                if !roots.contains(&root) {
+                    roots.push(root);
+                }
+                roots
+            });
+        let mut flatjson = flatjson;
+        if expand_roots {
+            for &root in &roots {
+                flatjson.expand(root);
+            }
+        }
+        let layout = Self::layout_for_view(
+            &flatjson,
+            TTYDimensions::default(),
+            true,
+            &HashSet::new(),
+            &roots,
+        );
         let visible = layout.project_with_documents(&flatjson, &HashSet::new());
-        let absolute_anchor_line = layout.nodes[0].line;
+        let initial_root = roots.first().copied().unwrap_or(0);
+        let absolute_anchor_line = layout.nodes[initial_root].line;
         let physical_rows = build_physical_rows(
             &visible,
             usize::from(TTYDimensions::default().width),
@@ -64,7 +99,7 @@ impl JsonViewer {
             top_physical_row: 0,
             physical_rows,
             wrapping_enabled: false,
-            focused_node: 0,
+            focused_node: initial_root,
             absolute_anchor_line,
             jump_distance: None,
             desired_depth: 0,
@@ -72,6 +107,7 @@ impl JsonViewer {
             scrolloff_setting: 3,
             expanded_arrays: HashSet::new(),
             document_collapsed: HashSet::new(),
+            active_roots: roots,
             document_roots: vec![],
             document_header_by_root: vec![],
             document_root_by_header: vec![],
@@ -84,6 +120,11 @@ impl JsonViewer {
             focus_byte_range: None,
         };
         viewer.refresh_document_metadata();
+        viewer.desired_depth = viewer
+            .active_roots
+            .first()
+            .map(|root| viewer.flatjson[*root].depth)
+            .unwrap_or(0);
         if viewer.is_sequence() {
             if let Some(root) = viewer.document_roots().first().copied() {
                 viewer.absolute_anchor_line = viewer.document_header_absolute(root);
@@ -91,11 +132,112 @@ impl JsonViewer {
         }
         viewer
     }
+    pub fn set_roots(&mut self, roots: Vec<Index>) {
+        let roots = roots
+            .into_iter()
+            .filter(|root| *root < self.flatjson.0.len())
+            .map(|root| normalize_node(&self.flatjson, root))
+            .filter(|root| !self.flatjson[*root].is_closing_of_container())
+            .fold(Vec::new(), |mut roots, root| {
+                if !roots.contains(&root) {
+                    roots.push(root);
+                }
+                roots
+            });
+        for &root in &roots {
+            self.flatjson.expand(root);
+            self.document_collapsed.remove(&root);
+        }
+        self.active_roots = roots;
+        self.layout = Self::layout_for_view(
+            &self.flatjson,
+            self.dimensions,
+            self.line_numbers,
+            &self.expanded_arrays,
+            &self.active_roots,
+        );
+        self.visible = self
+            .layout
+            .project_with_documents(&self.flatjson, &self.document_collapsed);
+        self.refresh_document_metadata();
+        self.focused_node = self.active_roots.first().copied().unwrap_or(0);
+        self.absolute_anchor_line = self
+            .layout
+            .nodes
+            .get(self.focused_node)
+            .map(|node| node.line)
+            .unwrap_or(0);
+        if self.is_sequence() {
+            if let Some(root) = self.document_roots.first().copied() {
+                self.absolute_anchor_line = self.document_header_absolute(root);
+            }
+        }
+        self.top_visible_line = 0;
+        self.top_physical_row = 0;
+        self.jump_distance = None;
+        self.desired_depth = self
+            .active_roots
+            .first()
+            .map(|root| self.flatjson[*root].depth)
+            .unwrap_or(0);
+        self.focus_byte_range = None;
+        self.rebuild_physical_rows();
+        self.layout_generation = self.layout_generation.wrapping_add(1);
+    }
 
-    /// Return the parsed roots in encounter order. A sequence document row is
-    /// keyed by this existing parsed root, so no synthetic wrapper is needed.
+    /// Return the selected values in encounter order, retaining original node ids.
+    pub fn active_roots(&self) -> &[Index] {
+        &self.active_roots
+    }
+
     pub fn document_roots(&self) -> &[Index] {
         &self.document_roots
+    }
+
+    /// Whether a parsed node belongs to one of the selected subtrees.
+    pub fn contains_node(&self, node: Index) -> bool {
+        if node >= self.flatjson.0.len() {
+            return false;
+        }
+        let mut current = normalize_node(&self.flatjson, node);
+        loop {
+            if self.active_roots.contains(&current) {
+                return true;
+            }
+            match self.flatjson[current].parent {
+                OptionIndex::Index(parent) => current = parent,
+                OptionIndex::Nil => return false,
+            }
+        }
+    }
+
+    fn active_root_for(&self, node: Index) -> Option<Index> {
+        if node >= self.flatjson.0.len() {
+            return None;
+        }
+        let mut current = normalize_node(&self.flatjson, node);
+        loop {
+            if self.active_roots.contains(&current) {
+                return Some(current);
+            }
+            match self.flatjson[current].parent {
+                OptionIndex::Index(parent) => current = parent,
+                OptionIndex::Nil => return None,
+            }
+        }
+    }
+
+    /// Selected roots are parentless only for interaction; source ancestry is
+    /// left untouched for paths and copy operations.
+    fn effective_parent(&self, node: Index) -> OptionIndex {
+        let node = normalize_node(&self.flatjson, node);
+        if self.active_roots.contains(&node) {
+            OptionIndex::Nil
+        } else if self.contains_node(node) {
+            self.flatjson[node].parent
+        } else {
+            OptionIndex::Nil
+        }
     }
 
     pub fn is_sequence(&self) -> bool {
@@ -104,6 +246,9 @@ impl JsonViewer {
 
     fn document_root(&self, mut node: Index) -> Index {
         node = normalize_node(&self.flatjson, node);
+        if let Some(root) = self.active_root_for(node) {
+            return root;
+        }
         while let OptionIndex::Index(parent) = self.flatjson[node].parent {
             node = parent;
         }
@@ -112,8 +257,9 @@ impl JsonViewer {
 
     fn is_document_root(&self, node: Index) -> bool {
         self.is_sequence()
-            && self.flatjson[node].parent.is_nil()
-            && !self.flatjson[node].is_closing_of_container()
+            && self
+                .active_roots
+                .contains(&normalize_node(&self.flatjson, node))
     }
 
     pub fn is_document_collapsed(&self, root: Index) -> bool {
@@ -198,14 +344,17 @@ impl JsonViewer {
 
     fn visible_ancestor(&self, node: Index) -> Index {
         let mut current = normalize_node(&self.flatjson, node);
+        if !self.contains_node(current) {
+            return self.active_roots.first().copied().unwrap_or(current);
+        }
         let mut visible = current;
-        while let OptionIndex::Index(parent) = self.flatjson[current].parent {
+        while let OptionIndex::Index(parent) = self.effective_parent(current) {
             if self.flatjson[parent].is_collapsed() {
                 visible = parent;
             }
             current = parent;
         }
-        let root = current;
+        let root = self.active_root_for(current).unwrap_or(current);
         if self.is_document_collapsed(root) {
             root
         } else {
@@ -214,14 +363,7 @@ impl JsonViewer {
     }
 
     fn refresh_document_metadata(&mut self) {
-        self.document_roots = self
-            .flatjson
-            .0
-            .iter()
-            .enumerate()
-            .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
-            .map(|(index, _)| index)
-            .collect();
+        self.document_roots = self.active_roots.clone();
         self.document_root_by_header = vec![None; self.layout.lines.len()];
         self.document_header_by_root = vec![None; self.flatjson.0.len()];
         if self.is_sequence() {
@@ -405,13 +547,14 @@ impl JsonViewer {
         dimensions: TTYDimensions,
         line_numbers: bool,
         expanded_arrays: &HashSet<usize>,
+        roots: &[usize],
     ) -> Layout {
         // Start with the smallest gutter and only grow it: expanding arrays can
         // increase the number of digits, which can force another array onto lines.
         let mut number_width = if line_numbers { 3 } else { 0 };
         loop {
             let width = usize::from(dimensions.width).saturating_sub(number_width + 2);
-            let layout = Layout::for_view(flat, width, expanded_arrays);
+            let layout = Layout::for_view_with_roots(flat, width, expanded_arrays, roots);
             let required = if line_numbers {
                 layout.lines.len().to_string().len().max(2) + 1
             } else {
@@ -439,6 +582,7 @@ impl JsonViewer {
             self.dimensions,
             self.line_numbers,
             &self.expanded_arrays,
+            &self.active_roots,
         );
         self.refresh_document_metadata();
         self.refresh_projection();
@@ -450,7 +594,7 @@ impl JsonViewer {
             }
         }
         if let Some(top_node) = top_node {
-            let top = self.flatjson.first_visible_ancestor(top_node);
+            let top = self.visible_ancestor(top_node);
             let anchor = if top_document_body && self.is_document_root(top) {
                 self.layout.nodes[top].body_line
             } else if self.is_document_root(top) {
@@ -513,7 +657,10 @@ impl JsonViewer {
     fn focus(&mut self, node: usize) {
         self.focus_byte_range = None;
         let requested = normalize_node(&self.flatjson, node);
-        self.focused_node = self.visible_ancestor(node);
+        if !self.contains_node(requested) {
+            return;
+        }
+        self.focused_node = self.visible_ancestor(requested);
         if self.is_document_root(self.focused_node) {
             let header = self.document_header_absolute(self.focused_node);
             let body_anchor = self.flatjson[self.focused_node].is_collapsed()
@@ -535,6 +682,9 @@ impl JsonViewer {
 
     fn reveal(&mut self, node: usize, source: Option<usize>) {
         let node = normalize_node(&self.flatjson, node);
+        if !self.contains_node(node) {
+            return;
+        }
         let mut current = node;
         let mut changed = false;
         let root = self.document_root(node);
@@ -542,7 +692,7 @@ impl JsonViewer {
             self.document_collapsed.remove(&root);
             changed = true;
         }
-        while let OptionIndex::Index(parent) = self.flatjson[current].parent {
+        while let OptionIndex::Index(parent) = self.effective_parent(current) {
             changed |= self.flatjson[parent].is_collapsed();
             self.flatjson.expand(parent);
             current = parent;
@@ -650,7 +800,7 @@ impl JsonViewer {
             && self.layout.nodes[owner].table_row
         {
             // Match the logical column ordinal, including escaped-equivalent keys.
-            if let OptionIndex::Index(parent) = self.flatjson[self.focused_node].parent {
+            if let OptionIndex::Index(parent) = self.effective_parent(self.focused_node) {
                 if self.flatjson[owner].is_expanded() {
                     let mut ordinal = 0;
                     let mut child = self.flatjson[parent].first_child();
@@ -685,50 +835,100 @@ impl JsonViewer {
     }
 
     fn parent(&mut self) {
-        if let OptionIndex::Index(parent) = self.flatjson[self.focused_node].parent {
+        if let OptionIndex::Index(parent) = self.effective_parent(self.focused_node) {
             self.focus(parent);
         }
     }
 
     fn parent_or_previous_sibling(&mut self) {
-        let current = &self.flatjson[self.focused_node];
-        let destination = if current.parent.is_nil() {
-            current.prev_sibling
+        let current = normalize_node(&self.flatjson, self.focused_node);
+        let destination = if let OptionIndex::Index(parent) = self.effective_parent(current) {
+            OptionIndex::Index(parent)
         } else {
-            current.parent
+            self.active_root_for(current)
+                .and_then(|root| {
+                    self.active_roots
+                        .iter()
+                        .position(|candidate| *candidate == root)
+                        .and_then(|position| position.checked_sub(1))
+                        .and_then(|position| self.active_roots.get(position).copied())
+                })
+                .map_or(OptionIndex::Nil, OptionIndex::Index)
         };
         if let OptionIndex::Index(node) = destination {
             self.focus(node);
         }
     }
 
-    fn next_at_parent_level(&mut self) {
-        let current = &self.flatjson[self.focused_node];
-        let parent_next = match current.parent {
-            OptionIndex::Index(parent) => self.flatjson[parent].next_sibling,
-            OptionIndex::Nil => OptionIndex::Nil,
-        };
-        let destination = if parent_next.is_nil() {
-            current.next_sibling
+    fn next_sibling_in_view(&self, node: Index) -> OptionIndex {
+        if let Some(position) = self.active_roots.iter().position(|&root| root == node) {
+            self.active_roots
+                .get(position + 1)
+                .copied()
+                .map_or(OptionIndex::Nil, OptionIndex::Index)
+        } else if self.contains_node(node) {
+            self.flatjson[node].next_sibling
         } else {
-            parent_next
+            OptionIndex::Nil
+        }
+    }
+
+    fn next_at_parent_level(&mut self) {
+        let current = normalize_node(&self.flatjson, self.focused_node);
+        let destination = if let OptionIndex::Index(parent) = self.effective_parent(current) {
+            let parent_next = self.next_sibling_in_view(parent);
+            if let OptionIndex::Index(next) = parent_next {
+                if self.contains_node(next) {
+                    OptionIndex::Index(next)
+                } else {
+                    self.next_sibling_in_view(current)
+                }
+            } else {
+                self.next_sibling_in_view(current)
+            }
+        } else {
+            self.next_sibling_in_view(current)
         };
         if let OptionIndex::Index(node) = destination {
-            self.focus(node);
+            if self.contains_node(node) {
+                self.focus(node);
+            }
         }
     }
 
     fn sibling(&mut self, count: usize, next: bool) {
         for _ in 0..count {
             let before = self.focused_node;
-            let sibling = if next {
-                self.flatjson[before].next_sibling
+            let sibling = if let Some(root) = self.active_root_for(before) {
+                if root == normalize_node(&self.flatjson, before) {
+                    self.active_roots
+                        .iter()
+                        .position(|candidate| *candidate == root)
+                        .and_then(|position| {
+                            if next {
+                                self.active_roots.get(position + 1).copied()
+                            } else {
+                                position
+                                    .checked_sub(1)
+                                    .and_then(|p| self.active_roots.get(p).copied())
+                            }
+                        })
+                        .map_or(OptionIndex::Nil, OptionIndex::Index)
+                } else if next {
+                    self.flatjson[before].next_sibling
+                } else {
+                    self.flatjson[before].prev_sibling
+                }
             } else {
-                self.flatjson[before].prev_sibling
+                OptionIndex::Nil
             };
             if let OptionIndex::Index(mut node) = sibling {
+                if !self.contains_node(node) {
+                    break;
+                }
                 while self.flatjson[node].depth < self.desired_depth
                     && self.flatjson[node].is_expanded()
+                    && self.contains_node(node)
                 {
                     let child = if next {
                         self.flatjson[node].first_child()
@@ -738,7 +938,11 @@ impl JsonViewer {
                         OptionIndex::Nil
                     };
                     if let OptionIndex::Index(child) = child {
-                        node = child;
+                        if self.contains_node(child) {
+                            node = child;
+                        } else {
+                            break;
+                        }
                     } else {
                         break;
                     }
@@ -791,13 +995,26 @@ impl JsonViewer {
     }
 
     fn collapse_siblings(&mut self, collapsed: bool, deep: bool) {
-        let bulk_document_rows =
-            self.is_sequence() && self.flatjson[self.focused_node].parent.is_nil();
-        let mut node = match self.flatjson[self.focused_node].parent {
-            OptionIndex::Index(parent) => self.flatjson[parent].first_child(),
-            OptionIndex::Nil => OptionIndex::Index(0),
+        let bulk_document_rows = self
+            .active_root_for(self.focused_node)
+            .is_some_and(|root| root == normalize_node(&self.flatjson, self.focused_node))
+            && self.is_sequence();
+        let siblings: Vec<_> = if bulk_document_rows {
+            self.active_roots.clone()
+        } else if let OptionIndex::Index(parent) = self.effective_parent(self.focused_node) {
+            let mut siblings = Vec::new();
+            let mut node = self.flatjson[parent].first_child();
+            while let OptionIndex::Index(current) = node {
+                if self.contains_node(current) {
+                    siblings.push(current);
+                }
+                node = self.flatjson[current].next_sibling;
+            }
+            siblings
+        } else {
+            vec![self.focused_node]
         };
-        while let OptionIndex::Index(current) = node {
+        for current in siblings {
             if bulk_document_rows && self.is_document_root(current) {
                 if collapsed {
                     self.document_collapsed.insert(current);
@@ -812,9 +1029,6 @@ impl JsonViewer {
                 && self.flatjson[current].is_array()
                 && self.layout.nodes[current].entry_count > 0
             {
-                // A deep document operation owns both the generated row and
-                // the root's parsed body state. Shallow operations leave an
-                // independently collapsed root-array body untouched.
                 if collapsed {
                     self.flatjson.collapse(current);
                 } else {
@@ -824,11 +1038,12 @@ impl JsonViewer {
             if deep {
                 if let OptionIndex::Index(end) = self.flatjson[current].pair_index() {
                     for descendant in current + 1..end {
-                        self.collapse(descendant, collapsed);
+                        if self.contains_node(descendant) {
+                            self.collapse(descendant, collapsed);
+                        }
                     }
                 }
             }
-            node = self.flatjson[current].next_sibling;
         }
         self.refresh_projection();
     }
@@ -1057,22 +1272,41 @@ impl JsonViewer {
             Action::FocusNextSibling(n) => self.sibling(n, true),
             Action::FocusFirstSibling | Action::FocusLastSibling => {
                 let last = matches!(action, Action::FocusLastSibling);
-                let mut node = match self.flatjson[self.focused_node].parent {
-                    OptionIndex::Index(parent) => self.flatjson[parent].first_child().unwrap(),
-                    OptionIndex::Nil => 0,
-                };
-                if last {
-                    if let OptionIndex::Index(parent) = self.flatjson[node].parent {
-                        node = self.flatjson[self.flatjson[parent].pair_index().unwrap()]
-                            .last_child()
-                            .unwrap();
-                    } else {
-                        while let OptionIndex::Index(next) = self.flatjson[node].next_sibling {
-                            node = next;
+                let node = if let Some(root) = self.active_root_for(self.focused_node) {
+                    if normalize_node(&self.flatjson, self.focused_node) == root {
+                        if last {
+                            self.active_roots.last().copied()
+                        } else {
+                            self.active_roots.first().copied()
                         }
+                    } else if let OptionIndex::Index(parent) =
+                        self.effective_parent(self.focused_node)
+                    {
+                        if last {
+                            match self.flatjson[parent].pair_index() {
+                                OptionIndex::Index(pair) => {
+                                    match self.flatjson[pair].last_child() {
+                                        OptionIndex::Index(node) => Some(node),
+                                        OptionIndex::Nil => None,
+                                    }
+                                }
+                                OptionIndex::Nil => None,
+                            }
+                        } else {
+                            match self.flatjson[parent].first_child() {
+                                OptionIndex::Index(node) => Some(node),
+                                OptionIndex::Nil => None,
+                            }
+                        }
+                    } else {
+                        None
                     }
+                } else {
+                    None
+                };
+                if let Some(node) = node.filter(|node| self.contains_node(*node)) {
+                    self.focus(node);
                 }
-                self.focus(node);
             }
             Action::FocusTop => {
                 let root = self.document_roots().first().copied().unwrap_or(0);
@@ -2663,5 +2897,63 @@ mod tests {
         v.perform_action(Action::JumpUp(Some(1)));
         assert_eq!(v.top_physical_row, upper_boundary_top);
         assert_eq!(v.focused_node, upper_boundary_node);
+    }
+    #[test]
+    fn selected_root_resets_projection_and_blocks_ancestor_navigation() {
+        let mut v = viewer(r#"{"outer":{"kept":1},"tail":{"excluded":2}}"#);
+        let outer = v.flatjson[0].first_child().unwrap();
+        v.set_roots(vec![outer]);
+        assert_eq!(v.active_roots(), &[outer]);
+        assert!(!v.contains_node(0));
+        assert!(v.contains_node(outer));
+        assert_eq!(
+            v.visible
+                .iter()
+                .map(|line| line.line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["kept: 1"]
+        );
+        v.perform_action(Action::MoveRight);
+        let kept = v.focused_node;
+        v.perform_action(Action::FocusParent);
+        assert_eq!(v.focused_node, outer);
+        v.perform_action(Action::FocusParentOrPreviousSibling);
+        assert_eq!(v.focused_node, outer);
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(v.focused_node, outer);
+        v.perform_action(Action::FocusNode {
+            node: 0,
+            source: None,
+        });
+        assert_eq!(v.focused_node, outer);
+        assert!(v.contains_node(kept));
+        v.set_roots(vec![0]);
+        assert_eq!(v.active_roots(), &[0]);
+        assert!(v.contains_node(0));
+        assert!(v.visible.iter().any(|line| line.line.text.contains("tail")));
+    }
+
+    #[test]
+    fn selected_sequence_roots_keep_sibling_motion_without_original_ancestors() {
+        let mut v = viewer(r#"{"hits":{"a":1},"outside":0} {"hits":{"b":2},"outside":9}"#);
+        let roots = crate::path_filter::PathFilter::parse(".hits")
+            .unwrap()
+            .resolve(&v.flatjson)
+            .unwrap();
+        let (first, second) = (roots[0], roots[1]);
+        v.set_roots(roots);
+        assert_eq!(v.active_roots(), &[first, second]);
+        assert_eq!(v.visible[0].line.text, "--- (1 of 2)");
+        v.perform_action(Action::MoveRight);
+        assert_eq!(v.focused_node, v.flatjson[first].first_child().unwrap());
+        v.perform_action(Action::FocusNextAtParentLevel);
+        assert_eq!(v.focused_node, second);
+        v.perform_action(Action::FocusPrevSibling(1));
+        assert_eq!(v.focused_node, first);
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(v.focused_node, second);
+        v.perform_action(Action::FocusNextSibling(1));
+        assert_eq!(v.focused_node, second);
+        assert!(!v.contains_node(0));
     }
 }

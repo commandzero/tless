@@ -33,6 +33,109 @@ mod terminal_commands {
     }
 
     #[test]
+    fn path_filter_confines_navigation_search_and_keeps_original_paths() {
+        let input = r#"{"hits":{"name":"Ada"},"outside":"secret"}"#;
+        let output = session(input, ":.hits\n999k[[^^]]999jG/outside\nq");
+        let rows = rendered_rows(&output, 120, 24);
+        let data = rows[..22].join("\n");
+        assert!(data.contains("name: Ada"), "{rows:?}");
+        assert!(
+            !data.contains("outside") && !data.contains("secret"),
+            "{rows:?}"
+        );
+        let output = session(input, ":.hits\nlpP q");
+        assert!(
+            strip_styles(&output).contains(".hits.name\r\n"),
+            "{output:?}"
+        );
+    }
+
+    #[test]
+    fn path_filter_exports_scope_preserves_failures_and_resets() {
+        let target =
+            std::env::temp_dir().join(format!("tless-path-scope-{}.json", std::process::id()));
+        let input = r#"{"hits":{"name":"Ada","age":37},"outside":true}"#;
+        let commands = format!(":.hits\nl:.missing\n:w! {}\nq", target.display());
+        session(input, &commands);
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+        assert_eq!(value, serde_json::json!({"name":"Ada","age":37}));
+        session(input, &format!(":.hits\n:.\n:w! {}\nq", target.display()));
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+        assert_eq!(
+            value,
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+        std::fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn path_filter_accepts_yp_brackets_and_preserves_pointer_whitespace() {
+        let target =
+            std::env::temp_dir().join(format!("tless-path-keys-{}.json", std::process::id()));
+        let input = r#"{"a.b":[{"name":"Ada"}]," ":7}"#;
+        session(
+            input,
+            &format!(":[\"a.b\"][0].name\n:w! {}\nq", target.display()),
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "\"Ada\"\n");
+        session(input, &format!(":./ \n:w! {}\nq", target.display()));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "7\n");
+        std::fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn path_filter_sequence_export_failure_does_not_truncate() {
+        let target =
+            std::env::temp_dir().join(format!("tless-path-atomic-{}.toon", std::process::id()));
+        std::fs::write(&target, "preserve me").unwrap();
+        session(
+            r#"{"a":1} {"a":2}"#,
+            &format!(":.a\n:wt! {}\nq", target.display()),
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "preserve me");
+        std::fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn path_filter_startup_uses_root_presentation() {
+        let output = session_with_width(
+            r#"{"hits":{"name":"Ada"},"outside":true}"#,
+            "q",
+            Some("--path=.hits"),
+            120,
+        );
+        let rows = rendered_rows(&output, 120, 24);
+        let data = rows[..22].join("\n");
+        assert!(data.contains("name: Ada"), "{rows:?}");
+        assert!(
+            !data.contains("outside") && !data.contains("hits:"),
+            "{rows:?}"
+        );
+    }
+
+    #[cfg(feature = "sexp")]
+    #[test]
+    fn path_filter_sexp_exports_nested_values_without_owning_key() {
+        let target =
+            std::env::temp_dir().join(format!("tless-path-sexp-{}.sexp", std::process::id()));
+        session(
+            r#"{"skip":0,"hits":{"a":1,"b":[true,"x y"]}}"#,
+            &format!(":.hits\n:ws! {}\nq", target.display()),
+        );
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "((a 1) (b (true \"x y\")))\n"
+        );
+        session(
+            r#"{"hits":1} {"hits":2} {"hits":[]}"#,
+            &format!(":.hits\n:ws! {}\nq", target.display()),
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "1\n2\n()\n");
+        std::fs::remove_file(target).unwrap();
+    }
+    #[test]
     fn command_marker_is_visible_only_while_command_input_is_active() {
         let output = session("[]", ":set nonumber\n:\x03q");
         let prompt_start = "\x1b[?2004h";

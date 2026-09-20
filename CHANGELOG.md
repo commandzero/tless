@@ -8,6 +8,7 @@ Earlier upstream history is preserved below.
 ### Added
 
 - Suggest long-form command names at the `:` prompt, with inline hints and Tab/Shift-Tab cycling. [#9](https://github.com/commandzero/tless/issues/9).
+- Add `--path` and interactive path filters with concrete `yp` round trips, strict JSON pointers, scoped navigation/search/exports, and atomic multi-document resolution. [#10](https://github.com/commandzero/tless/issues/10).
 
 ## [0.1.2] - 2026-09-13
 

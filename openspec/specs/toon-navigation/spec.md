@@ -26,6 +26,8 @@ The viewer SHALL distinguish container focus from child-value focus even when th
 
 Up/down and counted vertical motions SHALL move over visible logical display lines, including sequence document rows and excluding soft-wrap continuations. A wrapped line SHALL count as one entry for counted motions. Table-cell vertical motion SHALL retain the selected field where the destination is a cell-bearing table row. On other lines it SHALL focus that line's owning node. Child, parent, and sibling motions SHALL traverse logical structure, including values sharing a line. `J` SHALL stop at the final sibling without moving to the parent or wrapping, including when a numeric count exceeds the remaining siblings. Moving into an inline array from its data line with `l` or Right Arrow SHALL first switch it to multiline presentation and keep the array selected. Moving into another expanded container SHALL focus its first child; moving into a collapsed container SHALL first expand it. From a collapsed sequence document row, `l` or Right Arrow SHALL first expand the document and keep its row selected. From an expanded document row it SHALL focus the first logical child, if any, without an intermediate root selection. Closing-delimiter matching SHALL have no action or help entry.
 
+When a path filter is active, structural and vertical navigation SHALL operate on selected roots and their descendants only. Each selected root SHALL act as parentless for navigation without changing its parsed parent identity. Sibling motions between selected sequence roots SHALL remain available. No motion, count, fallback, mouse action, or reveal operation SHALL select excluded ancestors or siblings. Existing boundary fallbacks SHALL be evaluated within this scope.
+
 #### Scenario: Parent and next entry at the parent level
 
 - **WHEN** a node is selected and the user presses `[` or `]`
@@ -76,9 +78,16 @@ Up/down and counted vertical motions SHALL move over visible logical display lin
 - **THEN** each visible document row SHALL be a selectable step and count toward relative navigation distance
 - **AND** a collapsed document SHALL contribute only its document row
 
+#### Scenario: Filtered root boundary
+
+- **WHEN** a selected subtree root is focused and parent or sibling navigation would reach excluded data
+- **THEN** focus SHALL remain within the selected-root sequence and SHALL NOT reveal excluded data
+
 ### Requirement: Search maps data to rendered spans
 
 Search SHALL retain the existing key/value matching behavior over parsed content and map each match to its logical node and displayed span. It SHALL NOT search generated warnings, previews, gutters, or counts as extra data. Selecting a hidden match SHALL expand the necessary ancestors and reveal the matching element or cell. Matches in table field keys SHALL select the corresponding logical field occurrence and highlight the shared header spelling.
+
+With a path filter active, search and repeat-search SHALL enumerate matches only within selected values, including descendants hidden by collapse. The selected root's omitted owning key SHALL NOT be searched. Excluded nodes SHALL NOT contribute matches or match counts. Revealing a match SHALL expand ancestors only as far as its selected root.
 
 #### Scenario: Hidden table match
 
@@ -91,6 +100,11 @@ Search SHALL retain the existing key/value matching behavior over parsed content
 - **WHEN** search selects a row's `name` key whose spelling is displayed only in the table header
 - **THEN** the selected row field SHALL remain the match owner
 - **AND** the header spelling SHALL be highlighted and brought into view
+
+#### Scenario: Search cannot escape the filter
+
+- **WHEN** a search term exists only outside the selected subtrees
+- **THEN** search SHALL report no match and SHALL leave the active filter unchanged
 
 ### Requirement: Viewport and selection stability
 
@@ -112,11 +126,18 @@ Wrap toggles, resize, gutter or indentation changes, collapse, expansion, and vi
 
 Absolute line jumps SHALL address the fully expanded TOON layout used by absolute gutters. A target hidden by collapse SHALL select the visible collapsed ancestor unless the command explicitly requests revealing the target. A jump to a sequence document row SHALL select that row and preserve its collapse state. All values sharing a TOON line SHALL share its jump address; a line jump SHALL initially focus the line's owning node.
 
+With a path filter active, absolute gutters and jumps SHALL address the fully expanded filtered layout starting at line 1, including its sequence headers. Relative numbering SHALL count only filtered visible logical lines. Reflow, mouse selection, and scroll bounds SHALL use this same scoped layout.
+
 #### Scenario: Jump into collapsed content
 
 - **WHEN** an absolute jump targets a line inside a collapsed object
 - **THEN** the normal jump SHALL focus the collapsed object
 - **AND** a reveal-target jump SHALL expand ancestors and focus the target line's owning node
+
+#### Scenario: Filtered line addresses
+
+- **WHEN** a subtree with original-document lines preceding it becomes the selected root
+- **THEN** its filtered layout SHALL start at line 1 and line jumps SHALL NOT address excluded original-document lines
 
 ### Requirement: Physical viewport scrolling for wrapped lines
 

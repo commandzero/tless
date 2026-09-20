@@ -1,9 +1,9 @@
 ---
 type: Guide
 title: TOON document view
-description: Document rows, layout, optional wrapping, logical selection, collapse, and display extensions.
+description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-5.6-luna, at: 2026-09-13T16:32:02Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-20T00:24:26Z }
 ---
 
 # TOON document view
@@ -74,6 +74,68 @@ numbers magenta (5), booleans blue (4, brightening to 12 when selected), and nul
 Previews and collapsed object counts use plain dark gray (8), without the
 terminal dim attribute, matching line numbers. Warnings use yellow (3). The status bar uses a
 dark gray (8) background with black (0) text and a light gray (7) filename.
+
+## Path filtering
+
+`--path <path>` selects the roots used by both the terminal viewer and redirected
+output. At the `:` command prompt, submit a dot-led or concrete bracket-led path.
+The same parser and resolver serve both entry points:
+
+| Syntax | Example | Meaning |
+| --- | --- | --- |
+| Friendly dot | `.hits.0.name` | Literal string keys, with decimal indices when traversing arrays |
+| Concrete `yp` selectors | `.hits[0].name` | An array index followed by a string key |
+| Leading brackets | `["a.b"][0].name`, `[0].name` | A special root key or root-array element |
+| Strict JSON pointer | `./hits/0/name` | RFC 6901 tokens after the initial dot |
+
+The CLI also accepts bare `/hits/0/name`. Interactive `/` and `?` remain search
+prompts. Path input has no command-name completion; normal-mode brackets retain
+their navigation meaning.
+
+Friendly segments do not decode pointer escapes. Bracketed string selectors
+decode JSON strings and require object string keys; numeric brackets require
+arrays. For example, `["0"]` addresses a string key, not element zero. Use
+`["a.b"]`, `["a/b"]`, `[""]`, or JSON escapes for keys that cannot be expressed as
+simple dot segments. Empty brackets, wildcards, slices, and expressions are not
+supported. Array indices must be canonical nonnegative decimal integers:
+leading zeros, signs, and overflow are rejected.
+
+Strict pointers decode `~1` as `/` and `~0` as `~`, once and in RFC order:
+`./a~1b` addresses key `a/b`, `./a~0b` addresses `a~b`, and `./~01` addresses
+`~1`. Other tilde escapes are errors. URI fragments and percent decoding are not
+supported. Pointer whitespace is literal, including trailing spaces.
+
+`.` restores every original root. CLI `--path ''` is equivalent; `./` is not:
+it selects an empty key. Every filter is absolute against the original parsed
+documents, even after filtering. Each document must resolve exactly one value.
+Missing members, out-of-range indices, scalar traversal, typed-selector
+mismatches, and duplicate decoded-key ambiguity reject the entire change.
+Non-string YAML keys are never coerced into string matches. An empty input can
+retain its empty root set but cannot resolve a nonempty path.
+
+Selected subtrees render as roots, without their owning keys or excluded
+ancestor/sibling warnings. Navigation, line addresses, mouse targets, wrapping,
+search counts, and repeat-search stay inside them. Hidden descendants remain
+searchable, but omitted root keys do not. Status, copy, and printed paths keep
+their original ancestry. Multiple selected roots retain encounter order and
+document-row navigation.
+
+Successful changes focus the first selected value, reset scroll and search, and
+expose the selected roots while preserving descendant collapse and explicit
+multiline-array choices. Invalid or cancelled changes leave the current view
+and search state intact.
+
+`yp` (or printed `pP`) emits a concrete path that can be pasted unchanged into
+`--path` or `:`. Root copy is `.`. Resolution still rejects ambiguity or a path
+missing from another document. `yq`/`pq` remain jq queries, including `[]`
+traversal; `yb`/`pb` retain their external-language representation. Neither has
+the `yp` round-trip guarantee.
+
+Filtering is not streaming, a security boundary, or partial parsing: the full
+input remains in memory, and byte limits and parse/depth checks apply to excluded data.
+CLI syntax
+errors exit 2; input or resolution failures exit 1 before terminal setup or
+machine output. Serialization restrictions apply to selected values.
 
 ## Selection and navigation
 
@@ -198,9 +260,14 @@ containing `# WARN` are quoted data and do not increase warning counts.
 Extended display text is not standard TOON 3.0. Its warnings, collapse arrows,
 counts, and previews are presentation annotations, not a new file format.
 Copy and print commands operate on the selected parsed value. Selecting a
-document row targets its parsed root. Whole-document write commands operate on
-the parsed document, and standard TOON multi-root restrictions remain
-unchanged. None serializes the screen.
+document row targets its parsed root. Whole-document write commands (`:w`,
+`:wt`, and feature-enabled `:ws`, including long aliases and overwrite forms)
+serialize all active roots as standalone values, not the screen or just the
+focused value. Reset with `:.` to export the full original input. JSON preserves
+selected token spellings, duplicate keys, and order; YAML retains document
+framing. Standard TOON still requires exactly one root and applies its normal
+conversion restrictions. Encoding finishes before opening an output file, so
+failed conversion cannot truncate an existing file.
 
 Interactive JSON commands stay JSON. Redirected stdout defaults to standard TOON;
 use `-o json` or `-o yaml` to select a different machine-output format. Standard TOON export through `yt`, `pt`, and
