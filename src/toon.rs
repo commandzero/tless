@@ -37,7 +37,8 @@ pub fn encode_value(
     let range = document.subtree_range(index);
     let (index, end) = (*range.start(), *range.end());
     let base_depth = document[index].depth;
-    for row in &document.0[index..=end] {
+    for node in index..=end {
+        let row = &document[node];
         if (row.is_opening_of_container()
             || matches!(row.value, Value::EmptyArray | Value::EmptyObject))
             && row.depth.saturating_sub(base_depth) + 1 > 256
@@ -81,7 +82,7 @@ fn export_value(
                     &format!("{}[{}]", path, child_row.index_in_parent),
                 )?);
             } else {
-                let key: String = match child_row.key_value.as_ref() {
+                let key: String = match document.key_value(index) {
                     Some(KeyValue::String(key)) => key.clone(),
                     _ => {
                         let key_text = &document.1[child_row.key_range.clone().unwrap()];
@@ -119,8 +120,8 @@ fn export_value(
                 ToonDiagnostic::new(ToonErrorKind::UnsupportedNumber, format!("{path}: {e}"))
             })
     } else if matches!(row.value, Value::String) {
-        if let Some(value) = row.string_value.as_ref() {
-            Ok(serde_json::Value::String(value.clone()))
+        if let Some(value) = document.string_value(index) {
+            Ok(serde_json::Value::String(value.to_owned()))
         } else {
             serde_json::from_str(&document.1[row.range.clone()]).map_err(|e| {
                 ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{}: {}", path, e))

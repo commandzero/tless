@@ -7,7 +7,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- Open large documents faster and use less memory by formatting only visible rows and requested navigation targets.
+- Open large documents faster with lower memory use, including documents with millions of nodes.
 
 ## [0.1.3] - 2026-09-19
 

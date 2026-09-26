@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T08:00:26Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T19:23:46Z }
 ---
 
 # TOON document view
@@ -217,6 +217,14 @@ duplicate occurrences, warnings, and exact logical line addresses. Off-screen
 data therefore affects the first frame when required: a final nonuniform
 record prevents table form, and hidden warnings still contribute to totals.
 Array-width and gutter decisions do not require formatting every row.
+
+Parsed nodes keep exceptional typed keys and decoded strings in document-owned
+side tables rather than reserving space in every JSON node. Semantic and
+position metadata cover value nodes, not closing delimiters. Parsed and logical
+rows grow in bounded chunks without copying the existing document. Visibility
+is an identity mapping when expanded, with intervals for collapsed sections,
+not another entry for every displayed row. These are storage choices only:
+original node identities, source ranges, and logical line numbers are preserved.
 
 Text, token spans, source mappings, and collapsed previews belong to the
 current frame or an explicitly requested navigation target. Visiting distant

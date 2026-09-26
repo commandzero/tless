@@ -246,7 +246,7 @@ impl ScreenWriter {
         lp::LineViewport::new(
             viewer.rendered_line(logical),
             self.horizontal_offsets
-                .get(&viewer.visible[logical].absolute)
+                .get(&viewer.visible_line(logical).unwrap().absolute)
                 .copied()
                 .unwrap_or(0),
             usize::from(self.indentation_reduction) * 2,
@@ -269,7 +269,7 @@ impl ScreenWriter {
                 lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
             if source.is_none() && viewer.is_document_body(index) {
                 return Action::JumpTo {
-                    line: viewer.visible[index].absolute,
+                    line: viewer.visible_line(index).unwrap().absolute,
                     make_visible: false,
                 };
             }
@@ -283,7 +283,7 @@ impl ScreenWriter {
             Action::ClickArrow(row)
         } else if viewer.is_document_header(index) {
             Action::JumpTo {
-                line: viewer.visible[index].absolute,
+                line: viewer.visible_line(index).unwrap().absolute,
                 make_visible: false,
             }
         } else {
@@ -302,7 +302,7 @@ impl ScreenWriter {
             let (node, source) = lp::hit_test(&fitted, column);
             if source.is_none() && viewer.is_document_body(index) {
                 Action::JumpTo {
-                    line: viewer.visible[index].absolute,
+                    line: viewer.visible_line(index).unwrap().absolute,
                     make_visible: false,
                 }
             } else {
@@ -339,10 +339,10 @@ impl ScreenWriter {
                 continue;
             };
             let index = physical.logical_line;
-            let visible = &viewer.visible[index];
+            let visible = &viewer.visible_line(index).unwrap();
             let line = viewer.rendered_line(index);
             if number_width > 0 {
-                let relative = viewer.visible[index.min(focused)..index.max(focused)].len();
+                let relative = index.abs_diff(focused);
                 let number = if self.show_relative_line_numbers
                     && (index != focused || !self.show_line_numbers)
                 {

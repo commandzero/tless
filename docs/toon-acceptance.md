@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T08:00:26Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T19:23:46Z }
 ---
 
 # TOON acceptance checks
@@ -117,6 +117,10 @@ Ordinary tests cover late table disqualifiers, hidden warning totals, distant
 escaped table-key and filtered inline-element matches, and bounded presentation
 across substantially different tails and repeated distant navigation. They
 assert row-materialization and retained span/map bounds, not wall-clock limits.
+Large YAML cases also exercise distant typed-key/decoded-string lookup, selected
+JSON export, and filtering across storage chunks. Collapse/reopen coverage
+includes repeated operations through paired delimiters and exact logical
+addresses before and after restoring an expanded projection.
 
 The native release comparison is opt-in. Build jless 0.9.0 and tless at
 `9bb9568` from identifiable source revisions in separate output directories.

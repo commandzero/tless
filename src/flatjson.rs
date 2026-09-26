@@ -1,4 +1,6 @@
+use crate::chunked_vec::ChunkedVec;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::ops::Range;
 
@@ -58,15 +60,36 @@ pub enum PathType {
 
 #[derive(Debug)]
 pub struct FlatJson(
-    pub Vec<Row>,
+    pub ChunkedVec<Row>,
     // Single-line pretty printed version of the JSON.
     // Rows will contain references into this.
     pub String,
     // Max nesting depth.
     pub usize,
+    pub DocumentMetadata,
 );
 
+/// Parsed values that cannot be recovered from the JSON spelling. Ordinary JSON
+/// nodes pay no per-node cost for YAML's typed keys and decoded strings.
+#[derive(Debug, Default)]
+pub struct DocumentMetadata {
+    pub keys: HashMap<Index, KeyValue>,
+    pub strings: HashMap<Index, String>,
+    collapsed: usize,
+}
+
 impl FlatJson {
+    pub fn key_value(&self, index: Index) -> Option<&KeyValue> {
+        self.3.keys.get(&index)
+    }
+
+    pub fn string_value(&self, index: Index) -> Option<&str> {
+        self.3.strings.get(&index).map(String::as_str)
+    }
+
+    pub fn has_collapsed(&self) -> bool {
+        self.3.collapsed != 0
+    }
     #[cfg(test)]
     pub fn prev_visible_row(&self, index: Index) -> OptionIndex {
         if index == 0 {
@@ -124,6 +147,9 @@ impl FlatJson {
     }
 
     pub fn expand(&mut self, index: Index) {
+        if self[index].is_collapsed() {
+            self.3.collapsed -= 1;
+        }
         if let OptionIndex::Index(pair) = self.0[index].pair_index() {
             self.0[pair].expand();
         }
@@ -131,6 +157,9 @@ impl FlatJson {
     }
 
     pub fn collapse(&mut self, index: Index) {
+        if self[index].is_container() && !self[index].is_collapsed() {
+            self.3.collapsed += 1;
+        }
         if let OptionIndex::Index(pair) = self.0[index].pair_index() {
             self.0[pair].collapse();
         }
@@ -246,7 +275,7 @@ impl FlatJson {
     }
     pub fn decoded_string_key(&self, index: Index) -> Result<Option<Cow<'_, str>>, String> {
         let row = &self[index];
-        match &row.key_value {
+        match self.key_value(index) {
             Some(KeyValue::String(text)) => Ok(Some(Cow::Borrowed(text))),
             Some(_) => Ok(None),
             None => {
@@ -378,7 +407,7 @@ impl FlatJson {
                 if index != root {
                     if let Some(key_range) = &row.key_range {
                         buf.push('(');
-                        let decoded = match &row.key_value {
+                        let decoded = match self.key_value(index) {
                             Some(KeyValue::String(value)) => Some(value.as_str()),
                             _ => None,
                         };
@@ -390,11 +419,9 @@ impl FlatJson {
                 match &row.value {
                     Value::Null | Value::EmptyObject | Value::EmptyArray => buf.push_str("()"),
                     Value::Boolean | Value::Number => buf.push_str(&self.1[row.range.clone()]),
-                    Value::String => self.write_sexp_atom(
-                        &mut buf,
-                        row.range.clone(),
-                        row.string_value.as_deref(),
-                    )?,
+                    Value::String => {
+                        self.write_sexp_atom(&mut buf, row.range.clone(), self.string_value(index))?
+                    }
                     Value::OpenContainer { .. } => buf.push('('),
                     Value::CloseContainer { .. } => buf.push(')'),
                 }
@@ -508,8 +535,6 @@ pub struct Row {
     pub index_in_parent: usize,
     pub range: Range<usize>,
     pub key_range: Option<Range<usize>>,
-    pub key_value: Option<KeyValue>,
-    pub string_value: Option<String>,
     pub value: Value,
 }
 
@@ -720,12 +745,12 @@ impl Value {
 
 pub fn parse_top_level_json(json: String) -> Result<FlatJson, String> {
     let (rows, pretty, depth) = jsonparser::parse(json)?;
-    Ok(FlatJson(rows, pretty, depth))
+    Ok(FlatJson(rows, pretty, depth, DocumentMetadata::default()))
 }
 
 pub fn parse_top_level_yaml(yaml: String) -> Result<FlatJson, String> {
-    let (rows, pretty, depth) = yamlparser::parse(yaml)?;
-    Ok(FlatJson(rows, pretty, depth))
+    let (rows, pretty, depth, values) = yamlparser::parse(yaml)?;
+    Ok(FlatJson(rows, pretty, depth, values))
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 use super::geometry::{Geometry, Kind, Row};
 use super::index::Analysis;
 use super::{DisplayLine, FlatJson, OptionIndex, normalize_node};
+use crate::chunked_vec::ChunkedVec;
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -33,6 +34,80 @@ pub struct VisibleLine {
     pub owner: usize,
     pub separator: bool,
     pub collapsed: bool,
+}
+
+struct Collapsed {
+    absolute: usize,
+    visible: usize,
+    end: usize,
+    owner: usize,
+}
+
+/// Identity mapping when expanded; only collapsed intervals need storage.
+pub struct Projection {
+    total: usize,
+    len: usize,
+    collapsed: Vec<Collapsed>,
+}
+
+impl Projection {
+    fn new(total: usize) -> Self {
+        Self {
+            total,
+            len: total,
+            collapsed: Vec::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    fn collapse(&mut self, absolute: usize, end: usize, owner: usize) {
+        self.collapsed.push(Collapsed {
+            absolute,
+            end,
+            owner,
+            visible: absolute - (self.total - self.len),
+        });
+        self.len -= end - absolute - 1;
+    }
+
+    fn absolute(&self, visible: usize) -> Option<(usize, Option<usize>)> {
+        if visible >= self.len {
+            return None;
+        }
+        let preceding = self
+            .collapsed
+            .partition_point(|range| range.visible <= visible);
+        let Some(range) = preceding.checked_sub(1).map(|i| &self.collapsed[i]) else {
+            return Some((visible, None));
+        };
+        if range.visible == visible {
+            Some((range.absolute, Some(range.owner)))
+        } else {
+            Some((visible + range.end - range.visible - 1, None))
+        }
+    }
+
+    pub fn visible_index(&self, absolute: usize) -> Option<usize> {
+        if absolute >= self.total {
+            return None;
+        }
+        let preceding = self
+            .collapsed
+            .partition_point(|range| range.absolute <= absolute);
+        let Some(range) = preceding.checked_sub(1).map(|i| &self.collapsed[i]) else {
+            return Some(absolute);
+        };
+        if absolute == range.absolute {
+            Some(range.visible)
+        } else if absolute < range.end {
+            None
+        } else {
+            Some(absolute - (range.end - range.visible - 1))
+        }
+    }
 }
 
 impl Layout {
@@ -100,7 +175,7 @@ impl Layout {
             .source_line(flat, &self.analysis, normalize_node(flat, node), source)
     }
 
-    pub fn rows(&self) -> &[Row] {
+    pub fn rows(&self) -> &ChunkedVec<Row> {
         &self.geometry.rows
     }
 
@@ -108,8 +183,11 @@ impl Layout {
         &self,
         flat: &FlatJson,
         documents: &HashSet<usize>,
-    ) -> Vec<VisibleLine> {
-        let mut visible = Vec::with_capacity(self.geometry.rows.len());
+    ) -> Projection {
+        let mut visible = Projection::new(self.geometry.rows.len());
+        if !flat.has_collapsed() && documents.is_empty() {
+            return visible;
+        }
         let mut absolute = 0;
         while let Some(&row) = self.geometry.rows.get(absolute) {
             let mut collapsed = None;
@@ -135,17 +213,29 @@ impl Layout {
                     node = parent;
                 }
             }
-            visible.push(VisibleLine {
-                absolute,
-                owner: collapsed.unwrap_or(row.owner),
-                separator: row.separator(),
-                collapsed: collapsed.is_some(),
-            });
+            if let Some(node) = collapsed {
+                visible.collapse(
+                    absolute,
+                    self.geometry.positions[node].end.max(absolute + 1),
+                    node,
+                );
+            }
             absolute = collapsed.map_or(absolute + 1, |node| {
                 self.geometry.positions[node].end.max(absolute + 1)
             });
         }
         visible
+    }
+
+    pub fn visible_line(&self, projection: &Projection, index: usize) -> Option<VisibleLine> {
+        let (absolute, collapsed) = projection.absolute(index)?;
+        let row = self.geometry.rows[absolute];
+        Some(VisibleLine {
+            absolute,
+            owner: collapsed.unwrap_or(row.owner),
+            separator: row.separator(),
+            collapsed: collapsed.is_some(),
+        })
     }
 
     pub fn render(&self, flat: &FlatJson, visible: VisibleLine, focused: usize) -> DisplayLine {

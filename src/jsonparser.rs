@@ -1,23 +1,24 @@
 use logos::{Lexer, Logos};
 
+use crate::chunked_vec::ChunkedVec;
 use crate::flatjson::{ContainerType, Index, OptionIndex, Row, Value};
 use crate::jsontokenizer::JsonToken;
 
 struct JsonParser<'a> {
     tokenizer: Lexer<'a, JsonToken>,
     parents: Vec<Index>,
-    rows: Vec<Row>,
+    rows: ChunkedVec<Row>,
     pretty_printed: String,
     max_depth: usize,
 
     peeked_token: Option<Option<JsonToken>>,
 }
 
-pub fn parse(json: String) -> Result<(Vec<Row>, String, usize), String> {
+pub fn parse(json: String) -> Result<(ChunkedVec<Row>, String, usize), String> {
     let mut parser = JsonParser {
         tokenizer: JsonToken::lexer(&json),
         parents: vec![],
-        rows: vec![],
+        rows: ChunkedVec::new(),
         pretty_printed: String::new(),
         max_depth: 0,
         peeked_token: None,
@@ -427,8 +428,6 @@ impl<'a> JsonParser<'a> {
             next_sibling: OptionIndex::Nil,
             index_in_parent: 0,
             key_range: None,
-            key_value: None,
-            string_value: None,
         });
 
         index

@@ -1,6 +1,8 @@
 //! Width-dependent logical addresses, separate from semantic analysis and text.
 use super::index::{Analysis, children, key, numeric, string};
+use super::node_data::NodeData;
 use super::{quote_key, quote_value, scalar};
+use crate::chunked_vec::ChunkedVec;
 use crate::flatjson::{FlatJson, Value};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -32,8 +34,8 @@ impl Row {
     }
 }
 pub struct Geometry {
-    pub positions: Vec<Position>,
-    pub rows: Vec<Row>,
+    pub positions: NodeData<Position>,
+    pub rows: ChunkedVec<Row>,
     pub width: usize,
     inline_limit: usize,
     widest_inline: usize,
@@ -51,7 +53,7 @@ pub fn key_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
         } else {
             Cow::Owned(quote_key(&key))
         }
-    } else if let Some(key) = &flat[node].key_value {
+    } else if let Some(key) = flat.key_value(node) {
         Cow::Owned(format!("? {}", super::compact_key(key).0))
     } else {
         Cow::Borrowed("")
@@ -90,8 +92,8 @@ impl Geometry {
     ) -> Self {
         let mut gutter = if numbers { 3 } else { 0 };
         let mut result = Self {
-            positions: vec![Position::default(); flat.0.len()],
-            rows: Vec::new(),
+            positions: analysis.nodes.filled_like(),
+            rows: ChunkedVec::new(),
             width: 0,
             inline_limit,
             widest_inline: 0,

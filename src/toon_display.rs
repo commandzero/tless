@@ -10,6 +10,7 @@ mod format;
 mod geometry;
 mod index;
 pub mod layout;
+mod node_data;
 #[cfg(test)]
 use fixture::Fixture;
 
@@ -519,12 +520,10 @@ fn preview_append(preview: &mut Preview, text: &str, source: Option<Range<usize>
 mod tests {
     use super::*;
     fn json(input: &str) -> FlatJson {
-        let (rows, text, depth) = crate::jsonparser::parse(input.into()).unwrap();
-        FlatJson(rows, text, depth)
+        crate::flatjson::parse_top_level_json(input.into()).unwrap()
     }
     fn yaml(input: &str) -> FlatJson {
-        let (rows, text, depth) = crate::yamlparser::parse(input.into()).unwrap();
-        FlatJson(rows, text, depth)
+        crate::flatjson::parse_top_level_yaml(input.into()).unwrap()
     }
     fn text(flat: &FlatJson) -> String {
         Fixture::canonical(flat)
@@ -1035,7 +1034,11 @@ mod tests {
         let rows = children(&flat, 0);
         let fields = children(&flat, rows[1]);
         let visible = layout.layout.project_with_documents(&flat, &HashSet::new());
-        let header = layout.layout.render(&flat, visible[0], fields[0]);
+        let header = layout.layout.render(
+            &flat,
+            layout.layout.visible_line(&visible, 0).unwrap(),
+            fields[0],
+        );
         let key_span = header
             .spans
             .iter()
@@ -1248,7 +1251,11 @@ mod tests {
         let selected = children(&flat, rows[1])[0];
         flat.collapse(0);
         let projected = layout.layout.project_with_documents(&flat, &HashSet::new());
-        let header = layout.layout.render(&flat, projected[0], selected);
+        let header = layout.layout.render(
+            &flat,
+            layout.layout.visible_line(&projected, 0).unwrap(),
+            selected,
+        );
         let key = header
             .spans
             .iter()

@@ -105,12 +105,14 @@ impl Fixture {
         flat: &FlatJson,
         documents: &HashSet<usize>,
     ) -> Vec<FixtureRow> {
-        self.layout
-            .project_with_documents(flat, documents)
-            .into_iter()
-            .map(|row| FixtureRow {
-                absolute: row.absolute,
-                line: self.layout.render(flat, row, row.owner),
+        let projection = self.layout.project_with_documents(flat, documents);
+        (0..projection.len())
+            .map(|index| {
+                let row = self.layout.visible_line(&projection, index).unwrap();
+                FixtureRow {
+                    absolute: row.absolute,
+                    line: self.layout.render(flat, row, row.owner),
+                }
             })
             .collect()
     }

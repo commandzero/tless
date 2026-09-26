@@ -1,4 +1,5 @@
 //! Structural TOON analysis. No rendered lines or source-map graphs are retained.
+use super::node_data::NodeData;
 use super::{WarningKind, compact_key, decode_string, number, scalar, unsupported_controls};
 use crate::flatjson::{FlatJson, KeyValue, OptionIndex, Value};
 use std::borrow::Cow;
@@ -16,7 +17,7 @@ pub struct Node {
 
 /// Exceptional metadata is sparse; ordinary nodes do not own heap collections.
 pub struct Analysis {
-    pub nodes: Vec<Node>,
+    pub nodes: NodeData<Node>,
     pub occurrences: HashMap<usize, (usize, usize)>,
     extra_warnings: HashMap<usize, Vec<WarningKind>>,
     pub roots: Vec<usize>,
@@ -47,7 +48,7 @@ pub fn decoded(raw: &str) -> Cow<'_, str> {
 }
 
 pub fn key(flat: &FlatJson, node: usize) -> Option<Cow<'_, str>> {
-    match &flat[node].key_value {
+    match flat.key_value(node) {
         Some(KeyValue::String(key)) => Some(Cow::Borrowed(key)),
         Some(_) => None,
         None => flat[node]
@@ -58,7 +59,7 @@ pub fn key(flat: &FlatJson, node: usize) -> Option<Cow<'_, str>> {
 }
 
 pub fn string(flat: &FlatJson, node: usize) -> Cow<'_, str> {
-    match &flat[node].string_value {
+    match flat.string_value(node) {
         Some(value) => Cow::Borrowed(value),
         None => decoded(&flat.1[flat[node].range.clone()]),
     }
@@ -108,7 +109,7 @@ impl Analysis {
             .collect();
         root_ranges.sort_unstable();
         let mut result = Self {
-            nodes: vec![Node::default(); flat.0.len()],
+            nodes: NodeData::new(flat),
             occurrences: HashMap::new(),
             extra_warnings: HashMap::new(),
             roots: roots.to_vec(),
@@ -161,7 +162,7 @@ impl Analysis {
                                 info.warn(WarningKind::NonStandardStringEscape);
                             }
                             keys.push((decoded, child));
-                        } else if let Some(key) = &flat[child].key_value {
+                        } else if let Some(key) = flat.key_value(child) {
                             info.warn(WarningKind::NonStringKey);
                             let (_, warnings) = compact_key(key);
                             for warning in warnings {
@@ -224,13 +225,17 @@ impl Analysis {
     }
 
     pub fn warnings(&self, node: usize) -> impl Iterator<Item = WarningKind> + '_ {
-        self.nodes[node].warnings().chain(
-            self.extra_warnings
-                .get(&node)
-                .into_iter()
-                .flatten()
-                .copied(),
-        )
+        self.nodes
+            .get(node)
+            .into_iter()
+            .flat_map(Node::warnings)
+            .chain(
+                self.extra_warnings
+                    .get(&node)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            )
     }
 
     pub fn is_root(&self, node: usize) -> bool {

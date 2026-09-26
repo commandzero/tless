@@ -257,7 +257,7 @@ fn preview(flat: &FlatJson, analysis: &Analysis, node: usize) -> Preview {
                     &quote_key(bounded_prefix(&key, 256)),
                     flat[child].key_range.clone(),
                 );
-            } else if flat[child].key_value.is_some() {
+            } else if flat.key_value(child).is_some() {
                 preview_append(
                     &mut preview,
                     &quote_key(bounded_prefix(&key_text(flat, child), 256)),
@@ -435,9 +435,9 @@ fn map_sources(flat: &FlatJson, line: &mut DisplayLine) {
                 )
             {
                 let parsed = if span.role == TokenRole::String {
-                    flat[span.node].string_value.as_deref()
+                    flat.string_value(span.node)
                 } else {
-                    match &flat[span.node].key_value {
+                    match flat.key_value(span.node) {
                         Some(crate::flatjson::KeyValue::String(value)) => Some(value.as_str()),
                         _ => None,
                     }
@@ -508,7 +508,7 @@ pub fn highlight_shared_fields(
             .0
             .partition_point(|row| row.range_represented_by_row().start < query.end);
         for node in start..end {
-            if !analysis.nodes[node].table_cell {
+            if !analysis.nodes.get(node).is_some_and(|info| info.table_cell) {
                 continue;
             }
             let row = flat[node].parent.unwrap();
@@ -548,7 +548,7 @@ pub fn highlight_shared_fields(
             {
                 mark(&(source.start + 1..source.end - 1), &column.range);
             } else {
-                let parsed = match &flat[node].key_value {
+                let parsed = match flat.key_value(node) {
                     Some(crate::flatjson::KeyValue::String(value)) => Some(value.as_str()),
                     _ => None,
                 };

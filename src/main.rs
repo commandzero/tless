@@ -19,6 +19,7 @@ use termion::raw::IntoRawMode;
 use termion::screen::IntoAlternateScreen;
 
 mod app;
+mod chunked_vec;
 mod command;
 mod commandline;
 #[cfg(feature = "colorscheme")]
