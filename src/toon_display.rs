@@ -1,8 +1,17 @@
 //! TOON document layout over parsed row identities, independent of the optional codec.
 use crate::flatjson::{FlatJson, KeyValue, OptionIndex, Value};
-use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+use std::collections::HashSet;
 use std::ops::Range;
-use unicode_width::UnicodeWidthStr;
+
+#[cfg(test)]
+pub mod fixture;
+mod format;
+mod geometry;
+mod index;
+pub mod layout;
+#[cfg(test)]
+use fixture::Fixture;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenRole {
@@ -73,31 +82,8 @@ pub struct DisplayLine {
     pub spans: Vec<Span>,
     pub owner: usize,
     pub separator: bool,
-}
-#[derive(Clone, Debug, Default)]
-pub struct NodeLayout {
-    /// Primary structural anchor. For a sequence root this is its generated
-    /// document header; descendants and single-root nodes use their data line.
-    pub line: usize,
-    /// Parsed body anchor retained when a sequence root owns a generated
-    /// header. This lets array body presentation remain independent from
-    /// document-row collapse.
-    pub body_line: usize,
-    pub extent: Range<usize>,
-    /// Body-only extent. For sequence roots, `extent` includes the document
-    /// header while this range starts at the standalone root body.
-    pub body_extent: Range<usize>,
-    pub header_end: usize,
-    pub collapsible: bool,
-    pub entry_count: usize,
-    pub inline_array: bool,
-    pub table_row: bool,
-    pub table_cell: bool,
-    pub descendant_warnings: usize,
-    /// One-based occurrence ordinal, only present for repeated decoded keys.
-    pub occurrence: Option<usize>,
-    pub occurrence_total: Option<usize>,
-    pub spans: Vec<(usize, Range<usize>)>,
+    /// Coalesced shared-header display highlights; bool marks the current match.
+    pub shared_matches: Vec<(Range<usize>, bool)>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WarningKind {
@@ -118,31 +104,6 @@ impl WarningKind {
         }
     }
 }
-#[derive(Clone, Debug)]
-pub struct Warning {
-    pub node: usize,
-    pub kind: WarningKind,
-}
-#[derive(Clone, Debug)]
-pub struct VisibleLine {
-    pub absolute: usize,
-    pub line: DisplayLine,
-}
-pub struct Layout {
-    pub lines: Vec<DisplayLine>,
-    pub nodes: Vec<NodeLayout>,
-    pub warnings: Vec<Warning>,
-    own_warnings: Vec<Vec<WarningKind>>,
-    previews: Vec<Preview>,
-    document_previews: Vec<Preview>,
-    keys: Vec<Option<String>>,
-    scalars: Vec<String>,
-    line_containers: Vec<Vec<usize>>,
-    inline_width: usize,
-    inline_limit: usize,
-    expanded_arrays: HashSet<usize>,
-    root_by_node: Vec<usize>,
-}
 
 pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
     if flat[node].is_closing_of_container() {
@@ -152,6 +113,7 @@ pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
     }
 }
 
+#[cfg(test)]
 fn children(flat: &FlatJson, node: usize) -> Vec<usize> {
     let mut result = Vec::new();
     let mut next = flat[node].first_child();
@@ -160,17 +122,6 @@ fn children(flat: &FlatJson, node: usize) -> Vec<usize> {
         next = flat[i].next_sibling;
     }
     result
-}
-
-fn string_key(flat: &FlatJson, node: usize) -> Option<String> {
-    match &flat[node].key_value {
-        Some(KeyValue::String(text)) => Some(text.clone()),
-        Some(_) => None,
-        None => flat[node]
-            .key_range
-            .as_ref()
-            .map(|range| decode_string(&flat.1[range.clone()])),
-    }
 }
 
 fn scalar(flat: &FlatJson, node: usize) -> bool {
@@ -187,6 +138,7 @@ impl DisplayLine {
             spans: vec![],
             owner,
             separator: false,
+            shared_matches: Vec::new(),
         }
     }
     fn token(&mut self, text: &str, node: usize, role: TokenRole, source: Option<Range<usize>>) {
@@ -199,879 +151,6 @@ impl DisplayLine {
             source,
             source_map: vec![],
         });
-    }
-}
-
-impl Layout {
-    /// Unconstrained canonical layout for the retained TOON grammar fixtures.
-    #[cfg(test)]
-    pub fn canonical(flat: &FlatJson) -> Self {
-        let roots = crate::path_filter::document_roots(flat);
-        Self::build(flat, usize::MAX, usize::MAX, &HashSet::new(), roots)
-    }
-
-    #[cfg(test)]
-    pub fn for_view(flat: &FlatJson, width: usize, expanded_arrays: &HashSet<usize>) -> Self {
-        let roots = crate::path_filter::document_roots(flat);
-        Self::build(flat, width, 5, expanded_arrays, roots)
-    }
-
-    pub fn for_view_with_roots(
-        flat: &FlatJson,
-        width: usize,
-        expanded_arrays: &HashSet<usize>,
-        roots: &[usize],
-    ) -> Self {
-        Self::build(flat, width, 5, expanded_arrays, roots.to_vec())
-    }
-
-    /// Growing the gutter only changes grammar if an inline array stops fitting.
-    /// Preserve the rendered lines otherwise, but use the new width for previews.
-    pub fn try_narrow_width(&mut self, width: usize) -> bool {
-        if width > self.inline_width
-            || self.nodes.iter().any(|node| {
-                node.inline_array
-                    && UnicodeWidthStr::width(self.lines[node.body_line].text.as_str()) > width
-            })
-        {
-            return false;
-        }
-        self.inline_width = width;
-        true
-    }
-
-    fn build(
-        flat: &FlatJson,
-        width: usize,
-        limit: usize,
-        expanded_arrays: &HashSet<usize>,
-        roots: Vec<usize>,
-    ) -> Self {
-        // Resolved roots are disjoint subtrees. Index membership once, including
-        // closing rows, instead of scanning roots and ancestors in every pass.
-        let n = flat.0.len();
-        let mut root_by_node = vec![crate::flatjson::NIL; n];
-        for &root in &roots {
-            root_by_node[flat.subtree_range(root)].fill(root);
-        }
-        let mut result = Self {
-            lines: vec![],
-            nodes: vec![NodeLayout::default(); n],
-            warnings: vec![],
-            own_warnings: vec![vec![]; n],
-            previews: vec![Preview::default(); n],
-            document_previews: vec![Preview::default(); n],
-            keys: vec![None; n],
-            scalars: vec![String::new(); n],
-            line_containers: vec![],
-            inline_width: width,
-            inline_limit: limit,
-            expanded_arrays: expanded_arrays.clone(),
-            root_by_node,
-        };
-        let sequence = roots.len() > 1;
-        for (i, row) in flat.0.iter().enumerate() {
-            if row.is_closing_of_container() || result.active_root_for(i).is_none() {
-                continue;
-            }
-            if let Some(range) = row.key_range.as_ref().filter(|_| !result.is_active_root(i)) {
-                let raw = &flat.1[range.clone()];
-                if let Some(key) = &row.key_value {
-                    match key {
-                        KeyValue::String(text) => {
-                            result.keys[i] = Some(text.clone());
-                            if unsupported_controls(text) {
-                                result.own_warnings[i].push(WarningKind::NonStandardStringEscape);
-                            }
-                        }
-                        key => {
-                            result.own_warnings[i].push(WarningKind::NonStringKey);
-                            let (text, warnings) = compact_key(key);
-                            result.keys[i] = Some(format!("? {text}"));
-                            result.own_warnings[i].extend(warnings);
-                        }
-                    }
-                } else {
-                    let text = decode_string(raw);
-                    if unsupported_controls(&text) {
-                        result.own_warnings[i].push(WarningKind::NonStandardStringEscape);
-                    }
-                    result.keys[i] = Some(text);
-                }
-            }
-            result.scalars[i] = match row.value {
-                Value::String => {
-                    let decoded = row
-                        .string_value
-                        .clone()
-                        .unwrap_or_else(|| decode_string(&flat.1[row.range.clone()]));
-                    if unsupported_controls(&decoded) {
-                        result.own_warnings[i].push(WarningKind::NonStandardStringEscape);
-                    }
-                    quote_value(&decoded)
-                }
-                Value::Number => {
-                    let (text, warning) = number(&flat.1[row.range.clone()]);
-                    result.own_warnings[i].extend(warning);
-                    text
-                }
-                Value::Boolean | Value::Null => flat.1[row.range.clone()].to_owned(),
-                _ => String::new(),
-            };
-            let kids = children(flat, i);
-            result.nodes[i].entry_count = kids.len();
-            result.nodes[i].collapsible = if sequence && result.is_active_root(i) {
-                // A sequence document has a presentation row even when its
-                // parsed root is scalar or empty. The row is the collapse
-                // anchor; the parsed value and parent links remain unchanged.
-                true
-            } else {
-                !kids.is_empty() && !(result.is_active_root(i) && !row.is_array())
-            };
-            if row.is_opening_of_container() && !row.is_array() {
-                let mut counts = HashMap::new();
-                // Read typed YAML keys or decode JSON keys before child caches exist.
-                for &child in &kids {
-                    if let Some(key) = string_key(flat, child) {
-                        *counts.entry(key).or_insert(0usize) += 1;
-                    }
-                }
-                let mut ordinal = HashMap::new();
-                for child in kids {
-                    if let Some(key) = string_key(flat, child) {
-                        let total = counts[&key];
-                        if total > 1 {
-                            let occurrence = ordinal.entry(key).or_insert(0);
-                            *occurrence += 1;
-                            result.nodes[child].occurrence = Some(*occurrence);
-                            result.nodes[child].occurrence_total = Some(total);
-                            result.own_warnings[child].push(WarningKind::DuplicateKey);
-                        }
-                    }
-                }
-            }
-        }
-        for i in 0..n {
-            result.own_warnings[i].sort();
-            if result.active_root_for(i).is_none() {
-                continue;
-            }
-            for &kind in &result.own_warnings[i] {
-                result.warnings.push(Warning { node: i, kind });
-            }
-        }
-        // Bottom-up aggregation counts semantic records once, including warnings in complex keys.
-        for i in (0..n).rev() {
-            if flat[i].is_closing_of_container() || result.active_root_for(i).is_none() {
-                continue;
-            }
-            let own_count = result.own_warnings[i].len();
-            if let OptionIndex::Index(parent) = flat[i].parent {
-                if result.active_root_for(parent).is_some() {
-                    result.nodes[parent].descendant_warnings +=
-                        result.nodes[i].descendant_warnings + own_count;
-                }
-            }
-        }
-        for (position, &root) in roots.iter().enumerate() {
-            let header = if sequence {
-                let header = result.lines.len();
-                let mut line = DisplayLine::new(root, String::new());
-                line.separator = true;
-                line.token("---", root, TokenRole::ContainerDelimiter, None);
-                line.token(
-                    &format!(" ({} of {})", position + 1, roots.len()),
-                    root,
-                    TokenRole::DocumentPosition,
-                    None,
-                );
-                result.lines.push(line);
-                Some(header)
-            } else {
-                None
-            };
-            result.render(flat, root, 0, false, true);
-            if let Some(header) = header {
-                // `render` owns the canonical body extent. Move only the
-                // primary anchor to the generated document row so all body
-                // lines retain their normal TOON owners and indentation.
-                let end = result.nodes[root].extent.end;
-                result.nodes[root].line = header;
-                result.nodes[root].extent = header..end;
-                result.document_previews[root] = result.document_preview(flat, root);
-            }
-        }
-        result.line_containers = vec![vec![]; result.lines.len()];
-        for i in 0..n {
-            if flat[i].is_closing_of_container() && result.active_root_for(i).is_some() {
-                result.nodes[i] = result.nodes[normalize_node(flat, i)].clone();
-            }
-        }
-        for i in 0..n {
-            if result.nodes[i].collapsible
-                && !flat[i].is_closing_of_container()
-                && result.active_root_for(i).is_some()
-            {
-                let line = result.nodes[i].line;
-                result.line_containers[line].push(i);
-                // A sequence root's document row is its structural anchor,
-                // but an array body still owns its normal inline/multiline
-                // presentation controls. Empty arrays have no body arrow.
-                if sequence
-                    && result.is_active_root(i)
-                    && flat[i].is_array()
-                    && result.nodes[i].body_line != line
-                {
-                    result.line_containers[result.nodes[i].body_line].push(i);
-                }
-            }
-            if result.active_root_for(i).is_some()
-                && result.previews[i].text.is_empty()
-                && flat[i].is_opening_of_container()
-            {
-                result.previews[i] = result.preview(flat, i);
-            }
-        }
-        for line_idx in 0..result.lines.len() {
-            result.annotate(flat, line_idx);
-            let line = &mut result.lines[line_idx];
-            for span in &mut line.spans {
-                if matches!(
-                    span.role,
-                    TokenRole::Key | TokenRole::FieldDefinition | TokenRole::String
-                ) {
-                    if let Some(source) = &span.source {
-                        let row = &flat[span.node];
-                        let parsed =
-                            if matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition) {
-                                match &row.key_value {
-                                    Some(KeyValue::String(text)) => Some(text.as_str()),
-                                    _ => None,
-                                }
-                            } else {
-                                row.string_value.as_deref()
-                            };
-                        let raw = &flat.1[source.clone()];
-                        if raw.starts_with('"') {
-                            span.source_map = string_source_map(
-                                raw,
-                                parsed,
-                                &line.text[span.range.clone()],
-                                source.start,
-                                span.range.start,
-                            );
-                        }
-                    }
-                }
-            }
-            for span in &mut line.spans {
-                if let Some(source) = &span.source {
-                    if span.source_map.is_empty()
-                        && flat.1[source.clone()] == line.text[span.range.clone()]
-                    {
-                        span.source_map.push(SourceMap {
-                            source: source.clone(),
-                            display: span.range.clone(),
-                        });
-                    }
-                }
-            }
-            for span in &result.lines[line_idx].spans {
-                result.nodes[span.node]
-                    .spans
-                    .push((line_idx, span.range.clone()));
-            }
-        }
-        result
-            .warnings
-            .sort_by_key(|warning| (warning.node, warning.kind));
-        // Include warning annotations in the fit decision, after their locators
-        // are known. Moving values to separate lines also moves their warnings.
-        let overflowing: Vec<_> = result
-            .nodes
-            .iter()
-            .enumerate()
-            .filter(|(node, info)| {
-                result.active_root_for(*node).is_some()
-                    && !flat[*node].is_closing_of_container()
-                    && info.inline_array
-                    && UnicodeWidthStr::width(result.lines[info.body_line].text.as_str()) > width
-            })
-            .map(|(node, _)| node)
-            .collect();
-        if !overflowing.is_empty() {
-            result.expanded_arrays.extend(overflowing);
-            return Self::build(flat, width, limit, &result.expanded_arrays, roots);
-        }
-        result
-    }
-
-    pub fn active_root_for(&self, node: usize) -> Option<usize> {
-        self.root_by_node
-            .get(node)
-            .copied()
-            .filter(|root| *root != crate::flatjson::NIL)
-    }
-
-    fn is_active_root(&self, node: usize) -> bool {
-        self.active_root_for(node) == Some(node)
-    }
-    fn key(&self, flat: &FlatJson, node: usize) -> String {
-        match &self.keys[node] {
-            Some(key)
-                if flat[node]
-                    .key_range
-                    .as_ref()
-                    .is_some_and(|r| flat.1[r.clone()].starts_with('[')) =>
-            {
-                key.clone()
-            }
-            Some(key) => quote_key(key),
-            None => String::new(),
-        }
-    }
-    fn table(&self, flat: &FlatJson, kids: &[usize]) -> bool {
-        let Some(&first) = kids.first() else {
-            return false;
-        };
-        let fields = children(flat, first);
-        if fields.is_empty() || flat[first].is_array() {
-            return false;
-        }
-        let mut unique = HashSet::new();
-        if !fields.iter().all(|&i| {
-            scalar(flat, i)
-                && self.own_warnings[i]
-                    .iter()
-                    .all(|w| *w != WarningKind::NonStringKey)
-                && unique.insert(self.keys[i].as_ref())
-        }) {
-            return false;
-        }
-        kids.iter().all(|&row| {
-            let row_fields = children(flat, row);
-            !flat[row].is_array()
-                && row_fields.len() == fields.len()
-                && row_fields.iter().zip(&fields).all(|(&a, &b)| {
-                    scalar(flat, a)
-                        && self.keys[a] == self.keys[b]
-                        && !self.own_warnings[a].contains(&WarningKind::NonStringKey)
-                })
-        })
-    }
-    fn value_token(&self, flat: &FlatJson, line: &mut DisplayLine, node: usize) {
-        let role = match flat[node].value {
-            Value::String => TokenRole::String,
-            Value::Number => TokenRole::Number,
-            Value::Boolean => TokenRole::Boolean,
-            _ => TokenRole::Null,
-        };
-        line.token(
-            &self.scalars[node],
-            node,
-            role,
-            Some(flat[node].range.clone()),
-        );
-    }
-    fn render(
-        &mut self,
-        flat: &FlatJson,
-        node: usize,
-        depth: usize,
-        list: bool,
-        root_relative: bool,
-    ) {
-        let start = self.lines.len();
-        self.nodes[node].line = start;
-        self.nodes[node].body_line = start;
-        let kids = children(flat, node);
-        let mut line = DisplayLine::new(node, "  ".repeat(depth));
-        if list {
-            line.token("-", node, TokenRole::ContainerDelimiter, None);
-        }
-        let object = matches!(flat[node].value, Value::EmptyObject)
-            || (flat[node].is_opening_of_container() && !flat[node].is_array())
-            || (root_relative && flat[node].is_opening_of_container() && !flat[node].is_array());
-        if object && (root_relative || flat[node].key_range.is_none()) {
-            self.nodes[node].header_end = line.text.len();
-            if kids.is_empty() {
-                self.lines.push(line);
-            } else {
-                for (ordinal, &child) in kids.iter().enumerate() {
-                    // A root object in a sequence has no extra indentation;
-                    // list items retain the indentation required by TOON.
-                    let child_depth = if list { depth + 1 } else { depth };
-                    self.render(flat, child, child_depth, false, false);
-                    if list && ordinal == 0 {
-                        let first = &mut self.lines[start];
-                        // The first object's field occupies the hyphen line; nested content
-                        // keeps the extra indentation required by the TOON list grammar.
-                        let position = depth * 2;
-                        first.text.replace_range(position..position + 2, "- ");
-                        first.spans.push(Span {
-                            range: position..position + 1,
-                            node,
-                            role: TokenRole::ContainerDelimiter,
-                            source: None,
-                            source_map: vec![],
-                        });
-                        first.owner = node;
-                    }
-                }
-            }
-        } else {
-            if list {
-                line.text.push(' ');
-            }
-            if !root_relative && flat[node].key_range.is_some() {
-                line.token(
-                    &self.key(flat, node),
-                    node,
-                    TokenRole::Key,
-                    flat[node].key_range.clone(),
-                );
-            }
-            if flat[node].is_array() || matches!(flat[node].value, Value::EmptyArray) {
-                let table = self.table(flat, &kids);
-                line.token(
-                    &format!("[{}]", kids.len()),
-                    node,
-                    TokenRole::ArrayIndex,
-                    None,
-                );
-                if table {
-                    for &row in &kids {
-                        self.nodes[row].table_row = true;
-                        self.nodes[row].collapsible = false;
-                        for field in children(flat, row) {
-                            self.nodes[field].table_cell = true;
-                        }
-                    }
-                    let table_fields: Vec<_> =
-                        kids.iter().map(|&row| children(flat, row)).collect();
-                    line.token("{", node, TokenRole::ContainerDelimiter, None);
-                    for (column, &field) in table_fields[0].iter().enumerate() {
-                        if column != 0 {
-                            line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
-                        }
-                        let begin = line.text.len();
-                        line.token(
-                            &self.key(flat, field),
-                            field,
-                            TokenRole::FieldDefinition,
-                            flat[field].key_range.clone(),
-                        );
-                        let range = begin..line.text.len();
-                        for row in &table_fields[1..] {
-                            let other = row[column];
-                            line.spans.push(Span {
-                                range: range.clone(),
-                                node: other,
-                                role: TokenRole::FieldDefinition,
-                                source: flat[other].key_range.clone(),
-                                source_map: vec![],
-                            });
-                        }
-                    }
-                    line.token("}", node, TokenRole::ContainerDelimiter, None);
-                }
-                line.token(
-                    ":",
-                    node,
-                    if kids.is_empty() {
-                        TokenRole::EmptyContainer
-                    } else {
-                        TokenRole::Punctuation
-                    },
-                    None,
-                );
-                self.nodes[node].header_end = line.text.len();
-                let inline_width = UnicodeWidthStr::width(line.text.as_str())
-                    + kids
-                        .iter()
-                        .map(|&i| UnicodeWidthStr::width(self.scalars[i].as_str()))
-                        .sum::<usize>()
-                    + kids.len(); // One leading space and commas between values.
-                let inline = kids.is_empty()
-                    || (kids.iter().all(|&i| scalar(flat, i))
-                        && kids.len() <= self.inline_limit
-                        && inline_width <= self.inline_width
-                        && !self.expanded_arrays.contains(&node));
-                if inline {
-                    self.nodes[node].inline_array = !kids.is_empty();
-                    if !kids.is_empty() {
-                        line.text.push(' ');
-                    }
-                    for (index, &child) in kids.iter().enumerate() {
-                        if index != 0 {
-                            line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
-                        }
-                        self.nodes[child].line = start;
-                        self.nodes[child].extent = start..start + 1;
-                        self.value_token(flat, &mut line, child);
-                    }
-                    self.lines.push(line);
-                } else {
-                    self.lines.push(line);
-                    if table {
-                        for &row in &kids {
-                            let idx = self.lines.len();
-                            self.nodes[row].line = idx;
-                            self.nodes[row].extent = idx..idx + 1;
-                            let mut row_line = DisplayLine::new(row, "  ".repeat(depth + 1));
-                            self.nodes[row].header_end = row_line.text.len();
-                            for (column, child) in children(flat, row).into_iter().enumerate() {
-                                if column != 0 {
-                                    row_line.token(
-                                        ",",
-                                        row,
-                                        TokenRole::PrimitiveTrailingComma,
-                                        None,
-                                    );
-                                }
-                                self.nodes[child].line = idx;
-                                self.nodes[child].extent = idx..idx + 1;
-                                self.value_token(flat, &mut row_line, child);
-                            }
-                            self.lines.push(row_line);
-                        }
-                    } else {
-                        for &child in &kids {
-                            self.render(flat, child, depth + 1, true, false);
-                        }
-                    }
-                }
-            } else if object {
-                line.token(":", node, TokenRole::Punctuation, None);
-                self.nodes[node].header_end = line.text.len();
-                self.lines.push(line);
-                for &child in &kids {
-                    self.render(flat, child, depth + 1, false, false);
-                }
-            } else {
-                if !root_relative && flat[node].key_range.is_some() {
-                    line.token(": ", node, TokenRole::Punctuation, None);
-                }
-                self.value_token(flat, &mut line, node);
-                self.nodes[node].header_end = line.text.len();
-                self.lines.push(line);
-            }
-        }
-        self.nodes[node].body_extent = start..self.lines.len();
-        self.nodes[node].extent = start..self.lines.len();
-        self.previews[node] = self.preview(flat, node);
-    }
-    fn preview(&self, flat: &FlatJson, node: usize) -> Preview {
-        let mut preview = Preview {
-            source: Some(flat[node].range.clone()),
-            ..Preview::default()
-        };
-        for child in children(flat, node) {
-            if !preview.text.is_empty() {
-                preview_append(
-                    &mut preview,
-                    if flat[node].is_array() { "," } else { "; " },
-                    None,
-                );
-            }
-            if !flat[node].is_array() {
-                // The key is already cached; truncate before copying into the preview.
-                if let Some(key) = &self.keys[child] {
-                    preview_append(
-                        &mut preview,
-                        &quote_key(bounded_prefix(key, 256)),
-                        flat[child].key_range.clone(),
-                    );
-                }
-                preview_append(&mut preview, ": ", None);
-            }
-            if scalar(flat, child) {
-                preview_append(
-                    &mut preview,
-                    &self.scalars[child],
-                    Some(flat[child].range.clone()),
-                );
-            } else if flat[child].is_array() || matches!(flat[child].value, Value::EmptyArray) {
-                preview_append(
-                    &mut preview,
-                    &format!("[{}]: …", self.nodes[child].entry_count),
-                    Some(flat[child].range.clone()),
-                );
-            } else {
-                preview_append(&mut preview, "…", Some(flat[child].range.clone()));
-            }
-            if preview.text.len() >= 256 {
-                if !preview.text.ends_with('…') {
-                    preview_append(&mut preview, "…", Some(flat[child].range.clone()));
-                }
-                break;
-            }
-        }
-        preview
-    }
-
-    /// Preview text used by a collapsed sequence header. Document previews
-    /// deliberately have no source mapping: the header is generated
-    /// presentation metadata, while search continues to operate on parsed
-    /// lines and source ranges.
-    fn document_preview(&self, flat: &FlatJson, node: usize) -> Preview {
-        let mut preview = self.preview(flat, node);
-        if flat[node].is_array() {
-            let header = format!("[{}]:", self.nodes[node].entry_count);
-            let contents = std::mem::take(&mut preview.text);
-            preview.source_map.clear();
-            preview_append(&mut preview, &header, None);
-            if !contents.is_empty() {
-                preview_append(&mut preview, " ", None);
-                preview_append(&mut preview, &contents, None);
-            }
-        }
-        if preview.text.is_empty() {
-            match flat[node].value {
-                Value::EmptyObject => preview.text.push_str("{}"),
-                Value::EmptyArray => preview.text.push_str("[]"),
-                Value::String | Value::Number | Value::Boolean | Value::Null => {
-                    preview_append(&mut preview, &self.scalars[node], None)
-                }
-                _ => preview.text.push('…'),
-            }
-        }
-        preview.source = None;
-        preview.source_map.clear();
-        preview
-    }
-    fn annotate(&mut self, flat: &FlatJson, line: usize) {
-        if self.lines[line].separator {
-            return;
-        }
-        let mut ids: Vec<_> = self.lines[line]
-            .spans
-            .iter()
-            .filter(|s| {
-                !matches!(s.role, TokenRole::Key | TokenRole::FieldDefinition)
-                    || self.nodes[s.node].line == line
-            })
-            .map(|s| s.node)
-            .collect();
-        ids.push(self.lines[line].owner);
-        ids.sort_unstable();
-        ids.dedup();
-        let owner = self.lines[line].owner;
-        let mut messages = vec![];
-        for node in ids {
-            for warning in &self.own_warnings[node] {
-                let locator = if self.is_active_root(node) {
-                    String::new()
-                } else if self.nodes[node].table_cell {
-                    format!(
-                        " at field {}",
-                        quote_json(self.keys[node].as_deref().unwrap_or(""))
-                    )
-                } else if let OptionIndex::Index(parent) = flat[node].parent {
-                    if flat[parent].is_array() && self.nodes[node].line == line {
-                        format!(" at [{}]", flat[node].index_in_parent)
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    String::new()
-                };
-                messages.push((node, format!("{}{locator}", warning.message())));
-            }
-        }
-        if !messages.is_empty() {
-            self.lines[line].token("  # WARN ", owner, TokenRole::Warning, None);
-            for (ordinal, (node, message)) in messages.into_iter().enumerate() {
-                if ordinal > 0 {
-                    self.lines[line].token("; ", owner, TokenRole::Warning, None);
-                }
-                self.lines[line].token(&message, node, TokenRole::Warning, None);
-            }
-        }
-    }
-    fn collapsed_inline_array(
-        &self,
-        flat: &FlatJson,
-        node: usize,
-        header: &DisplayLine,
-        warning_width: usize,
-    ) -> Option<DisplayLine> {
-        if !flat[node].is_array() || self.nodes[node].entry_count > self.inline_limit.min(5) {
-            return None;
-        }
-        let kids = children(flat, node);
-        if !kids.iter().all(|&child| scalar(flat, child)) {
-            return None;
-        }
-        let mut line = header.clone();
-        for (index, child) in kids.into_iter().enumerate() {
-            line.token(
-                if index == 0 { " " } else { "," },
-                node,
-                if index == 0 {
-                    TokenRole::Punctuation
-                } else {
-                    TokenRole::PrimitiveTrailingComma
-                },
-                None,
-            );
-            let original = &self.lines[self.nodes[child].line];
-            let mut span = original
-                .spans
-                .iter()
-                .find(|span| {
-                    span.node == child
-                        && matches!(
-                            span.role,
-                            TokenRole::String
-                                | TokenRole::Number
-                                | TokenRole::Boolean
-                                | TokenRole::Null
-                        )
-                })?
-                .clone();
-            let value = &original.text[span.range.clone()];
-            if UnicodeWidthStr::width(line.text.as_str())
-                + UnicodeWidthStr::width(value)
-                + warning_width
-                > self.inline_width
-            {
-                return None;
-            }
-            let start = line.text.len();
-            line.text.push_str(value);
-            for map in &mut span.source_map {
-                map.display = start + map.display.start - span.range.start
-                    ..start + map.display.end - span.range.start;
-            }
-            span.range = start..line.text.len();
-            line.spans.push(span);
-        }
-        (UnicodeWidthStr::width(line.text.as_str()) + warning_width <= self.inline_width)
-            .then_some(line)
-    }
-
-    /// Applies current collapse flags without changing the cached expanded grammar.
-    #[cfg(test)]
-    pub fn project(&self, flat: &FlatJson) -> Vec<VisibleLine> {
-        self.project_with_documents(flat, &HashSet::new())
-    }
-
-    /// Applies parsed-node collapse flags and the viewer's presentation-only
-    /// document collapse set without changing the cached expanded grammar.
-    ///
-    /// Sequence roots are still identified by their parsed node ids. Keeping
-    /// the optional set here lets the viewer collapse a scalar or empty root
-    /// without mutating `FlatJson` or changing copy/path semantics.
-    pub fn project_with_documents(
-        &self,
-        flat: &FlatJson,
-        document_collapsed: &HashSet<usize>,
-    ) -> Vec<VisibleLine> {
-        let mut visible = vec![];
-        let mut absolute = 0;
-        while absolute < self.lines.len() {
-            let original = &self.lines[absolute];
-            let mut line = original.clone();
-            let collapsed = self.line_containers[absolute]
-                .iter()
-                .copied()
-                .filter(|&i| {
-                    (flat[i].is_collapsed() && !original.separator)
-                        || (original.separator && document_collapsed.contains(&i))
-                })
-                .min_by_key(|&i| flat[i].depth);
-            if let Some(node) = collapsed {
-                let info = &self.nodes[node];
-                let document = original.separator;
-                if !document {
-                    line.text.truncate(info.header_end);
-                    line.spans.retain(|s| s.range.end <= info.header_end);
-                }
-                line.owner = node;
-                if !document && !flat[node].is_array() {
-                    let count = info.entry_count;
-                    line.token(&format!(" ({count})"), node, TokenRole::Count, None);
-                }
-                let mut messages: Vec<_> = self.own_warnings[node]
-                    .iter()
-                    .map(|w| w.message().to_owned())
-                    .collect();
-                if info.descendant_warnings > 0 {
-                    messages.push(format!(
-                        "Contains {} hidden warnings",
-                        info.descendant_warnings
-                    ));
-                }
-                let warning = if messages.is_empty() {
-                    String::new()
-                } else {
-                    format!("  # WARN {}", messages.join("; "))
-                };
-                // A sequence document's preview is always subdued generated
-                // text, including a short primitive array. Ordinary inline
-                // primitive arrays retain their existing syntax styling.
-                let inline_rendered = if !document {
-                    if let Some(inline) = self.collapsed_inline_array(
-                        flat,
-                        node,
-                        &line,
-                        UnicodeWidthStr::width(warning.as_str()),
-                    ) {
-                        line = inline;
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-                let preview = if document {
-                    &self.document_previews[node]
-                } else {
-                    &self.previews[node]
-                };
-                if !inline_rendered && !preview.text.is_empty() {
-                    let start = line.text.len();
-                    let rendered = format!(" {}", preview.text);
-                    line.text.push_str(&rendered);
-                    let display_offset = start + 1;
-                    let source_map = preview
-                        .source_map
-                        .iter()
-                        .map(|map| SourceMap {
-                            source: map.source.clone(),
-                            display: display_offset + map.display.start
-                                ..display_offset + map.display.end,
-                        })
-                        .collect();
-                    line.spans.push(Span {
-                        range: start..line.text.len(),
-                        node,
-                        role: TokenRole::Preview,
-                        source: preview.source.clone(),
-                        source_map,
-                    });
-                }
-                if !messages.is_empty() {
-                    line.token(&warning, node, TokenRole::Warning, None);
-                }
-                visible.push(VisibleLine { absolute, line });
-                let end = if !document
-                    && absolute == info.body_line
-                    && info.body_extent.start != info.extent.start
-                {
-                    info.body_extent.end
-                } else {
-                    info.extent.end
-                };
-                absolute = end.max(absolute + 1);
-                continue;
-            }
-            visible.push(VisibleLine { absolute, line });
-            absolute += 1;
-        }
-        visible
     }
 }
 
@@ -1448,7 +527,7 @@ mod tests {
         FlatJson(rows, text, depth)
     }
     fn text(flat: &FlatJson) -> String {
-        Layout::canonical(flat)
+        Fixture::canonical(flat)
             .lines
             .iter()
             .map(|l| l.text.as_str())
@@ -1533,7 +612,7 @@ mod tests {
     #[test]
     fn structural_tokens_keep_their_theme_roles() {
         let flat = json(r#"{"values":[1,2],"rows":[{"a":1},{"a":2}],"empty":[]}"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let roles: Vec<_> = layout
             .lines
             .iter()
@@ -1549,7 +628,7 @@ mod tests {
     #[test]
     fn collapsed_preview_maps_searches_to_generated_text() {
         let mut flat = json(r#"{"obj":{"needle":"value","other":1}}"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let object = children(&flat, 0)
             .into_iter()
             .find(|&node| flat[node].key_range.is_some())
@@ -1584,7 +663,7 @@ mod tests {
             .find(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         flat.collapse(root);
         let line = layout
             .project_with_documents(&flat, &HashSet::new())
@@ -1609,7 +688,7 @@ mod tests {
     #[test]
     fn duplicate_decoded_keys_keep_identity() {
         let flat = json(r#"{"box":{"a":1,"\u0061":2}}"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(
             text(&flat),
             "box:\n  a: 1  # WARN Duplicate key\n  a: 2  # WARN Duplicate key"
@@ -1695,7 +774,7 @@ mod tests {
             .map(|(node, _)| node)
             .collect();
         assert_eq!(roots.len(), 4);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(layout.lines[0].text, "--- (1 of 4)");
         assert_eq!(layout.lines[1].text, "name: Ada");
         assert_eq!(layout.lines[2].text, "--- (2 of 4)");
@@ -1750,7 +829,7 @@ mod tests {
             .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .collect();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(layout.warnings.len(), 1);
         assert_eq!(layout.warnings[0].kind, WarningKind::NonFiniteNumber);
         let document_collapsed = HashSet::from([roots[0]]);
@@ -1776,7 +855,7 @@ mod tests {
     #[test]
     fn multiline_sequence_root_array_warnings_keep_element_locators() {
         let flat = yaml("---\n[.inf, 1, 2, 3, 4, 5]\n---\n7\n");
-        let layout = Layout::for_view(&flat, 20, &HashSet::new());
+        let layout = Fixture::for_view(&flat, 20, &HashSet::new());
         let warning = layout
             .lines
             .iter()
@@ -1795,7 +874,7 @@ mod tests {
             .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .collect();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_ne!(
             layout.nodes[roots[0]].body_line,
             layout.nodes[roots[0]].line
@@ -1818,7 +897,7 @@ mod tests {
             .map(|(node, _)| node)
             .collect();
         let nested = children(&flat, roots[0])[0];
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(layout.nodes[nested].descendant_warnings, 2);
         let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
         assert_eq!(visible[0].line.owner, roots[0]);
@@ -1833,8 +912,8 @@ mod tests {
 
     #[test]
     fn json_and_yaml_sequences_have_equivalent_document_layouts() {
-        let json_layout = Layout::canonical(&json(r#"{"a":1} {"b":2}"#));
-        let yaml_layout = Layout::canonical(&yaml("---\na: 1\n---\nb: 2\n"));
+        let json_layout = Fixture::canonical(&json(r#"{"a":1} {"b":2}"#));
+        let yaml_layout = Fixture::canonical(&yaml("---\na: 1\n---\nb: 2\n"));
         let json_lines: Vec<_> = json_layout
             .lines
             .iter()
@@ -1875,7 +954,7 @@ mod tests {
             .map(|(node, _)| node)
             .collect();
         let outer = children(&flat, roots[0])[0];
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         flat.collapse(outer);
         let collapsed_document = HashSet::from([roots[0]]);
         let hidden = layout.project_with_documents(&flat, &collapsed_document);
@@ -1903,7 +982,7 @@ mod tests {
             .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .collect();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
         assert!(visible[0].line.text.len() <= "--- (1 of 2) ".len() + 256);
         assert!(visible[0].line.text.ends_with('…'));
@@ -1919,7 +998,7 @@ mod tests {
             .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .collect();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
 
         assert_eq!(visible[0].line.text, "--- (1 of 2) [2]: 10,20");
@@ -1942,7 +1021,7 @@ mod tests {
             .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .collect();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let visible = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
 
         assert!(visible[0].line.text.len() <= "--- (1 of 2) ".len() + 256);
@@ -1952,10 +1031,12 @@ mod tests {
     #[test]
     fn shared_header_mapping_and_table_rows_remain_visible() {
         let mut flat = yaml("- a: .inf\n  b: 2\n- a: .nan\n  b: 4\n");
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let rows = children(&flat, 0);
         let fields = children(&flat, rows[1]);
-        let key_span = layout.lines[0]
+        let visible = layout.layout.project_with_documents(&flat, &HashSet::new());
+        let header = layout.layout.render(&flat, visible[0], fields[0]);
+        let key_span = header
             .spans
             .iter()
             .find(|span| {
@@ -1964,7 +1045,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(key_span.source, flat[fields[0]].key_range);
-        assert_eq!(&layout.lines[0].text[key_span.range.clone()], "a");
+        assert_eq!(&header.text[key_span.range.clone()], "a");
         assert!(
             layout.lines[2]
                 .spans
@@ -1990,12 +1071,12 @@ mod tests {
     #[test]
     fn escaped_locators_and_semantic_warning_counts() {
         let flat = yaml("- \"a\\nb\": .inf\n- \"a\\nb\": .nan\n");
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert!(layout.lines[1].text.ends_with("at field \"a\\nb\""));
         assert_eq!(layout.nodes[0].descendant_warnings, 2);
         assert_eq!(layout.warnings.len(), 2);
         let mut flat = json(r#"{"a":{"x":1,"x":2},"a":0}"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         flat.collapse(1);
         let visible = layout.project(&flat);
         assert!(
@@ -2009,7 +1090,7 @@ mod tests {
     #[test]
     fn root_anchors_and_bounded_preview() {
         let mut flat = json("{\"a\":{\"b\":1},\"c\":2}");
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(layout.nodes[0].line, 0);
         assert!(!layout.nodes[0].collapsible);
         flat.collapse(1);
@@ -2026,7 +1107,7 @@ mod tests {
         flat[0].range = 0..length;
         flat[1].range = 1..length - 1;
         flat[2].range = length - 1..length;
-        let layout = Layout::for_view(&flat, 120, &HashSet::new());
+        let layout = Fixture::for_view(&flat, 120, &HashSet::new());
         flat.collapse(0);
         let visible = layout.project(&flat);
         assert!(visible[0].line.text.len() < 280);
@@ -2044,9 +1125,8 @@ mod tests {
     #[test]
     fn mappings_and_collapse_restore() {
         let mut flat = json(r#"{"tags":[1,2],"rows":[{"a":3},{"a":4}],"obj":{"x":{"y":5}}}"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(layout.nodes[2].line, layout.nodes[3].line);
-        assert_ne!(layout.nodes[2].spans, layout.nodes[3].spans);
         flat.collapse(1);
         let visible = layout.project(&flat);
         assert_eq!(visible[0].line.text, "tags[2]: 1,2");
@@ -2067,7 +1147,7 @@ mod tests {
         flat.expand(1);
         assert_eq!(layout.project(&flat)[0].line.text, layout.lines[0].text);
         let mut dup = json(r#"{"a":{"b":{"x":1,"x":2}}}"#);
-        let l = Layout::canonical(&dup);
+        let l = Fixture::canonical(&dup);
         dup.collapse(2);
         dup.collapse(1);
         assert!(
@@ -2097,7 +1177,7 @@ mod tests {
             r#"? ["quote\"x","\\literal",{"a:b":[true,null,1]}]: value  # WARN Non-string key"#
         );
         assert!(
-            !Layout::canonical(&flat)
+            !Fixture::canonical(&flat)
                 .warnings
                 .iter()
                 .any(|w| w.kind == WarningKind::NonCanonicalNumber)
@@ -2116,7 +1196,7 @@ mod tests {
     #[test]
     fn collapsed_short_arrays_preserve_inline_value_roles() {
         let mut flat = json(r#"["text",2,true,null,5]"#);
-        let layout = Layout::for_view(&flat, 120, &HashSet::from([0]));
+        let layout = Fixture::for_view(&flat, 120, &HashSet::from([0]));
         flat.collapse(0);
         let projected = layout.project(&flat);
         let line = &projected[0].line;
@@ -2139,7 +1219,7 @@ mod tests {
                     .any(|span| span.role == role && span.source.is_some())
             );
         }
-        let narrow = Layout::for_view(&flat, 10, &HashSet::from([0]));
+        let narrow = Fixture::for_view(&flat, 10, &HashSet::from([0]));
         assert!(
             narrow.project(&flat)[0]
                 .line
@@ -2148,7 +1228,7 @@ mod tests {
                 .any(|span| span.role == TokenRole::Preview)
         );
         let mut long = json("[1,2,3,4,5,6]");
-        let layout = Layout::for_view(&long, 120, &HashSet::new());
+        let layout = Fixture::for_view(&long, 120, &HashSet::new());
         long.collapse(0);
         assert!(
             layout.project(&long)[0]
@@ -2162,22 +1242,29 @@ mod tests {
     #[test]
     fn collapsed_table_header_retains_field_style_source_and_identity() {
         let mut flat = json(r#"[{"a":1},{"a":2}]"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
+        let rows = children(&flat, 0);
+        let first = children(&flat, rows[0])[0];
+        let selected = children(&flat, rows[1])[0];
         flat.collapse(0);
-        let projected = layout.project(&flat);
-        let keys: Vec<_> = projected[0]
-            .line
+        let projected = layout.layout.project_with_documents(&flat, &HashSet::new());
+        let header = layout.layout.render(&flat, projected[0], selected);
+        let key = header
             .spans
             .iter()
-            .filter(|span| matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition))
-            .collect();
-        assert_eq!(keys.len(), 2);
-        assert_ne!(keys[0].node, keys[1].node);
-        assert!(keys.iter().all(|span| span.source.is_some()));
-        let column = keys[0].range.start;
-        let (node, source) = crate::lineprinter::hit_test(&projected[0].line, column);
-        assert_eq!(node, keys[0].node);
-        assert_eq!(source, keys[0].source.as_ref().map(|range| range.start));
+            .find(|span| span.node == selected && span.role == TokenRole::FieldDefinition)
+            .unwrap();
+        assert_eq!(key.source, flat[selected].key_range);
+        assert_eq!(&header.text[key.range.clone()], "a");
+        let (node, source) = crate::lineprinter::hit_test(&header, key.range.start);
+        assert_eq!(
+            node, first,
+            "mouse targeting is independent of the selected alias"
+        );
+        assert_eq!(
+            source,
+            flat[first].key_range.as_ref().map(|range| range.start)
+        );
     }
 
     #[test]
@@ -2187,7 +1274,7 @@ mod tests {
             r#"{"value":"\u754c\n\"\\\ud83d\ude00NEEDLE"}"#,
         ] {
             let flat = json(input);
-            let layout = Layout::canonical(&flat);
+            let layout = Fixture::canonical(&flat);
             let source = flat.1.find("NEEDLE").unwrap();
             let span = layout.lines[0]
                 .spans
@@ -2204,7 +1291,7 @@ mod tests {
             );
         }
         let flat = json(r#""\u0061b\u0063""#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let span = &layout.lines[0].spans[0];
         assert_eq!(span.matching_ranges(&(1..7)), vec![0..1]);
         assert_eq!(layout.lines[0].text, "abc");
@@ -2217,7 +1304,7 @@ mod tests {
         let mut flat = json(r#""""#);
         flat.1 = input;
         flat.0[0].range = 0..flat.1.len();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let span = &layout.lines[0].spans[0];
         assert_eq!(span.source_map.len(), 1);
         assert_eq!(
@@ -2229,7 +1316,7 @@ mod tests {
     #[test]
     fn unsupported_control_escapes_are_warned_but_literal_escape_text_is_not() {
         let flat = json(r#"{"control":"\u0001","literal":"\\u0001","line":"\n"}"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(
             layout.lines[0].text,
             r#"control: "\u0001"  # WARN Non-standard string escape"#
@@ -2251,7 +1338,7 @@ mod tests {
     #[test]
     fn mixed_warning_kinds_follow_node_order_and_hidden_summary_is_last() {
         let flat = yaml(r#"["\u0001", .inf, 1e1000000]"#);
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         assert_eq!(
             layout.lines[0].text,
             r#"[3]: "\u0001",.inf,1e1000000  # WARN Non-standard string escape at [0]; Non-finite number at [1]; Non-canonical number at [2]"#
@@ -2269,7 +1356,7 @@ mod tests {
             ]
         );
         let mut flat = yaml(".inf: {a: .inf}");
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         flat.collapse(1);
         assert!(
             layout.project(&flat)[0]
@@ -2282,7 +1369,7 @@ mod tests {
     fn selected_nested_root_renders_at_baseline_without_excluded_lines() {
         let flat = json(r#"{"outer":{"kept":1},"tail":{"excluded":2}}"#);
         let selected = children(&flat, 0)[0];
-        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[selected]);
+        let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[selected]);
         let text = layout
             .lines
             .iter()
@@ -2290,7 +1377,6 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(text, vec!["kept: 1"]);
         assert_eq!(layout.nodes[selected].line, 0);
-        assert!(layout.nodes[0].spans.is_empty());
         assert!(
             layout
                 .lines
@@ -2304,14 +1390,14 @@ mod tests {
     fn selected_root_omits_key_warnings_even_when_collapsed() {
         let mut flat = json(r#"{"k\u0001":[1,2,3,4,5,6,7]}"#);
         let root = children(&flat, 0)[0];
-        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
+        let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
         assert!(layout.warnings.is_empty());
         flat.collapse(root);
         assert!(!layout.project(&flat)[0].line.text.contains("# WARN"));
 
         let flat = json(r#"{"k\u0001":"v\u0001"}"#);
         let root = children(&flat, 0)[0];
-        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
+        let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
         assert_eq!(layout.warnings.len(), 1);
         assert_eq!(
             layout.warnings[0].kind,
@@ -2324,7 +1410,7 @@ mod tests {
     fn selected_array_element_warning_has_no_excluded_parent_locator() {
         let flat = yaml("- .inf\n- 1\n");
         let root = children(&flat, 0)[0];
-        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
+        let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
         assert_eq!(layout.warnings[0].kind, WarningKind::NonFiniteNumber);
         assert!(!layout.lines[0].text.contains("at [0]"));
     }
@@ -2333,14 +1419,14 @@ mod tests {
     fn selected_root_warnings_and_sequence_numbers_are_filtered() {
         let flat = yaml("- a: .inf\n- b: .nan\n");
         let rows = children(&flat, 0);
-        let layout = Layout::for_view_with_roots(&flat, 120, &HashSet::new(), &[rows[0]]);
+        let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[rows[0]]);
         assert_eq!(layout.lines.len(), 1);
         assert!(layout.lines[0].text.contains("Non-finite number"));
         assert!(!layout.lines[0].text.contains("b:"));
         let stream = json(r#"{"a":1} {"b":2} {"c":3}"#);
         let roots = crate::path_filter::document_roots(&stream);
         let filtered =
-            Layout::for_view_with_roots(&stream, 120, &HashSet::new(), &[roots[2], roots[0]]);
+            Fixture::for_view_with_roots(&stream, 120, &HashSet::new(), &[roots[2], roots[0]]);
         assert_eq!(filtered.lines[0].text, "--- (1 of 2)");
         assert_eq!(filtered.lines[2].text, "--- (2 of 2)");
     }

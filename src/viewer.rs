@@ -1,7 +1,8 @@
 use crate::flatjson::{FlatJson, Index, OptionIndex};
-use crate::toon_display::{Layout, VisibleLine, normalize_node};
+use crate::toon_display::layout::{Layout, VisibleLine};
+use crate::toon_display::{DisplayLine, normalize_node};
 use crate::types::TTYDimensions;
-use crate::wrapped_view::{PhysicalRow, build_physical_rows};
+use crate::wrapped_view::{PhysicalRow, rows};
 use std::collections::HashSet;
 use std::ops::Range;
 #[cfg(test)]
@@ -14,10 +15,11 @@ pub struct JsonViewer {
     pub visible: Vec<VisibleLine>,
     /// Index into the visibility projection, not the parsed node list.
     pub top_visible_line: Index,
-    /// Index into the physical-row projection used by the screen writer.
-    pub top_physical_row: usize,
-    /// Cached physical rows. Continuations point into `visible[line].line.text`.
+    /// Continuation ordinal within the top logical line, never a document-wide row index.
+    pub top_continuation: usize,
+    /// Physical rows and text for the current frame only.
     pub physical_rows: Vec<PhysicalRow>,
+    frame: Vec<(usize, DisplayLine)>,
     /// Session-only optional wrapping state. It starts disabled.
     pub wrapping_enabled: bool,
     pub focused_node: Index,
@@ -33,15 +35,18 @@ pub struct JsonViewer {
     document_collapsed: HashSet<Index>,
     active_roots: Vec<Index>,
     document_roots: Vec<Index>,
-    document_header_by_root: Vec<Option<usize>>,
-    document_root_by_header: Vec<Option<Index>>,
     line_numbers: bool,
     wrap_width: usize,
     wrap_indentation: usize,
-    wrapped_lines: Vec<bool>,
     pub layout_generation: usize,
     pub physical_generation: usize,
     focus_byte_range: Option<Range<usize>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Cursor {
+    logical: usize,
+    continuation: usize,
 }
 
 impl JsonViewer {
@@ -70,16 +75,16 @@ impl JsonViewer {
             Self::layout_for_view(&flatjson, dimensions, line_numbers, &HashSet::new(), &roots);
         let visible = layout.project_with_documents(&flatjson, &HashSet::new());
         let initial_root = roots.first().copied().unwrap_or(0);
-        let absolute_anchor_line = layout.nodes[initial_root].line;
-        let physical_rows =
-            build_physical_rows(&visible, usize::from(dimensions.width), 0, false, &[]);
+        let absolute_anchor_line = layout.node(&flatjson, initial_root).line;
+        let wrap_width = layout.geometry.width;
         let mut viewer = Self {
             flatjson,
             layout,
             visible,
             top_visible_line: 0,
-            top_physical_row: 0,
-            physical_rows,
+            top_continuation: 0,
+            physical_rows: Vec::new(),
+            frame: Vec::new(),
             wrapping_enabled: false,
             focused_node: initial_root,
             absolute_anchor_line,
@@ -91,12 +96,9 @@ impl JsonViewer {
             document_collapsed: HashSet::new(),
             active_roots: roots,
             document_roots: vec![],
-            document_header_by_root: vec![],
-            document_root_by_header: vec![],
             line_numbers,
-            wrap_width: usize::from(dimensions.width),
+            wrap_width,
             wrap_indentation: 0,
-            wrapped_lines: vec![],
             layout_generation: 0,
             physical_generation: 0,
             focus_byte_range: None,
@@ -112,6 +114,7 @@ impl JsonViewer {
                 viewer.absolute_anchor_line = viewer.document_header_absolute(root);
             }
         }
+        viewer.refresh_frame();
         viewer
     }
     pub fn set_roots(&mut self, roots: Vec<Index>) {
@@ -132,19 +135,14 @@ impl JsonViewer {
             .project_with_documents(&self.flatjson, &self.document_collapsed);
         self.refresh_document_metadata();
         self.focused_node = self.active_roots.first().copied().unwrap_or(0);
-        self.absolute_anchor_line = self
-            .layout
-            .nodes
-            .get(self.focused_node)
-            .map(|node| node.line)
-            .unwrap_or(0);
+        self.absolute_anchor_line = self.layout.node(&self.flatjson, self.focused_node).line;
         if self.is_sequence() {
             if let Some(root) = self.document_roots.first().copied() {
                 self.absolute_anchor_line = self.document_header_absolute(root);
             }
         }
         self.top_visible_line = 0;
-        self.top_physical_row = 0;
+        self.top_continuation = 0;
         self.jump_distance = None;
         self.desired_depth = self
             .active_roots
@@ -152,7 +150,7 @@ impl JsonViewer {
             .map(|root| self.flatjson[*root].depth)
             .unwrap_or(0);
         self.focus_byte_range = None;
-        self.rebuild_physical_rows();
+        self.reset_frame_geometry();
         self.layout_generation = self.layout_generation.wrapping_add(1);
     }
 
@@ -171,7 +169,7 @@ impl JsonViewer {
     }
 
     fn active_root_for(&self, node: Index) -> Option<Index> {
-        self.layout.active_root_for(node)
+        self.layout.active_root_for(&self.flatjson, node)
     }
 
     /// Selected roots are parentless only for interaction; source ancestry is
@@ -216,22 +214,13 @@ impl JsonViewer {
     /// Resolve a root's structural header.
     pub fn document_header_absolute(&self, root: Index) -> usize {
         let root = self.document_root(root);
-        self.document_header_by_root
-            .get(root)
-            .copied()
-            .flatten()
-            .unwrap_or(self.layout.nodes[root].line)
+        self.layout.node(&self.flatjson, root).line
     }
 
     pub fn is_document_header(&self, logical_line: usize) -> bool {
-        let Some(visible) = self.visible.get(logical_line) else {
-            return false;
-        };
-        self.is_sequence()
-            && self
-                .document_root_by_header
-                .get(visible.absolute)
-                .is_some_and(Option::is_some)
+        self.visible
+            .get(logical_line)
+            .is_some_and(|line| line.separator)
     }
 
     /// Whether a visible line is the source-less body row paired with a
@@ -242,23 +231,20 @@ impl JsonViewer {
         };
         self.is_sequence()
             && !self.is_document_header(logical_line)
-            && self.is_document_root(visible.line.owner)
+            && self.is_document_root(visible.owner)
     }
 
     fn is_navigable_line(&self, logical_line: usize) -> bool {
         self.visible
             .get(logical_line)
-            .is_some_and(|line| !line.line.separator || self.is_document_header(logical_line))
+            .is_some_and(|line| !line.separator || self.is_document_header(logical_line))
     }
 
     pub fn document_root_for_line(&self, logical_line: usize) -> Option<Index> {
-        let absolute = self.visible.get(logical_line)?.absolute;
-        self.is_sequence().then(|| {
-            self.document_root_by_header
-                .get(absolute)
-                .copied()
-                .flatten()
-        })?
+        self.visible
+            .get(logical_line)
+            .filter(|line| line.separator)
+            .map(|line| line.owner)
     }
 
     pub fn line_is_collapsible(&self, logical_line: usize) -> bool {
@@ -271,11 +257,11 @@ impl JsonViewer {
         // Sequence roots have one structural collapse control on their header;
         // the standalone body line must not inherit that control, including
         // scalar and empty-root bodies.
-        if self.is_document_root(visible.line.owner) {
-            return self.flatjson[visible.line.owner].is_array()
-                && self.layout.nodes[visible.line.owner].entry_count > 0;
+        if self.is_document_root(visible.owner) {
+            return self.flatjson[visible.owner].is_array()
+                && self.layout.node(&self.flatjson, visible.owner).entry_count > 0;
         }
-        self.layout.nodes[visible.line.owner].collapsible
+        self.layout.node(&self.flatjson, visible.owner).collapsible
     }
 
     fn focused_document_header(&self) -> bool {
@@ -311,89 +297,187 @@ impl JsonViewer {
 
     fn refresh_document_metadata(&mut self) {
         self.document_roots = self.active_roots.clone();
-        self.document_root_by_header = vec![None; self.layout.lines.len()];
-        self.document_header_by_root = vec![None; self.flatjson.0.len()];
-        if self.is_sequence() {
-            for &root in &self.document_roots {
-                let header = self.layout.nodes[root].line;
-                self.document_header_by_root[root] = Some(header);
-                if let Some(slot) = self.document_root_by_header.get_mut(header) {
-                    *slot = Some(root);
-                }
-            }
-        }
     }
 
     fn wrap_eligible(&self, logical_line: usize) -> bool {
         let Some(visible) = self.visible.get(logical_line) else {
             return false;
         };
-        !self.is_document_header(logical_line) && !self.effective_collapsed(visible.line.owner)
+        !self.is_document_header(logical_line) && !self.effective_collapsed(visible.owner)
     }
 
     fn top_logical_line(&self) -> usize {
-        if self.wrapping_enabled {
-            self.physical_rows
-                .get(self.top_physical_row)
-                .map(|row| row.logical_line)
-                .unwrap_or(self.top_visible_line)
-        } else {
-            self.top_visible_line
+        self.top_visible_line
+    }
+
+    fn top_cursor(&self) -> Cursor {
+        Cursor {
+            logical: self.top_visible_line,
+            continuation: self.top_continuation,
         }
     }
 
-    fn sync_top_indices(&mut self) {
-        if self.wrapping_enabled {
-            if let Some(row) = self.physical_rows.get(self.top_physical_row) {
-                self.top_visible_line = row.logical_line;
-            }
-        } else {
-            self.top_physical_row = self
-                .top_visible_line
-                .min(self.physical_rows.len().saturating_sub(1));
+    fn set_top(&mut self, cursor: Cursor) {
+        self.top_visible_line = cursor.logical;
+        self.top_continuation = cursor.continuation;
+    }
+
+    pub fn render_line(&self, logical: usize) -> DisplayLine {
+        self.layout
+            .render(&self.flatjson, self.visible[logical], self.focused_node)
+    }
+
+    pub fn rendered_line(&self, logical: usize) -> &DisplayLine {
+        &self
+            .frame
+            .iter()
+            .find(|(index, _)| *index == logical)
+            .expect("requested row belongs to the frame or explicit focus target")
+            .1
+    }
+
+    pub fn highlight_shared_fields(&mut self, matches: &[Range<usize>], current: &Range<usize>) {
+        for (_, line) in &mut self.frame {
+            self.layout
+                .highlight_shared_fields(&self.flatjson, line, matches, current);
         }
     }
 
-    fn rebuild_physical_rows(&mut self) {
-        let previous_top = self
-            .top_visible_line
-            .min(self.visible.len().saturating_sub(1));
-        let eligible: Vec<_> = (0..self.visible.len())
-            .map(|line| self.wrap_eligible(line))
-            .collect();
-        let rows = build_physical_rows(
-            &self.visible,
+    fn row_text(&self, logical: usize) -> std::borrow::Cow<'_, DisplayLine> {
+        match self.frame.iter().find(|(index, _)| *index == logical) {
+            Some((_, line)) => std::borrow::Cow::Borrowed(line),
+            None => std::borrow::Cow::Owned(self.render_line(logical)),
+        }
+    }
+
+    fn row_iter<'a>(&self, logical: usize, line: &'a DisplayLine) -> crate::wrapped_view::Rows<'a> {
+        rows(
+            logical,
+            &line.text,
             self.wrap_width,
             self.wrap_indentation,
-            self.wrapping_enabled,
-            &eligible,
-        );
-        self.physical_rows = rows;
-        self.physical_generation = self.physical_generation.wrapping_add(1);
-        self.wrapped_lines = eligible;
+            self.is_wrapped_line(logical),
+        )
+    }
+
+    fn walk(&self, mut cursor: Cursor, mut count: usize, down: bool) -> Cursor {
+        if !self.wrapping_enabled {
+            cursor.logical = if down {
+                cursor
+                    .logical
+                    .saturating_add(count)
+                    .min(self.visible.len().saturating_sub(1))
+            } else {
+                cursor.logical.saturating_sub(count)
+            };
+            cursor.continuation = 0;
+            return cursor;
+        }
+        while count > 0 {
+            if !down {
+                if count <= cursor.continuation {
+                    cursor.continuation -= count;
+                    break;
+                }
+                if cursor.logical == 0 {
+                    return Cursor {
+                        logical: 0,
+                        continuation: 0,
+                    };
+                }
+                count -= cursor.continuation + 1;
+                cursor.logical -= 1;
+                let line = self.row_text(cursor.logical);
+                cursor.continuation = self
+                    .row_iter(cursor.logical, &line)
+                    .count()
+                    .saturating_sub(1);
+            } else {
+                let line = self.row_text(cursor.logical);
+                let available = self
+                    .row_iter(cursor.logical, &line)
+                    .skip(cursor.continuation)
+                    .take(count.saturating_add(1))
+                    .count();
+                if available > count {
+                    cursor.continuation += count;
+                    break;
+                }
+                if cursor.logical + 1 >= self.visible.len() {
+                    cursor.continuation += available.saturating_sub(1);
+                    break;
+                }
+                count -= available;
+                cursor.logical += 1;
+                cursor.continuation = 0;
+            }
+        }
+        cursor
+    }
+
+    fn refresh_frame(&mut self) {
+        self.frame.clear();
+        self.physical_rows.clear();
+        self.top_visible_line = self
+            .top_visible_line
+            .min(self.visible.len().saturating_sub(1));
+        if !self.wrapping_enabled {
+            self.top_continuation = 0;
+        }
         let height = usize::from(self.dimensions.height).max(1);
-        let last_top = self.physical_rows.len().saturating_sub(height);
-        let first_row = self
-            .physical_rows
-            .partition_point(|row| row.logical_line < previous_top);
-        self.top_physical_row = first_row.min(last_top);
-        self.sync_top_indices();
+        for logical in self.top_visible_line..self.visible.len() {
+            let line = self.render_line(logical);
+            let skip = if logical == self.top_visible_line {
+                self.top_continuation
+            } else {
+                0
+            };
+            let remaining = height - self.physical_rows.len();
+            let physical = rows(
+                logical,
+                &line.text,
+                self.wrap_width,
+                self.wrap_indentation,
+                self.is_wrapped_line(logical),
+            )
+            .skip(skip)
+            .take(remaining);
+            self.physical_rows.extend(physical);
+            self.frame.push((logical, line));
+            if self.physical_rows.len() == height {
+                break;
+            }
+        }
+        let focused = self.focused_line_index();
+        if focused < self.visible.len() && !self.frame.iter().any(|(index, _)| *index == focused) {
+            self.frame.push((focused, self.render_line(focused)));
+        }
     }
 
-    /// Return the physical row painted at a document screen offset.
+    fn clamp_wrapped_top(&mut self) {
+        self.refresh_frame();
+        let height = usize::from(self.dimensions.height).max(1);
+        if self.physical_rows.len() < height {
+            let missing = height - self.physical_rows.len();
+            self.set_top(self.walk(self.top_cursor(), missing, false));
+            self.refresh_frame();
+        }
+    }
+
+    fn reset_frame_geometry(&mut self) {
+        self.top_continuation = 0;
+        self.frame.clear();
+        self.physical_generation = self.physical_generation.wrapping_add(1);
+        self.refresh_frame();
+    }
+
+    /// The physical projection contains only the current viewport.
     pub fn screen_row(&self, row: usize) -> Option<&PhysicalRow> {
-        self.physical_rows
-            .get(self.top_physical_row.saturating_add(row))
+        self.physical_rows.get(row)
     }
 
-    /// Whether horizontal scrolling is disabled for this expanded logical line.
     pub fn is_wrapped_line(&self, logical_line: usize) -> bool {
-        self.wrapping_enabled
-            && self
-                .wrapped_lines
-                .get(logical_line)
-                .copied()
-                .unwrap_or(false)
+        self.wrapping_enabled && self.wrap_eligible(logical_line)
     }
 
     /// Update the document geometry used to split rows. Returns whether it
@@ -404,7 +488,7 @@ impl JsonViewer {
         }
         self.wrap_width = width;
         self.wrap_indentation = indentation;
-        self.rebuild_physical_rows();
+        self.reset_frame_geometry();
         self.ensure_visible();
         true
     }
@@ -413,67 +497,58 @@ impl JsonViewer {
     /// line at the top of the viewport.
     pub fn toggle_wrapping(&mut self) {
         self.wrapping_enabled = !self.wrapping_enabled;
-        self.rebuild_physical_rows();
+        self.reset_frame_geometry();
         self.ensure_visible();
     }
 
     /// Reveal a display byte range in the currently focused logical line.
     /// Callers resolve source ranges through the line's mapped spans first.
     pub fn reveal_byte_range(&mut self, range: Range<usize>) {
-        self.focus_byte_range = Some(range.clone());
-        let logical_line = self.focused_line_index();
-        let Some(line) = self.visible.get(logical_line) else {
-            return;
-        };
-        if range.start > line.line.text.len() || range.end > line.line.text.len() {
+        let logical = self.focused_line_index();
+        let line = self.row_text(logical);
+        if range.start > line.text.len() || range.end > line.text.len() {
             return;
         }
-        let target_row = self
-            .physical_rows
-            .iter()
+        let overlaps = |row: &PhysicalRow| {
+            range.start < row.bytes.end && row.bytes.start < range.end
+                || range.start == range.end
+                    && row.bytes.start <= range.start
+                    && range.start <= row.bytes.end
+        };
+        let mut matches = self
+            .row_iter(logical, &line)
             .enumerate()
-            .find(|(_, row)| {
-                row.logical_line == logical_line
-                    && (range.start < row.bytes.end && row.bytes.start < range.end
-                        || range.start == range.end
-                            && row.bytes.start <= range.start
-                            && range.start <= row.bytes.end)
-            })
+            .filter(|(_, row)| overlaps(row))
             .map(|(index, _)| index);
-        let Some(target_row) = target_row else {
+        let Some(first) = matches.next() else {
             return;
         };
-        let last_match_row = self
-            .physical_rows
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, row)| {
-                row.logical_line == logical_line
-                    && (range.start < row.bytes.end && row.bytes.start < range.end
-                        || range.start == range.end
-                            && row.bytes.start <= range.start
-                            && range.start <= row.bytes.end)
-            })
-            .map(|(index, _)| index)
-            .unwrap_or(target_row);
+        let last = matches.last().unwrap_or(first);
+        drop(line);
+        self.focus_byte_range = Some(range);
         let height = usize::from(self.dimensions.height).max(1);
         let padding = usize::from(self.scrolloff_setting).min((height - 1) / 2);
-        let last_top = self.physical_rows.len().saturating_sub(height);
-        if target_row < self.top_physical_row.saturating_add(padding)
-            || last_match_row >= self.top_physical_row + height.saturating_sub(padding)
+        let target = Cursor {
+            logical,
+            continuation: first,
+        };
+        let end = Cursor {
+            logical,
+            continuation: last,
+        };
+        if target < self.walk(self.top_cursor(), padding, true)
+            || end >= self.walk(self.top_cursor(), height.saturating_sub(padding), true)
         {
-            self.top_physical_row = target_row.saturating_sub(padding).min(last_top);
-            let match_height = last_match_row.saturating_sub(target_row).saturating_add(1);
-            if match_height <= height && last_match_row >= self.top_physical_row + height {
-                self.top_physical_row = last_match_row
-                    .saturating_add(1)
-                    .saturating_sub(height)
-                    .min(last_top);
+            let mut top = self.walk(target, padding, false);
+            if last - first < height && end >= self.walk(top, height, true) {
+                top = self.walk(end, height - 1, false);
+            }
+            self.set_top(top);
+            if self.wrapping_enabled {
+                self.clamp_wrapped_top();
             }
         }
-        self.top_visible_line = logical_line;
-        self.sync_top_indices();
+        self.refresh_frame();
     }
 
     pub fn set_viewport(&mut self, dimensions: TTYDimensions, line_numbers: bool) {
@@ -496,47 +571,35 @@ impl JsonViewer {
         expanded_arrays: &HashSet<usize>,
         roots: &[usize],
     ) -> Layout {
-        // Start with the smallest gutter and only grow it: expanding arrays can
-        // increase the number of digits, which can force another array onto lines.
-        let mut number_width = if line_numbers { 3 } else { 0 };
-        loop {
-            let width = usize::from(dimensions.width).saturating_sub(number_width + 2);
-            let mut layout = Layout::for_view_with_roots(flat, width, expanded_arrays, roots);
-            let required = if line_numbers {
-                layout.lines.len().to_string().len().max(2) + 1
-            } else {
-                0
-            };
-            let required_width = usize::from(dimensions.width).saturating_sub(required + 2);
-            if required <= number_width || layout.try_narrow_width(required_width) {
-                return layout;
-            }
-            number_width = required;
-        }
+        Layout::new(
+            flat,
+            roots,
+            usize::from(dimensions.width),
+            line_numbers,
+            expanded_arrays,
+        )
     }
 
     fn rebuild_layout(&mut self) {
         let top_line = self.visible.get(self.top_logical_line());
-        let top_node = top_line.map(|line| line.line.owner);
+        let top_node = top_line.map(|line| line.owner);
         let top_document_body = top_line.is_some_and(|line| {
-            self.is_document_root(line.line.owner)
-                && !self.is_document_header(self.top_logical_line())
+            self.is_document_root(line.owner) && !self.is_document_header(self.top_logical_line())
         });
         let focused_node = self.focused_node;
         let focused_document_body =
             self.is_document_root(focused_node) && !self.focused_document_header();
-        self.layout = Self::layout_for_view(
+        self.layout.reflow(
             &self.flatjson,
-            self.dimensions,
+            usize::from(self.dimensions.width),
             self.line_numbers,
             &self.expanded_arrays,
-            &self.active_roots,
         );
         self.refresh_document_metadata();
         self.refresh_projection();
         self.focus(focused_node);
         if focused_document_body && self.is_document_root(focused_node) {
-            let body = self.layout.nodes[focused_node].body_line;
+            let body = self.layout.node(&self.flatjson, focused_node).body_line;
             if self.visible.iter().any(|line| line.absolute == body) {
                 self.absolute_anchor_line = body;
             }
@@ -544,56 +607,60 @@ impl JsonViewer {
         if let Some(top_node) = top_node {
             let top = self.visible_ancestor(top_node);
             let anchor = if top_document_body && self.is_document_root(top) {
-                self.layout.nodes[top].body_line
+                self.layout.node(&self.flatjson, top).body_line
             } else if self.is_document_root(top) {
                 self.document_header_absolute(top)
             } else {
-                self.layout.nodes[top].line
+                self.layout.node(&self.flatjson, top).line
             };
             if let Some(index) = self.visible.iter().position(|line| line.absolute == anchor) {
                 self.top_visible_line = index;
             }
         }
-        self.rebuild_physical_rows();
+        self.reset_frame_geometry();
         self.layout_generation = self.layout_generation.wrapping_add(1);
     }
 
     pub fn focused_line_index(&self) -> usize {
         self.visible
-            .iter()
-            .position(|v| v.absolute == self.absolute_anchor_line)
+            .binary_search_by_key(&self.absolute_anchor_line, |row| row.absolute)
             .unwrap_or(0)
     }
 
-    /// Physical row containing the focused logical line, preferring its first
-    /// row because logical focus has no continuation coordinate of its own.
-    pub fn focused_physical_row(&self) -> usize {
+    fn focused_cursor(&self) -> Cursor {
         let logical = self.focused_line_index();
+        let line = self.row_text(logical);
         let byte = self
             .focus_byte_range
             .as_ref()
             .map(|range| range.start)
             .or_else(|| {
-                self.visible[logical]
-                    .line
-                    .spans
+                line.spans
                     .iter()
                     .find(|span| span.node == self.focused_node && span.source.is_some())
                     .map(|span| span.range.start)
             });
-        let first = self
-            .physical_rows
-            .partition_point(|row| row.logical_line < logical);
-        byte.and_then(|byte| {
-            self.physical_rows
-                .iter()
-                .enumerate()
-                .skip(first)
-                .take_while(|(_, row)| row.logical_line == logical)
-                .find(|(_, row)| row.bytes.contains(&byte))
-                .map(|(index, _)| index)
-        })
-        .unwrap_or(first)
+        let continuation = byte
+            .and_then(|byte| {
+                self.row_iter(logical, &line)
+                    .position(|row| row.bytes.contains(&byte))
+            })
+            .unwrap_or(0);
+        Cursor {
+            logical,
+            continuation,
+        }
+    }
+
+    pub fn focused_physical_row(&self) -> usize {
+        let cursor = self.focused_cursor();
+        if cursor.logical == self.top_visible_line {
+            return cursor.continuation.saturating_sub(self.top_continuation);
+        }
+        self.physical_rows
+            .iter()
+            .position(|row| row.logical_line == cursor.logical)
+            .map_or(0, |first| first + cursor.continuation)
     }
 
     #[cfg(test)]
@@ -609,14 +676,21 @@ impl JsonViewer {
             return;
         }
         self.focused_node = self.visible_ancestor(requested);
+        self.frame.clear();
         if self.is_document_root(self.focused_node) {
             let header = self.document_header_absolute(self.focused_node);
             let body_anchor = self.flatjson[self.focused_node].is_collapsed()
                 && !self.is_document_root(requested)
                 && !self.is_document_collapsed(self.focused_node)
-                && self.layout.nodes[self.focused_node].body_line != header;
+                && self
+                    .layout
+                    .node(&self.flatjson, self.focused_node)
+                    .body_line
+                    != header;
             self.absolute_anchor_line = if body_anchor {
-                self.layout.nodes[self.focused_node].body_line
+                self.layout
+                    .node(&self.flatjson, self.focused_node)
+                    .body_line
             } else {
                 header
             };
@@ -624,7 +698,7 @@ impl JsonViewer {
                 self.desired_depth = self.flatjson[self.focused_node].depth;
             }
         } else {
-            self.absolute_anchor_line = self.layout.nodes[self.focused_node].line;
+            self.absolute_anchor_line = self.layout.node(&self.flatjson, self.focused_node).line;
         }
     }
 
@@ -649,18 +723,8 @@ impl JsonViewer {
             self.refresh_projection();
         }
         self.focus(node);
-        if let Some(source) = source {
-            if let Some((line, _)) = self.layout.lines.iter().enumerate().find(|(_, line)| {
-                line.spans.iter().any(|span| {
-                    span.node == node
-                        && span
-                            .source
-                            .as_ref()
-                            .is_some_and(|range| range.contains(&source))
-                })
-            }) {
-                self.absolute_anchor_line = line;
-            }
+        if source.is_some() {
+            self.absolute_anchor_line = self.layout.source_line(&self.flatjson, node, source);
         }
     }
 
@@ -691,26 +755,21 @@ impl JsonViewer {
                 self.top_visible_line
                     .min(self.visible.len().saturating_sub(1))
             });
-        self.rebuild_physical_rows();
+        self.reset_frame_geometry();
         self.layout_generation = self.layout_generation.wrapping_add(1);
     }
 
     fn ensure_visible(&mut self) {
         if self.wrapping_enabled {
-            let index = self.focused_physical_row();
+            let cursor = self.focused_cursor();
             let height = usize::from(self.dimensions.height).max(1);
-            let last_top = self.physical_rows.len().saturating_sub(height);
-            self.top_physical_row = self.top_physical_row.min(last_top);
             let padding = usize::from(self.scrolloff_setting).min((height - 1) / 2);
-            if index < self.top_physical_row.saturating_add(padding) {
-                self.top_physical_row = index.saturating_sub(padding);
-            } else if index >= self.top_physical_row + height.saturating_sub(padding) {
-                self.top_physical_row = index
-                    .saturating_add(padding + 1)
-                    .saturating_sub(height)
-                    .min(last_top);
+            if cursor < self.walk(self.top_cursor(), padding, true) {
+                self.set_top(self.walk(cursor, padding, false));
+            } else if cursor >= self.walk(self.top_cursor(), height.saturating_sub(padding), true) {
+                self.set_top(self.walk(cursor, height.saturating_sub(padding + 1), false));
             }
-            self.sync_top_indices();
+            self.clamp_wrapped_top();
             return;
         }
         let index = self.focused_line_index();
@@ -723,7 +782,7 @@ impl JsonViewer {
                 .saturating_sub(height)
                 .min(self.visible.len().saturating_sub(height));
         }
-        self.sync_top_indices();
+        self.refresh_frame();
     }
 
     fn vertical(&mut self, count: usize, down: bool) {
@@ -741,11 +800,14 @@ impl JsonViewer {
     }
 
     fn focus_line(&mut self, index: usize, retain_field: bool) {
-        let owner = self.visible[index].line.owner;
+        let owner = self.visible[index].owner;
         let mut node = owner;
         if retain_field
-            && self.layout.nodes[self.focused_node].table_cell
-            && self.layout.nodes[owner].table_row
+            && self
+                .layout
+                .node(&self.flatjson, self.focused_node)
+                .table_cell
+            && self.layout.node(&self.flatjson, owner).table_row
         {
             // Match the logical column ordinal, including escaped-equivalent keys.
             if let OptionIndex::Index(parent) = self.effective_parent(self.focused_node) {
@@ -766,7 +828,9 @@ impl JsonViewer {
                         }
                     }
                     if let OptionIndex::Index(candidate) = child {
-                        if self.layout.nodes[candidate].line == self.visible[index].absolute {
+                        if self.layout.node(&self.flatjson, candidate).line
+                            == self.visible[index].absolute
+                        {
                             node = candidate;
                         }
                     }
@@ -914,7 +978,7 @@ impl JsonViewer {
             } else {
                 self.document_collapsed.remove(&node);
             }
-        } else if self.layout.nodes[node].collapsible {
+        } else if self.layout.node(&self.flatjson, node).collapsible {
             if collapsed {
                 self.flatjson.collapse(node);
             } else {
@@ -927,7 +991,7 @@ impl JsonViewer {
         if self.is_document_root(node) && self.focused_document_header() {
             self.collapse(node, !self.is_document_collapsed(node));
             self.refresh_projection();
-        } else if self.layout.nodes[node].inline_array {
+        } else if self.layout.node(&self.flatjson, node).inline_array {
             self.flatjson.expand(node);
             self.expanded_arrays.insert(node);
             self.rebuild_layout();
@@ -975,7 +1039,7 @@ impl JsonViewer {
             if deep
                 && self.is_document_root(current)
                 && self.flatjson[current].is_array()
-                && self.layout.nodes[current].entry_count > 0
+                && self.layout.node(&self.flatjson, current).entry_count > 0
             {
                 if collapsed {
                     self.flatjson.collapse(current);
@@ -998,40 +1062,19 @@ impl JsonViewer {
 
     fn scroll(&mut self, count: usize, down: bool) {
         if self.wrapping_enabled {
-            let height = usize::from(self.dimensions.height).max(1);
-            let last_top = self.physical_rows.len().saturating_sub(height);
-            self.top_physical_row = if down {
-                self.top_physical_row.saturating_add(count).min(last_top)
-            } else {
-                self.top_physical_row.saturating_sub(count)
-            };
+            self.set_top(self.walk(self.top_cursor(), count, down));
+            self.clamp_wrapped_top();
             let focused = self.focused_line_index();
-            let focused_first = self
+            if !self
                 .physical_rows
-                .partition_point(|row| row.logical_line < focused);
-            let focused_end = self
-                .physical_rows
-                .partition_point(|row| row.logical_line <= focused);
-            let focused_last = focused_end.saturating_sub(1);
-            if focused_last < self.top_physical_row
-                || focused_first >= self.top_physical_row.saturating_add(height)
+                .iter()
+                .any(|row| row.logical_line == focused)
             {
-                let target = self
-                    .physical_rows
-                    .iter()
-                    .enumerate()
-                    .skip(self.top_physical_row)
-                    .take(height)
-                    .find(|(_, row)| {
-                        self.visible.get(row.logical_line).is_some_and(|line| {
-                            !line.line.separator || self.is_document_header(row.logical_line)
-                        })
-                    })
-                    .map(|(index, _)| index)
-                    .unwrap_or(self.top_physical_row);
-                self.focus_line(self.physical_rows[target].logical_line, true);
+                if let Some(row) = self.physical_rows.first() {
+                    self.focus_line(row.logical_line, true);
+                }
             }
-            self.sync_top_indices();
+            self.refresh_frame();
             return;
         }
         self.top_visible_line = if down {
@@ -1083,50 +1126,24 @@ impl JsonViewer {
 
     fn jump(&mut self, distance: usize, down: bool) {
         if self.wrapping_enabled {
-            let previous_top = self.top_physical_row;
-            let screen_index = self.focused_physical_row().saturating_sub(previous_top);
-            let height = usize::from(self.dimensions.height).max(1);
-            let last_top = self.physical_rows.len().saturating_sub(height);
+            let previous_top = self.top_cursor();
+            let screen_index = self.focused_physical_row();
+            self.set_top(self.walk(previous_top, distance, down));
+            self.clamp_wrapped_top();
             let focused = self.focused_line_index();
-            let focused_first = self
+            if !self
                 .physical_rows
-                .partition_point(|row| row.logical_line < focused);
-            let focused_end = self
-                .physical_rows
-                .partition_point(|row| row.logical_line <= focused);
-            let focused_last = focused_end.saturating_sub(1);
-            self.top_physical_row = if down {
-                previous_top
-                    .saturating_add(distance)
-                    .min(last_top)
-                    .max(previous_top)
-            } else {
-                previous_top.saturating_sub(distance)
-            };
-            let focused_visible = focused_last >= self.top_physical_row
-                && focused_first < self.top_physical_row.saturating_add(height);
-            if !focused_visible {
-                if self.top_physical_row == previous_top {
+                .iter()
+                .any(|row| row.logical_line == focused)
+            {
+                if self.top_cursor() == previous_top {
                     self.vertical(distance, down);
                 } else {
-                    let viewport_end = self
-                        .top_physical_row
-                        .saturating_add(height)
-                        .min(self.physical_rows.len());
-                    let index =
-                        (self.top_physical_row + screen_index).min(viewport_end.saturating_sub(1));
-                    let index = (index..viewport_end)
-                        .find(|&i| self.is_navigable_line(self.physical_rows[i].logical_line))
-                        .or_else(|| {
-                            (self.top_physical_row..index).rev().find(|&i| {
-                                self.is_navigable_line(self.physical_rows[i].logical_line)
-                            })
-                        })
-                        .unwrap_or(index);
+                    let index = screen_index.min(self.physical_rows.len().saturating_sub(1));
                     self.focus_line(self.physical_rows[index].logical_line, true);
                 }
             }
-            self.sync_top_indices();
+            self.refresh_frame();
             return;
         }
         let previous_top = self.top_visible_line;
@@ -1169,12 +1186,21 @@ impl JsonViewer {
                         if body_collapsed {
                             self.flatjson.expand(self.focused_node);
                         }
-                        if body_collapsed && self.layout.nodes[self.focused_node].inline_array {
+                        if body_collapsed
+                            && self
+                                .layout
+                                .node(&self.flatjson, self.focused_node)
+                                .inline_array
+                        {
                             self.expanded_arrays.insert(self.focused_node);
                             self.rebuild_layout();
                         } else if body_collapsed {
                             self.refresh_projection();
-                        } else if self.layout.nodes[self.focused_node].inline_array {
+                        } else if self
+                            .layout
+                            .node(&self.flatjson, self.focused_node)
+                            .inline_array
+                        {
                             self.expanded_arrays.insert(self.focused_node);
                             self.rebuild_layout();
                         }
@@ -1182,13 +1208,21 @@ impl JsonViewer {
                     }
                 } else if self.flatjson[self.focused_node].is_collapsed() {
                     self.collapse(self.focused_node, false);
-                    if self.layout.nodes[self.focused_node].inline_array {
+                    if self
+                        .layout
+                        .node(&self.flatjson, self.focused_node)
+                        .inline_array
+                    {
                         self.expanded_arrays.insert(self.focused_node);
                         self.rebuild_layout();
                     } else {
                         self.refresh_projection();
                     }
-                } else if self.layout.nodes[self.focused_node].inline_array {
+                } else if self
+                    .layout
+                    .node(&self.flatjson, self.focused_node)
+                    .inline_array
+                {
                     self.expanded_arrays.insert(self.focused_node);
                     self.rebuild_layout();
                 } else if let OptionIndex::Index(child) =
@@ -1204,7 +1238,10 @@ impl JsonViewer {
                         self.refresh_projection();
                     }
                 } else if self.line_is_collapsible(self.focused_line_index())
-                    && self.layout.nodes[self.focused_node].collapsible
+                    && self
+                        .layout
+                        .node(&self.flatjson, self.focused_node)
+                        .collapsible
                     && self.flatjson[self.focused_node].is_expanded()
                 {
                     self.collapse(self.focused_node, true);
@@ -1264,7 +1301,7 @@ impl JsonViewer {
                     self.desired_depth = self.flatjson[root].depth;
                 }
                 self.top_visible_line = 0;
-                self.top_physical_row = 0;
+                self.top_continuation = 0;
             }
             Action::FocusBottom => {
                 self.focus_line(self.visible.len() - 1, false);
@@ -1273,8 +1310,8 @@ impl JsonViewer {
                 self.move_until_depth_change(matches!(action, Action::MoveDownUntilDepthChange));
             }
             Action::JumpTo { line, make_visible } => {
-                let line = line.min(self.layout.lines.len() - 1);
-                let node = self.layout.lines[line].owner;
+                let line = line.min(self.layout.rows().len() - 1);
+                let node = self.layout.rows()[line].owner;
                 if make_visible {
                     let visible_index = self
                         .visible
@@ -1348,11 +1385,8 @@ impl JsonViewer {
                     _ => height - 1,
                 };
                 if self.wrapping_enabled {
-                    self.top_physical_row = self
-                        .focused_physical_row()
-                        .saturating_sub(padding)
-                        .min(self.physical_rows.len().saturating_sub(height));
-                    self.sync_top_indices();
+                    self.set_top(self.walk(self.focused_cursor(), padding, false));
+                    self.clamp_wrapped_top();
                 } else {
                     self.top_visible_line = self.focused_line_index().saturating_sub(padding);
                 }
@@ -1371,7 +1405,7 @@ impl JsonViewer {
                 let is_header = self.is_document_header(physical.logical_line);
                 let node = self
                     .document_root_for_line(physical.logical_line)
-                    .unwrap_or(self.visible[physical.logical_line].line.owner);
+                    .unwrap_or(self.visible[physical.logical_line].owner);
                 if is_header {
                     self.focus(node);
                 } else {
@@ -1406,8 +1440,9 @@ impl JsonViewer {
         }
         if track {
             self.ensure_visible();
+        } else {
+            self.refresh_frame();
         }
-        self.sync_top_indices();
     }
 }
 
@@ -1571,7 +1606,7 @@ mod tests {
         let mut v = viewer("[1,2] {\"tail\":3}");
         let roots = v.document_roots().to_vec();
         let first = roots[0];
-        assert!(v.layout.nodes[first].inline_array);
+        assert!(v.layout.node(&v.flatjson, first).inline_array);
 
         // Expanding the root array's body is separate from collapsing its
         // sequence row and must not change the document state.
@@ -1589,7 +1624,8 @@ mod tests {
         assert!(!v.flatjson[first].is_collapsed());
         assert!(!v.focused_document_header());
         assert_eq!(
-            v.absolute_anchor_line, v.layout.nodes[first].body_line,
+            v.absolute_anchor_line,
+            v.layout.node(&v.flatjson, first).body_line,
             "reopening a root array body preserves its body anchor"
         );
         v.perform_action(Action::FocusTop);
@@ -1627,7 +1663,8 @@ mod tests {
         assert_eq!(v.focused_node, second);
         assert!(!v.focused_document_header());
         assert_eq!(
-            v.absolute_anchor_line, v.layout.nodes[second].body_line,
+            v.absolute_anchor_line,
+            v.layout.node(&v.flatjson, second).body_line,
             "resizing preserves a scalar root body anchor"
         );
     }
@@ -1782,19 +1819,19 @@ mod tests {
     fn inline_array_controls_expand_and_table_rows_do_not_collapse() {
         for action in [Action::ToggleCollapsed, Action::ClickArrow(1)] {
             let mut v = viewer("[1,2]");
-            assert!(v.layout.nodes[0].inline_array);
+            assert!(v.layout.node(&v.flatjson, 0).inline_array);
             v.perform_action(action);
-            assert!(!v.layout.nodes[0].inline_array);
+            assert!(!v.layout.node(&v.flatjson, 0).inline_array);
             assert!(v.flatjson[0].is_expanded());
         }
         let mut v = viewer(r#"[{"a":1},{"a":2}]"#);
         v.perform_action(Action::MoveRight);
         let row = v.focused_node;
-        let original = v.visible[v.focused_line_index()].line.text.clone();
+        let original = v.render_line(v.focused_line_index()).text;
         v.perform_action(Action::ToggleCollapsed);
-        assert!(!v.layout.nodes[row].collapsible);
+        assert!(!v.layout.node(&v.flatjson, row).collapsible);
         assert!(v.flatjson[row].is_expanded());
-        assert_eq!(v.visible[v.focused_line_index()].line.text, original);
+        assert_eq!(v.render_line(v.focused_line_index()).text, original);
         v.perform_action(Action::FocusParent);
         v.perform_action(Action::ToggleCollapsed);
         assert!(v.flatjson[0].is_collapsed());
@@ -1807,9 +1844,8 @@ mod tests {
         v.perform_action(Action::MoveRight);
         assert_eq!(v.focused_node, 0);
         assert_eq!(
-            v.visible
-                .iter()
-                .map(|line| line.line.text.as_str())
+            (0..v.visible.len())
+                .map(|line| v.render_line(line).text)
                 .collect::<Vec<_>>(),
             vec!["[2]:", "  - 1", "  - 2"]
         );
@@ -1822,7 +1858,7 @@ mod tests {
         assert_eq!(viewer("[1,2,3,4,5]").visible.len(), 1);
         let v = viewer("[1,2,3,4,5,6]");
         assert_eq!(v.visible.len(), 7);
-        assert_eq!(v.visible[6].line.text, "  - 6");
+        assert_eq!(v.render_line(6).text, "  - 6");
     }
 
     #[test]
@@ -1841,7 +1877,9 @@ mod tests {
                 numbers,
                 false,
             );
-            let lines: Vec<_> = v.visible.iter().map(|row| row.line.text.as_str()).collect();
+            let lines: Vec<_> = (0..v.visible.len())
+                .map(|line| v.render_line(line).text)
+                .collect();
             let expected = if inline {
                 vec!["tags[2]: 界,é"]
             } else {
@@ -1865,7 +1903,7 @@ mod tests {
             height: 24,
         }));
         assert_eq!(v.visible.len(), 3);
-        assert_eq!(v.visible[1].line.text, "  - 界");
+        assert_eq!(v.render_line(1).text, "  - 界");
         v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
             width: 18,
             height: 24,
@@ -1881,11 +1919,11 @@ mod tests {
             &[Action::MoveRight, Action::MoveRight, Action::MoveRight],
         );
         assert_eq!(path(&v), ".box.tags");
-        assert_eq!(v.visible[2].line.text, "    - rust");
+        assert_eq!(v.render_line(2).text, "    - rust");
         let array = v.focused_node;
         act(&mut v, &[Action::MoveLeft, Action::MoveRight]);
         assert_eq!(v.focused_node, array);
-        assert!(!v.layout.nodes[array].inline_array);
+        assert!(!v.layout.node(&v.flatjson, array).inline_array);
         let child = v.flatjson[array].first_child().unwrap();
         let second = v.flatjson[child].next_sibling.unwrap();
         v.perform_action(Action::MoveLeft);
@@ -1894,7 +1932,7 @@ mod tests {
             source: Some(v.flatjson[second].range.start),
         });
         assert_eq!(path(&v), ".box.tags[1]");
-        assert_eq!(v.visible[v.focused_line_index()].line.text, "    - cli");
+        assert_eq!(v.render_line(v.focused_line_index()).text, "    - cli");
         v.set_viewport(
             TTYDimensions {
                 width: 200,
@@ -1903,7 +1941,7 @@ mod tests {
             false,
         );
         assert_eq!(v.focused_node, second);
-        assert!(!v.layout.nodes[array].inline_array);
+        assert!(!v.layout.node(&v.flatjson, array).inline_array);
         assert_eq!(&v.flatjson.1[v.flatjson[second].range.clone()], "\"cli\"");
     }
 
@@ -1923,8 +1961,8 @@ mod tests {
             true,
             false,
         );
-        assert!(v.layout.lines.len() > 99);
-        assert_eq!(v.visible.last().unwrap().line.text, "  - é");
+        assert!(v.layout.rows().len() > 99);
+        assert_eq!(v.render_line(v.visible.len() - 1).text, "  - é");
         v.set_viewport(
             TTYDimensions {
                 width: 18,
@@ -1932,7 +1970,7 @@ mod tests {
             },
             false,
         );
-        assert_eq!(v.visible.last().unwrap().line.text, "tags[2]: 界,é");
+        assert_eq!(v.render_line(v.visible.len() - 1).text, "tags[2]: 界,é");
         v.set_viewport(
             TTYDimensions {
                 width: 19,
@@ -1940,7 +1978,7 @@ mod tests {
             },
             true,
         );
-        assert_eq!(v.visible.last().unwrap().line.text, "tags[2]: 界,é");
+        assert_eq!(v.render_line(v.visible.len() - 1).text, "tags[2]: 界,é");
     }
 
     #[test]
@@ -1956,17 +1994,11 @@ mod tests {
         );
         assert_eq!(v.visible.len(), 3);
         assert_eq!(
-            v.visible[1].line.text,
+            v.render_line(1).text,
             "  - .inf  # WARN Non-finite number at [0]"
         );
-        assert_eq!(v.layout.warnings.len(), 1);
         v.perform_action(Action::MoveLeft);
-        assert!(
-            v.visible[0]
-                .line
-                .text
-                .contains("Contains 1 hidden warnings")
-        );
+        assert!(v.render_line(0).text.contains("Contains 1 hidden warnings"));
     }
 
     #[test]
@@ -2065,7 +2097,10 @@ mod tests {
         });
         v.perform_action(Action::FocusNextAtParentLevel);
         assert_eq!(path(&v), ".c");
-        assert_eq!(v.absolute_anchor_line, v.layout.nodes[v.focused_node].line);
+        assert_eq!(
+            v.absolute_anchor_line,
+            v.layout.node(&v.flatjson, v.focused_node).line
+        );
     }
 
     #[test]
@@ -2217,14 +2252,20 @@ mod tests {
         v.perform_action(Action::ToggleCollapsed);
         assert!(v.flatjson[root].is_collapsed());
 
-        let child_line = v.layout.nodes[v.flatjson[root].first_child().as_usize()].line;
+        let child_line = v
+            .layout
+            .node(&v.flatjson, v.flatjson[root].first_child().as_usize())
+            .line;
         v.perform_action(Action::JumpTo {
             line: child_line,
             make_visible: false,
         });
         assert_eq!(v.focused_node, root);
         assert!(!v.focused_document_header());
-        assert_eq!(v.absolute_anchor_line, v.layout.nodes[root].body_line);
+        assert_eq!(
+            v.absolute_anchor_line,
+            v.layout.node(&v.flatjson, root).body_line
+        );
     }
 
     #[test]
@@ -2257,7 +2298,7 @@ mod tests {
         );
         assert_eq!(empty.focused_node, 0);
         assert_eq!(empty.visible.len(), 1);
-        assert!(empty.visible[0].line.text.is_empty());
+        assert!(empty.render_line(0).text.is_empty());
     }
 
     #[test]
@@ -2265,13 +2306,10 @@ mod tests {
         let mut v = viewer(r#"["界","é",3]"#);
         let child = v.flatjson[0].first_child().unwrap();
         let second = v.flatjson[child].next_sibling.unwrap();
-        let span = v.layout.lines[0]
-            .spans
-            .iter()
-            .find(|span| span.node == second)
-            .unwrap();
-        let col = UnicodeWidthStr::width(&v.layout.lines[0].text[..span.range.start]);
-        let (node, source) = crate::lineprinter::hit_test(&v.visible[0].line, col);
+        let line = v.render_line(0);
+        let span = line.spans.iter().find(|span| span.node == second).unwrap();
+        let col = UnicodeWidthStr::width(&line.text[..span.range.start]);
+        let (node, source) = crate::lineprinter::hit_test(&line, col);
         v.perform_action(Action::FocusNode { node, source });
         assert_eq!(v.focused_node, second);
         v.perform_action(Action::ResizeViewerDimensions(TTYDimensions {
@@ -2458,7 +2496,7 @@ mod tests {
             v.focused_node, long,
             "scrolling inside a tall value retains focus"
         );
-        assert!(v.top_physical_row > 0);
+        assert!(v.top_continuation > 0);
         v.perform_action(Action::MoveDown(1));
         assert_eq!(path(&v), ".next");
         v.perform_action(Action::MoveUp(1));
@@ -2479,8 +2517,8 @@ mod tests {
         v.toggle_wrapping();
         v.perform_action(Action::MoveRight);
         let node = v.focused_node;
-        let span = v.visible[v.focused_line_index()]
-            .line
+        let line = v.render_line(v.focused_line_index());
+        let span = line
             .spans
             .iter()
             .find(|span| span.node == node && span.source.is_some())
@@ -2495,8 +2533,7 @@ mod tests {
                 .any(|(index, row)| row.logical_line == v.focused_line_index()
                     && row.bytes.start <= display.start
                     && display.start < row.bytes.end
-                    && index >= v.top_physical_row
-                    && index < v.top_physical_row + usize::from(v.dimensions.height).max(1))
+                    && index < usize::from(v.dimensions.height).max(1))
         );
         v.set_wrap_geometry(4, 0);
         assert_eq!(v.focused_node, node);
@@ -2546,11 +2583,11 @@ mod tests {
         v.toggle_wrapping();
         v.reveal_byte_range(55..60);
         v.perform_action(Action::MoveFocusedLineToTop);
-        assert_eq!(v.top_physical_row, 5);
+        assert_eq!(v.screen_row(0).unwrap().bytes.start, 50);
         v.perform_action(Action::MoveFocusedLineToCenter);
-        assert_eq!(v.top_physical_row, 2);
+        assert_eq!(v.screen_row(0).unwrap().bytes.start, 20);
         v.perform_action(Action::MoveFocusedLineToBottom);
-        assert_eq!(v.top_physical_row, 0);
+        assert_eq!(v.screen_row(0).unwrap().bytes.start, 0);
         assert_eq!(v.focused_node, 0);
     }
 
@@ -2600,11 +2637,13 @@ mod tests {
 
         v.set_wrap_geometry(200, 0);
 
-        let last_top = v
-            .physical_rows
-            .len()
-            .saturating_sub(usize::from(v.dimensions.height).max(1));
-        assert!(v.top_physical_row <= last_top);
+        assert_eq!(
+            v.top_cursor(),
+            Cursor {
+                logical: 0,
+                continuation: 0
+            }
+        );
     }
 
     #[test]
@@ -2623,7 +2662,13 @@ mod tests {
         v.set_wrap_geometry(8, 0);
         v.toggle_wrapping();
         v.perform_action(Action::FocusBottom);
-        assert!(v.top_physical_row > 0);
+        assert!(
+            v.top_cursor()
+                > Cursor {
+                    logical: 0,
+                    continuation: 0
+                }
+        );
 
         v.set_viewport(
             TTYDimensions {
@@ -2633,11 +2678,13 @@ mod tests {
             true,
         );
 
-        let last_top = v
-            .physical_rows
-            .len()
-            .saturating_sub(usize::from(v.dimensions.height).max(1));
-        assert!(v.top_physical_row <= last_top);
+        assert_eq!(
+            v.top_cursor(),
+            Cursor {
+                logical: 0,
+                continuation: 0
+            }
+        );
     }
 
     #[test]
@@ -2657,16 +2704,16 @@ mod tests {
 
         let box_node = v.flatjson[0].first_child().unwrap();
         let tail_node = v.flatjson[box_node].next_sibling.unwrap();
-        let tail_absolute = v.layout.nodes[tail_node].line;
+        let tail_absolute = v.layout.node(&v.flatjson, tail_node).line;
         let tail_line = v
             .visible
             .iter()
             .position(|line| line.absolute == tail_absolute)
             .unwrap();
-        v.top_visible_line = tail_line;
-        v.top_physical_row = v
-            .physical_rows
-            .partition_point(|row| row.logical_line < tail_line);
+        v.set_top(Cursor {
+            logical: tail_line,
+            continuation: 0,
+        });
         v.collapse(box_node, true);
         v.refresh_projection();
 
@@ -2677,7 +2724,7 @@ mod tests {
     fn projection_reflow_preserves_a_sequence_body_at_the_top() {
         let mut v = viewer("1 2");
         let root = v.document_roots()[0];
-        let body = v.layout.nodes[root].body_line;
+        let body = v.layout.node(&v.flatjson, root).body_line;
         v.top_visible_line = v
             .visible
             .iter()
@@ -2704,15 +2751,14 @@ mod tests {
         );
         v.set_wrap_geometry(8, 0);
         v.toggle_wrapping();
-        let (target_index, target) = v
+        let target = v
             .physical_rows
             .iter()
-            .enumerate()
             .rev()
-            .find(|(_, row)| !row.first)
-            .map(|(index, row)| (index, row.clone()))
-            .unwrap();
-        let line = &v.visible[target.logical_line].line;
+            .find(|row| !row.first)
+            .unwrap()
+            .clone();
+        let line = v.rendered_line(target.logical_line);
         let (node, source) = crate::lineprinter::hit_test_wrapped(line, &target, 0);
         v.perform_action(Action::FocusNodeAt {
             node,
@@ -2720,8 +2766,11 @@ mod tests {
             display_range: (target.bytes.start, target.bytes.end),
         });
 
-        assert!(target_index >= v.top_physical_row);
-        assert!(target_index < v.top_physical_row + usize::from(v.dimensions.height).max(1));
+        assert!(
+            v.physical_rows
+                .iter()
+                .any(|row| row.logical_line == target.logical_line && row.bytes == target.bytes)
+        );
     }
 
     #[test]
@@ -2743,53 +2792,21 @@ mod tests {
         let long_node = v.flatjson[0].first_child().unwrap();
         let container_node = v.flatjson[long_node].next_sibling.unwrap();
         v.focus(container_node);
-        v.top_physical_row = 0;
-        v.sync_top_indices();
+        v.set_top(Cursor {
+            logical: 0,
+            continuation: 0,
+        });
+        v.refresh_frame();
 
         v.set_wrap_geometry(4, 0);
 
         let height = usize::from(v.dimensions.height).max(1);
-        assert!(v.focused_physical_row() >= v.top_physical_row);
-        assert!(v.focused_physical_row() < v.top_physical_row + height);
-    }
-
-    #[test]
-    fn direct_unwrapped_reflows_keep_viewport_indices_synchronized() {
-        let input = format!(
-            "{{{}}}",
-            (0..20)
-                .map(|i| format!("\"key{i}\":{i}"))
-                .collect::<Vec<_>>()
-                .join(",")
+        assert!(
+            v.physical_rows
+                .iter()
+                .any(|row| row.logical_line == v.focused_line_index())
         );
-        let mut v = viewer(&input);
-        v.set_viewport(
-            TTYDimensions {
-                width: 20,
-                height: 4,
-            },
-            true,
-        );
-        let last_owner = v.visible.last().unwrap().line.owner;
-        v.focus(last_owner);
-        v.top_visible_line = 0;
-        v.top_physical_row = 0;
-        v.set_wrap_geometry(8, 2);
-        assert_eq!(
-            v.top_physical_row,
-            v.top_visible_line
-                .min(v.physical_rows.len().saturating_sub(1))
-        );
-
-        v.toggle_wrapping();
-        v.top_visible_line = 0;
-        v.top_physical_row = 0;
-        v.toggle_wrapping();
-        assert_eq!(
-            v.top_physical_row,
-            v.top_visible_line
-                .min(v.physical_rows.len().saturating_sub(1))
-        );
+        assert!(v.focused_physical_row() < height);
     }
 
     fn wrapped_table_viewer() -> JsonViewer {
@@ -2820,7 +2837,13 @@ mod tests {
 
         v.perform_action(Action::JumpDown(Some(1)));
         assert_eq!(v.focused_node, long);
-        assert!(v.top_physical_row > 0);
+        assert!(
+            v.top_cursor()
+                > Cursor {
+                    logical: 0,
+                    continuation: 0
+                }
+        );
 
         v.perform_action(Action::JumpDown(Some(2)));
         assert_eq!(v.focused_node, long);
@@ -2848,17 +2871,17 @@ mod tests {
         assert_ne!(v.focused_node, long);
         assert!(v.focused_line_index() > long_line);
 
-        let last_top = v
-            .physical_rows
-            .len()
-            .saturating_sub(usize::from(v.dimensions.height).max(1));
-        while v.top_physical_row < last_top {
+        for _ in 0..64 {
+            let previous = v.top_cursor();
             v.perform_action(Action::JumpDown(Some(1)));
+            if v.top_cursor() == previous {
+                break;
+            }
         }
-        let lower_boundary_top = v.top_physical_row;
+        let lower_boundary_top = v.top_cursor();
         let lower_boundary_node = v.focused_node;
         v.perform_action(Action::JumpDown(Some(1)));
-        assert_eq!(v.top_physical_row, lower_boundary_top);
+        assert_eq!(v.top_cursor(), lower_boundary_top);
         assert_eq!(v.focused_node, lower_boundary_node);
 
         let mut v = wrapped_table_viewer();
@@ -2877,10 +2900,10 @@ mod tests {
         assert_ne!(v.focused_node, long);
         assert!(v.focused_line_index() < long_line);
 
-        let upper_boundary_top = v.top_physical_row;
+        let upper_boundary_top = v.top_cursor();
         let upper_boundary_node = v.focused_node;
         v.perform_action(Action::JumpUp(Some(1)));
-        assert_eq!(v.top_physical_row, upper_boundary_top);
+        assert_eq!(v.top_cursor(), upper_boundary_top);
         assert_eq!(v.focused_node, upper_boundary_node);
     }
     #[test]
@@ -2892,9 +2915,8 @@ mod tests {
         assert!(!v.contains_node(0));
         assert!(v.contains_node(outer));
         assert_eq!(
-            v.visible
-                .iter()
-                .map(|line| line.line.text.as_str())
+            (0..v.visible.len())
+                .map(|line| v.render_line(line).text)
                 .collect::<Vec<_>>(),
             vec!["kept: 1"]
         );
@@ -2915,7 +2937,7 @@ mod tests {
         v.set_roots(vec![0]);
         assert_eq!(v.active_roots(), &[0]);
         assert!(v.contains_node(0));
-        assert!(v.visible.iter().any(|line| line.line.text.contains("tail")));
+        assert!((0..v.visible.len()).any(|line| v.render_line(line).text.contains("tail")));
     }
 
     #[test]
@@ -2928,7 +2950,7 @@ mod tests {
         let (first, second) = (roots[0], roots[1]);
         v.set_roots(roots);
         assert_eq!(v.active_roots(), &[first, second]);
-        assert_eq!(v.visible[0].line.text, "--- (1 of 2)");
+        assert_eq!(v.render_line(0).text, "--- (1 of 2)");
         v.perform_action(Action::MoveRight);
         assert_eq!(v.focused_node, v.flatjson[first].first_child().unwrap());
         v.perform_action(Action::FocusNextAtParentLevel);
@@ -2940,5 +2962,298 @@ mod tests {
         v.perform_action(Action::FocusNextSibling(1));
         assert_eq!(v.focused_node, second);
         assert!(!v.contains_node(0));
+    }
+
+    #[test]
+    fn offscreen_final_records_control_table_eligibility_and_warning_totals() {
+        let prefix = vec![r#"{"a":1,"b":2}"#; 64].join(",");
+        for (last, header) in [
+            (r#"{"a":3,"b":4}"#, "[65]{a,b}:"),
+            (r#"{"a":3}"#, "[65]:"),
+            (r#"{"b":4,"a":3}"#, "[65]:"),
+            (r#"{"a":3,"b":{"nested":4}}"#, "[65]:"),
+            (r#"{"a":3,"\u0061":4}"#, "[65]:"),
+        ] {
+            let mut v = viewer(&format!("[{prefix},{last}]"));
+            assert_eq!(v.rendered_line(0).text, header);
+            if last.contains("\\u0061") {
+                v.perform_action(Action::ToggleCollapsed);
+                assert!(
+                    v.rendered_line(0)
+                        .text
+                        .contains("Contains 2 hidden warnings")
+                );
+            }
+        }
+        let mut v = viewer(r#"{"box":{"\u0001":"\u0001"}}"#);
+        v.perform_action(Action::MoveRight);
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(
+            v.rendered_line(0)
+                .text
+                .contains("Contains 2 hidden warnings")
+        );
+    }
+
+    #[test]
+    fn viewport_work_and_retention_do_not_scale_with_tails_or_visited_rows() {
+        const HEIGHT: usize = 8;
+        let mut initial_work = None;
+        for count in [64, 4096] {
+            let input = format!(
+                r#"{{"records":[{}]}}"#,
+                vec![r#"{"id":0,"nested":{"ok":true,"label":"record"},"values":[1,2,3]}"#; count]
+                    .join(",")
+            );
+            let flat = parse_top_level_json(input).unwrap();
+            let before = Layout::formatted_rows();
+            let mut v = JsonViewer::with_roots(
+                flat,
+                vec![0],
+                TTYDimensions {
+                    width: 80,
+                    height: HEIGHT as u16,
+                },
+                true,
+                false,
+            );
+            let work = Layout::formatted_rows() - before;
+            assert!(work <= HEIGHT + 1, "startup formatted {work} rows");
+            if let Some(expected) = initial_work {
+                assert_eq!(work, expected);
+            }
+            initial_work = Some(work);
+            for visit in 0..32 {
+                let last = v.layout.rows().len() - 1;
+                let line = [last, 0, last / 2, last / 3][visit % 4];
+                let node = v.layout.rows()[line].owner;
+                let before = Layout::formatted_rows();
+                v.perform_action(Action::FocusNode { node, source: None });
+                let work = Layout::formatted_rows() - before;
+                assert!(
+                    work <= 4 * (HEIGHT + 1),
+                    "distant navigation formatted {work} rows"
+                );
+                assert_eq!(v.focused_node, node);
+                assert!(v.frame.len() <= HEIGHT + 1);
+                assert!(v.physical_rows.len() <= HEIGHT);
+                let spans: usize = v.frame.iter().map(|(_, line)| line.spans.len()).sum();
+                let maps: usize = v
+                    .frame
+                    .iter()
+                    .flat_map(|(_, line)| &line.spans)
+                    .map(|span| span.source_map.len())
+                    .sum();
+                assert!(spans <= 16 * (HEIGHT + 1));
+                assert!(maps <= 8 * (HEIGHT + 1));
+            }
+            v.toggle_wrapping();
+            let before = Layout::formatted_rows();
+            v.perform_action(Action::FocusBottom);
+            assert!(Layout::formatted_rows() - before <= 6 * (HEIGHT + 1));
+            assert_eq!(v.focused_line_index(), v.visible.len() - 1);
+        }
+    }
+
+    #[test]
+    fn distant_escaped_table_key_highlights_shared_header_without_alias_fanout() {
+        use crate::lineprinter::{LineViewport, paint};
+        use crate::terminal::Terminal;
+        use crate::terminal::test::VisibleEscapesTerminal;
+        let input = format!(
+            "[{},{{\"\\u006eeedle\":9}}]",
+            vec![r#"{"needle":0}"#; 1000].join(",")
+        );
+        let mut v = viewer(&input);
+        let last_row = v.flatjson[v.flatjson[0].pair_index().unwrap()]
+            .last_child()
+            .unwrap();
+        let field = v.flatjson[last_row].first_child().unwrap();
+        let key = v.flatjson[field].key_range.clone().unwrap();
+        let query = key.start + 1..key.start + 7;
+        assert!(
+            !v.frame
+                .iter()
+                .any(|(_, line)| line.spans.iter().any(|span| span.node == field))
+        );
+        v.highlight_shared_fields(std::slice::from_ref(&query), &(0..0));
+        let header = v.rendered_line(0);
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint(
+            &mut terminal,
+            header,
+            0..0,
+            LineViewport::new(header, 0, 0),
+            80,
+            std::slice::from_ref(&query),
+            &(0..0),
+        )
+        .unwrap();
+        assert!(
+            terminal.output().contains("_FG(Yellow)__U_n"),
+            "{}",
+            terminal.output()
+        );
+        let before = Layout::formatted_rows();
+        v.perform_action(Action::FocusNode {
+            node: field,
+            source: Some(query.start),
+        });
+        assert_eq!(v.focused_node, field);
+        assert_eq!(v.focused_line_index(), 0);
+        assert!(Layout::formatted_rows() - before <= 4 * (usize::from(v.dimensions.height) + 1));
+        v.highlight_shared_fields(std::slice::from_ref(&query), &query);
+        let header = v.rendered_line(0);
+        assert!(header.spans.len() < 12);
+        assert!(
+            header
+                .spans
+                .iter()
+                .map(|span| span.source_map.len())
+                .sum::<usize>()
+                < 12
+        );
+        let alias = header.spans.iter().find(|span| span.node == field).unwrap();
+        let range = alias.matching_ranges(&query).pop().unwrap();
+        assert_eq!(&header.text[range.clone()], "n");
+        let first_field = v.flatjson[v.flatjson[0].first_child().unwrap()]
+            .first_child()
+            .unwrap();
+        assert_eq!(
+            crate::lineprinter::hit_test(header, range.start).0,
+            first_field
+        );
+        let mut terminal = VisibleEscapesTerminal::new(false, true);
+        paint(
+            &mut terminal,
+            header,
+            field..field + 1,
+            LineViewport::new(header, 0, 0),
+            80,
+            std::slice::from_ref(&query),
+            &query,
+        )
+        .unwrap();
+        assert!(
+            terminal.output().contains("_FG(LightYellow)__U_n"),
+            "{}",
+            terminal.output()
+        );
+    }
+
+    #[test]
+    fn distant_filtered_inline_match_and_wrapped_end_skip_intervening_rows() {
+        let input = format!(
+            r#"{{"keep":[{}],"outside":"excluded"}} {{"keep":{{"tags":["x","\u754cNEEDLE"],"long":"{}TAIL"}},"outside":"excluded"}}"#,
+            vec![r#"{"id":0,"nested":{"ok":true}}"#; 1000].join(","),
+            "abcdef".repeat(100)
+        );
+        let flat = parse_top_level_json(input.clone()).unwrap();
+        let roots = crate::path_filter::PathFilter::parse(".keep")
+            .unwrap()
+            .resolve(&flat)
+            .unwrap();
+        let second = roots[1];
+        let array = flat[second].first_child().unwrap();
+        let long = flat[array].next_sibling.unwrap();
+        let first = flat[array].first_child().unwrap();
+        let target = flat[first].next_sibling.unwrap();
+        let start =
+            flat.1[flat[target].range.clone()].find("NEEDLE").unwrap() + flat[target].range.start;
+        let query = start..start + 6;
+        let mut v = JsonViewer::with_roots(
+            flat,
+            roots,
+            TTYDimensions {
+                width: 26,
+                height: 5,
+            },
+            true,
+            true,
+        );
+        assert!(v.layout.node(&v.flatjson, array).inline_array);
+        v.toggle_wrapping();
+        let before = Layout::formatted_rows();
+        v.perform_action(Action::FocusNode {
+            node: target,
+            source: Some(start),
+        });
+        let logical = v.focused_line_index();
+        let line = v.rendered_line(logical);
+        let range = line
+            .spans
+            .iter()
+            .find(|span| span.node == target && span.source.is_some())
+            .unwrap()
+            .matching_ranges(&query)
+            .pop()
+            .unwrap();
+        assert_eq!(&line.text[range.clone()], "NEEDLE");
+        v.reveal_byte_range(range.clone());
+        assert!(Layout::formatted_rows() - before <= 36);
+        assert_eq!(v.focused_node, target);
+        assert_eq!(v.active_root_for(target), Some(second));
+        assert!(!v.contains_node(0));
+        assert!(v.physical_rows.iter().any(|row| row.logical_line == logical
+            && row.bytes.start < range.end
+            && range.start < row.bytes.end));
+        let before = Layout::formatted_rows();
+        v.perform_action(Action::FocusBottom);
+        assert!(Layout::formatted_rows() - before <= 36);
+        assert_eq!(v.focused_node, long);
+        assert!(v.frame.len() <= 6);
+        assert!(v.physical_rows.len() <= 5);
+
+        // Start again so neither the distant logical row nor its continuations
+        // has been materialized before the explicit match request.
+        let flat = parse_top_level_json(input).unwrap();
+        let roots = crate::path_filter::PathFilter::parse(".keep")
+            .unwrap()
+            .resolve(&flat)
+            .unwrap();
+        let mut cold = JsonViewer::with_roots(
+            flat,
+            roots,
+            TTYDimensions {
+                width: 26,
+                height: 5,
+            },
+            true,
+            true,
+        );
+        cold.toggle_wrapping();
+        assert!(
+            cold.frame
+                .iter()
+                .all(|(_, line)| line.spans.iter().all(|span| span.node != long))
+        );
+        let end = cold.flatjson[long].range.end - 1;
+        let query = end - 4..end;
+        let before = Layout::formatted_rows();
+        cold.perform_action(Action::FocusNode {
+            node: long,
+            source: Some(query.start),
+        });
+        let logical = cold.focused_line_index();
+        let line = cold.rendered_line(logical);
+        let display = line
+            .spans
+            .iter()
+            .flat_map(|span| span.matching_ranges(&query))
+            .next()
+            .unwrap();
+        assert_eq!(&line.text[display.clone()], "TAIL");
+        cold.reveal_byte_range(display.clone());
+        assert!(Layout::formatted_rows() - before <= 36);
+        assert_eq!(cold.focused_node, long);
+        assert!(
+            cold.physical_rows
+                .iter()
+                .any(|row| row.logical_line == logical
+                    && row.bytes.start < display.end
+                    && display.start < row.bytes.end)
+        );
+        assert!(cold.frame.len() <= 6);
+        assert!(cold.physical_rows.len() <= 5);
     }
 }

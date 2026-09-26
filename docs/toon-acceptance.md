@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: codex/gpt-5.6-luna, at: 2026-09-13T16:32:02Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T08:00:26Z }
 ---
 
 # TOON acceptance checks
@@ -110,6 +110,50 @@ release checks above remain separate.
 8. Confirm `--mode` and `-m` fail with argument errors, `m` does not switch
    modes, and help has no closing-delimiter controls. Confirm JSON and standard
    TOON exports contain no generated annotations and keep codec behavior.
+
+## Startup and presentation resource checks
+
+Ordinary tests cover late table disqualifiers, hidden warning totals, distant
+escaped table-key and filtered inline-element matches, and bounded presentation
+across substantially different tails and repeated distant navigation. They
+assert row-materialization and retained span/map bounds, not wall-clock limits.
+
+The native release comparison is opt-in. Build jless 0.9.0 and tless at
+`9bb9568` from identifiable source revisions in separate output directories.
+Use the same compiler and default features, and record any reference build
+adjustments. Set these environment variables before running:
+
+| Variable | Value |
+| --- | --- |
+| `JLESS_REFERENCE` | Absolute path to the jless 0.9.0 release executable |
+| `TLESS_REFERENCE` | Absolute path to the frozen `9bb9568` release executable |
+| `TLESS_BUILD_PROVENANCE` | Compiler, host, revisions, features, and build commands for all three executables |
+
+```sh
+cargo build --release --locked
+TLESS_CANDIDATE="$PWD/target/release/tless" \
+TLESS_PERFORMANCE_REPORT=/tmp/tless-first-frame.json \
+cargo test --release --locked --test performance -- --ignored --nocapture
+```
+
+The harness generates the 10,238,903-byte, 150,000-record synthetic input,
+isolates user configuration, and opens each executable in a 140×40 PTY with
+numbers enabled and wrapping disabled. It excludes one warm-up, rotates
+executable order across 20 launches, responds to cursor-position queries, and
+requires document content plus filename/status on the final terminal row
+before timing successful startup. Every launch must quit successfully.
+
+The JSON report retains warm-ups, individual observations, executable hashes,
+median, and nearest-rank p95 (the nineteenth sorted observation). Acceptance
+requires both candidate statistics to be at most three times jless and the
+candidate median to be at most one fifth of frozen tless. Run without concurrent
+builds or profiling. These thresholds are comparison gates, not a latency
+promise for every document or a timing assertion for shared CI.
+
+Memory is measured in a separate launch with `ps` RSS samples at least 5 ms
+apart, stopping at useful-frame detection. Report the sampled pre-frame peak
+in KiB; it is neither an exact high-water mark nor whole-session memory.
+Record navigation, resize, wrapping, and search timings separately as diagnostics.
 
 ## Release checks
 

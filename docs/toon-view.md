@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-20T00:24:26Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T08:00:26Z }
 ---
 
 # TOON document view
@@ -202,13 +202,30 @@ taller than the viewport can be read without moving focus. `,`, `.`, and `;`
 scroll collapsed previews and other unwrapped expanded lines; they do nothing
 on a wrapped expanded line. Collapsed previews stay on one row and retain
 horizontal scrolling. `,` and `.` move 10 terminal cells per press, multiplied
-by a numeric prefix. Resizing, gutter changes, and indentation changes rebuild
-the physical rows while keeping the selected value. Collapsed previews give up
+by a numeric prefix. Resizing, gutter changes, and indentation changes reflow
+the visible rows while keeping the selected value. Collapsed previews give up
 width before count and warning annotations; their warnings remain reachable
 through horizontal scrolling. Warnings on expanded wrapped lines scroll vertically.
 
 Line/Data modes, `--mode`, `-m`, interactive `m`, and matching-closing-delimiter
 actions have been removed. Use structural parent/child motions for containers.
+
+## Presentation lifetime
+
+The viewer analyzes the complete selected document for table eligibility,
+duplicate occurrences, warnings, and exact logical line addresses. Off-screen
+data therefore affects the first frame when required: a final nonuniform
+record prevents table form, and hidden warnings still contribute to totals.
+Array-width and gutter decisions do not require formatting every row.
+
+Text, token spans, source mappings, and collapsed previews belong to the
+current frame or an explicitly requested navigation target. Visiting distant
+regions does not accumulate a second rendered document. Wrapping retains a
+logical row and continuation position, not physical rows for the entire
+document. Parsing and structural metadata still scale with input size, and
+an individual long value can require row-local scanning. Export and search
+keep their existing scopes. See [acceptance checks](toon-acceptance.md#startup-and-presentation-resource-checks)
+for the opt-in startup comparison and resource regressions.
 
 ## Display extensions
 

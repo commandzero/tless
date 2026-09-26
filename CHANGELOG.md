@@ -7,7 +7,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- Speed up large-document startup by using actual terminal geometry from the outset and reusing rendered layouts when line-number gutter growth does not change array fit.
+- Open large documents faster and use less memory by formatting only visible rows and requested navigation targets.
 
 ## [0.1.3] - 2026-09-19
 

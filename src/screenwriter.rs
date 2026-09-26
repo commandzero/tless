@@ -159,6 +159,10 @@ impl ScreenWriter {
             }
             self.last_focus = Some(focus);
         }
+        viewer.highlight_shared_fields(
+            search_state.matches_iter(0).as_slice(),
+            &search_state.current_match_range(),
+        );
         match self.print_screen_impl(viewer, search_state) {
             Ok(_) => match self.terminal.flush_contents(&mut self.stdout) {
                 Ok(_) => {}
@@ -223,7 +227,7 @@ impl ScreenWriter {
         self.horizontal_offsets.retain(|absolute, _| {
             viewer
                 .layout
-                .lines
+                .rows()
                 .get(*absolute)
                 .is_some_and(|line| viewer.effective_collapsed(line.owner))
         });
@@ -232,17 +236,17 @@ impl ScreenWriter {
 
     fn number_width(&self, viewer: &JsonViewer) -> usize {
         if self.show_line_numbers || self.show_relative_line_numbers {
-            viewer.layout.lines.len().to_string().len().max(2) + 1
+            viewer.layout.rows().len().to_string().len().max(2) + 1
         } else {
             0
         }
     }
 
-    fn line_viewport(&self, line: &crate::toon_display::VisibleLine) -> lp::LineViewport {
+    fn line_viewport(&self, viewer: &JsonViewer, logical: usize) -> lp::LineViewport {
         lp::LineViewport::new(
-            &line.line,
+            viewer.rendered_line(logical),
             self.horizontal_offsets
-                .get(&line.absolute)
+                .get(&viewer.visible[logical].absolute)
                 .copied()
                 .unwrap_or(0),
             usize::from(self.indentation_reduction) * 2,
@@ -260,7 +264,7 @@ impl ScreenWriter {
             return Action::NoOp;
         }
         if viewer.is_wrapped_line(index) && column >= number_width + 2 {
-            let line = &viewer.visible[index].line;
+            let line = viewer.rendered_line(index);
             let (node, source) =
                 lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
             if source.is_none() && viewer.is_document_body(index) {
@@ -283,9 +287,9 @@ impl ScreenWriter {
                 make_visible: false,
             }
         } else {
-            let viewport = self.line_viewport(&viewer.visible[index]);
+            let viewport = self.line_viewport(viewer, index);
             let column = viewport.source_column(column.saturating_sub(number_width + 2));
-            let line = &viewer.visible[index].line;
+            let line = viewer.rendered_line(index);
             let fitted = if viewport.horizontal_offset == 0 {
                 lp::fit_annotations(
                     line,
@@ -336,7 +340,7 @@ impl ScreenWriter {
             };
             let index = physical.logical_line;
             let visible = &viewer.visible[index];
-            let line = &visible.line;
+            let line = viewer.rendered_line(index);
             if number_width > 0 {
                 let relative = viewer.visible[index.min(focused)..index.max(focused)].len();
                 let number = if self.show_relative_line_numbers
@@ -387,7 +391,10 @@ impl ScreenWriter {
                         '▾'
                     }
                 } else if viewer.effective_collapsed(line.owner)
-                    || viewer.layout.nodes[line.owner].inline_array
+                    || viewer
+                        .layout
+                        .node(&viewer.flatjson, line.owner)
+                        .inline_array
                 {
                     '▸'
                 } else {
@@ -422,7 +429,7 @@ impl ScreenWriter {
                 )?;
                 continue;
             }
-            let viewport = self.line_viewport(visible);
+            let viewport = self.line_viewport(viewer, index);
             let fitted = if viewport.horizontal_offset == 0 {
                 lp::fit_annotations(line, available - 2 + viewport.removed_indentation)
             } else {
@@ -486,12 +493,12 @@ impl ScreenWriter {
         if path_to_node.is_empty() {
             path_to_node.push('.');
         }
-        let node = &viewer.layout.nodes[viewer.focused_node];
+        let node = &viewer.layout.node(&viewer.flatjson, viewer.focused_node);
         if let (Some(occurrence), Some(total)) = (node.occurrence, node.occurrence_total) {
             write!(path_to_node, " (occurrence {occurrence} of {total})")?;
         }
-        if viewer.visible[viewer.focused_line_index()]
-            .line
+        if viewer
+            .rendered_line(viewer.focused_line_index())
             .text
             .is_empty()
         {
@@ -610,7 +617,7 @@ impl ScreenWriter {
     }
 
     fn reveal_focused_span(&mut self, viewer: &mut JsonViewer) {
-        let line = &viewer.visible[viewer.focused_line_index()].line;
+        let line = viewer.rendered_line(viewer.focused_line_index());
         if let Some(span) = line
             .spans
             .iter()
@@ -625,7 +632,7 @@ impl ScreenWriter {
             viewer.reveal_byte_range(range);
             return;
         }
-        let line = &viewer.visible[viewer.focused_line_index()].line;
+        let line = viewer.rendered_line(viewer.focused_line_index());
         let start_byte = line
             .text
             .grapheme_indices(true)
@@ -636,7 +643,7 @@ impl ScreenWriter {
             .grapheme_indices(true)
             .find(|(byte, text)| byte + text.len() >= range.end)
             .map_or(range.end, |(byte, text)| byte + text.len());
-        let viewport = self.line_viewport(&viewer.visible[viewer.focused_line_index()]);
+        let viewport = self.line_viewport(viewer, viewer.focused_line_index());
         let start = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..start_byte]));
         let end = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..end_byte]));
         let document_width =
@@ -664,8 +671,10 @@ impl ScreenWriter {
             return;
         }
         let absolute = viewer.absolute_anchor_line;
-        let line = &viewer.visible[viewer.focused_line_index()];
-        let width = self.line_viewport(line).content_width(&line.line);
+        let logical = viewer.focused_line_index();
+        let width = self
+            .line_viewport(viewer, logical)
+            .content_width(viewer.rendered_line(logical));
         let offset = self.horizontal_offsets.entry(absolute).or_default();
         *offset = if right {
             offset.saturating_add(count).min(width.saturating_sub(1))
@@ -679,8 +688,10 @@ impl ScreenWriter {
             return;
         }
         let absolute = viewer.absolute_anchor_line;
-        let line = &viewer.visible[viewer.focused_line_index()];
-        let width = self.line_viewport(line).content_width(&line.line);
+        let logical = viewer.focused_line_index();
+        let width = self
+            .line_viewport(viewer, logical)
+            .content_width(viewer.rendered_line(logical));
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
         let offset = self.horizontal_offsets.entry(absolute).or_default();
@@ -690,7 +701,7 @@ impl ScreenWriter {
 
     pub fn scroll_line_to_search_match(&mut self, viewer: &mut JsonViewer, range: Range<usize>) {
         self.sync_layout(viewer);
-        let line = &viewer.visible[viewer.focused_line_index()].line;
+        let line = viewer.rendered_line(viewer.focused_line_index());
         let target = line
             .spans
             .iter()
