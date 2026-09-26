@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T22:45:08Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T23:10:31Z }
 ---
 
 # TOON acceptance checks
@@ -37,6 +37,10 @@ The known large-number round-trip failure has an explicit string-result assertio
 Tests use isolated pseudoterminals and disposable files. They do not write to the
 user's clipboard or controlling terminal. Rerun terminal-setup permission failures
 with terminal access; do not count them as passing or skipped tests.
+
+Pipeline argument-error cases supply no stdin payload: validation can exit before
+reading input. Resolution-error cases supply documents and assert status 1 rather
+than the status 2 used for invalid arguments.
 
 ## Manual release checks
 
