@@ -119,6 +119,13 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
     let mut peak = None;
     let mut next_sample = Instant::now();
     loop {
+        // Sample before a complete first read can detect the frame and quit.
+        if sample_memory && useful.is_none() && Instant::now() >= next_sample {
+            let rss = command_output("ps", &["-o", "rss=", "-p", &child.0.id().to_string()]);
+            let kib: u64 = rss.parse().unwrap();
+            peak = Some(peak.unwrap_or(0).max(kib));
+            next_sample = Instant::now() + Duration::from_millis(5);
+        }
         let mut buffer = [0; 65536];
         match master.read(&mut buffer) {
             Ok(0) => break,
@@ -149,12 +156,6 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
             Err(error) if error.raw_os_error() == Some(libc::EIO) => break,
             Err(error) => panic!("{error}"),
-        }
-        if sample_memory && useful.is_none() && Instant::now() >= next_sample {
-            let rss = command_output("ps", &["-o", "rss=", "-p", &child.0.id().to_string()]);
-            let kib: u64 = rss.parse().unwrap();
-            peak = Some(peak.unwrap_or(0).max(kib));
-            next_sample = Instant::now() + Duration::from_millis(5);
         }
         if child.0.try_wait().unwrap().is_some() {
             break;

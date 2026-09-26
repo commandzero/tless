@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T23:10:31Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T23:29:01Z }
 ---
 
 # TOON acceptance checks
@@ -168,6 +168,8 @@ promise for every document or a timing assertion for shared CI.
 Memory is measured in a separate launch with `ps` RSS samples at least 5 ms
 apart, stopping at useful-frame detection. Report the sampled pre-frame peak
 in KiB; it is neither an exact high-water mark nor whole-session memory.
+The memory launch samples before its first PTY read, so a complete initial frame
+delivered in one read still has an RSS observation.
 Record navigation, resize, wrapping, and search timings separately as diagnostics.
 
 For direct parsed-node traversal, also run a separate 20-round private-input
