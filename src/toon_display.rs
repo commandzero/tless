@@ -225,6 +225,21 @@ impl Layout {
         Self::build(flat, width, 5, expanded_arrays, roots.to_vec())
     }
 
+    /// Growing the gutter only changes grammar if an inline array stops fitting.
+    /// Preserve the rendered lines otherwise, but use the new width for previews.
+    pub fn try_narrow_width(&mut self, width: usize) -> bool {
+        if width > self.inline_width
+            || self.nodes.iter().any(|node| {
+                node.inline_array
+                    && UnicodeWidthStr::width(self.lines[node.body_line].text.as_str()) > width
+            })
+        {
+            return false;
+        }
+        self.inline_width = width;
+        true
+    }
+
     fn build(
         flat: &FlatJson,
         width: usize,

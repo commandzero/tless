@@ -45,41 +45,34 @@ pub struct JsonViewer {
 }
 
 impl JsonViewer {
+    #[cfg(test)]
     pub fn new(flatjson: FlatJson) -> Self {
         let roots = crate::path_filter::document_roots(&flatjson);
-        Self::with_roots_impl(flatjson, roots, false)
+        Self::with_roots(flatjson, roots, TTYDimensions::default(), true, false)
     }
 
     /// Construct directly from already-resolved active roots. This avoids
     /// briefly constructing a full excluded layout during startup filtering.
-    pub fn with_roots(flatjson: FlatJson, roots: Vec<Index>) -> Self {
-        Self::with_roots_impl(flatjson, roots, true)
-    }
-
-    fn with_roots_impl(flatjson: FlatJson, roots: Vec<Index>, expand_roots: bool) -> Self {
+    pub fn with_roots(
+        flatjson: FlatJson,
+        roots: Vec<Index>,
+        dimensions: TTYDimensions,
+        line_numbers: bool,
+        expand_roots: bool,
+    ) -> Self {
         let mut flatjson = flatjson;
         if expand_roots {
             for &root in &roots {
                 flatjson.expand(root);
             }
         }
-        let layout = Self::layout_for_view(
-            &flatjson,
-            TTYDimensions::default(),
-            true,
-            &HashSet::new(),
-            &roots,
-        );
+        let layout =
+            Self::layout_for_view(&flatjson, dimensions, line_numbers, &HashSet::new(), &roots);
         let visible = layout.project_with_documents(&flatjson, &HashSet::new());
         let initial_root = roots.first().copied().unwrap_or(0);
         let absolute_anchor_line = layout.nodes[initial_root].line;
-        let physical_rows = build_physical_rows(
-            &visible,
-            usize::from(TTYDimensions::default().width),
-            0,
-            false,
-            &[],
-        );
+        let physical_rows =
+            build_physical_rows(&visible, usize::from(dimensions.width), 0, false, &[]);
         let mut viewer = Self {
             flatjson,
             layout,
@@ -92,7 +85,7 @@ impl JsonViewer {
             absolute_anchor_line,
             jump_distance: None,
             desired_depth: 0,
-            dimensions: TTYDimensions::default(),
+            dimensions,
             scrolloff_setting: 3,
             expanded_arrays: HashSet::new(),
             document_collapsed: HashSet::new(),
@@ -100,8 +93,8 @@ impl JsonViewer {
             document_roots: vec![],
             document_header_by_root: vec![],
             document_root_by_header: vec![],
-            line_numbers: true,
-            wrap_width: usize::from(TTYDimensions::default().width),
+            line_numbers,
+            wrap_width: usize::from(dimensions.width),
             wrap_indentation: 0,
             wrapped_lines: vec![],
             layout_generation: 0,
@@ -508,13 +501,14 @@ impl JsonViewer {
         let mut number_width = if line_numbers { 3 } else { 0 };
         loop {
             let width = usize::from(dimensions.width).saturating_sub(number_width + 2);
-            let layout = Layout::for_view_with_roots(flat, width, expanded_arrays, roots);
+            let mut layout = Layout::for_view_with_roots(flat, width, expanded_arrays, roots);
             let required = if line_numbers {
                 layout.lines.len().to_string().len().max(2) + 1
             } else {
                 0
             };
-            if required <= number_width {
+            let required_width = usize::from(dimensions.width).saturating_sub(required + 2);
+            if required <= number_width || layout.try_narrow_width(required_width) {
                 return layout;
             }
             number_width = required;
@@ -1832,6 +1826,32 @@ mod tests {
     }
 
     #[test]
+    fn initial_geometry_respects_unicode_fit_with_and_without_numbers() {
+        for (width, numbers, inline) in [
+            (18, true, true),
+            (17, true, false),
+            (15, false, true),
+            (14, false, false),
+        ] {
+            let flat = parse_top_level_json(r#"{"tags":["界","é"]}"#.into()).unwrap();
+            let v = JsonViewer::with_roots(
+                flat,
+                vec![0],
+                TTYDimensions { width, height: 24 },
+                numbers,
+                false,
+            );
+            let lines: Vec<_> = v.visible.iter().map(|row| row.line.text.as_str()).collect();
+            let expected = if inline {
+                vec!["tags[2]: 界,é"]
+            } else {
+                vec!["tags[2]:", "  - 界", "  - é"]
+            };
+            assert_eq!(lines, expected, "width={width}, numbers={numbers}");
+        }
+    }
+
+    #[test]
     fn inline_array_fit_includes_gutters_and_terminal_cells() {
         let mut v = viewer(r#"{"tags":["界","é"]}"#);
         // tags[2]: 界,é occupies 13 cells, plus five gutter cells.
@@ -1892,13 +1912,16 @@ mod tests {
         let mut fields = vec!["\"wide\":[1,2,3,4,5,6]".to_string()];
         fields.extend((0..94).map(|i| format!("\"k{i}\":0")));
         fields.push("\"tags\":[\"界\",\"é\"]".into());
-        let mut v = viewer(&format!("{{{}}}", fields.join(",")));
-        v.set_viewport(
+        let flat = parse_top_level_json(format!("{{{}}}", fields.join(","))).unwrap();
+        let mut v = JsonViewer::with_roots(
+            flat,
+            vec![0],
             TTYDimensions {
                 width: 18,
                 height: 24,
             },
             true,
+            false,
         );
         assert!(v.layout.lines.len() > 99);
         assert_eq!(v.visible.last().unwrap().line.text, "  - é");
@@ -1908,6 +1931,14 @@ mod tests {
                 height: 24,
             },
             false,
+        );
+        assert_eq!(v.visible.last().unwrap().line.text, "tags[2]: 界,é");
+        v.set_viewport(
+            TTYDimensions {
+                width: 19,
+                height: 24,
+            },
+            true,
         );
         assert_eq!(v.visible.last().unwrap().line.text, "tags[2]: 界,é");
     }
