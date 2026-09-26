@@ -37,6 +37,9 @@ The disposable Python driver used pyte 0.8.2, isolated configuration and cursor-
 
 Apple M4 Pro, 48 GiB RAM, macOS arm64. Rust 1.97.1 release builds with the committed lockfile and default features. Reference revisions: jless `21dd610` (0.9.0), tless `9bb9568`. Candidate source is this implementation; binary hashes, build provenance and every raw sample are in `performance.json`.
 
+Local executable paths and the host name have been redacted from that report;
+executable names, hashes, source revisions and measurements are unchanged.
+
 The opt-in `tests/performance.rs` harness generated exactly 10,238,903 bytes, used isolated 140×40 PTYs, timed before spawn through meaningful content and status output, answered cursor queries and required successful quit. One warmup and 20 rotating-order timed launches per binary. Nearest-rank p95; separate startup RSS sampling, not instrumented timing or exit high-water memory.
 
 | Build | Median ms | p95 ms | Sampled startup peak KiB |

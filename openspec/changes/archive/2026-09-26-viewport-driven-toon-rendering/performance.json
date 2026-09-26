@@ -1,5 +1,5 @@
 {
-  "host": "Darwin Jetfire 25.6.0 Darwin Kernel Version 25.6.0: Tue Aug 18 17:48:46 PDT 2026; root:xnu-12377.161.15.700.19~2/RELEASE_ARM64_T6041 arm64",
+  "host": "Darwin 25.6.0 arm64",
   "build_provenance": "Rust 1.97.1; cargo build --release --locked; default features; candidate viewport-driven-toon-rendering based on 0f3c728; references jless 21dd610 and tless 9bb9568; no instrumentation",
   "fixture_bytes": 10238903,
   "columns": 140,
@@ -10,8 +10,8 @@
   "results": [
     {
       "name": "jless",
-      "binary": "/var/folders/s2/8v9rgs8n2m70c5qxy0rz97nc0000gn/T/tless-render-references-xw_oeplc/jless/target/release/jless",
-      "sha256": "aa4f9136d3775ac6455dbbeb98bd4f7c3282eecd9f9e7fc1d69501d311fe413e  /var/folders/s2/8v9rgs8n2m70c5qxy0rz97nc0000gn/T/tless-render-references-xw_oeplc/jless/target/release/jless",
+      "binary": "jless",
+      "sha256": "aa4f9136d3775ac6455dbbeb98bd4f7c3282eecd9f9e7fc1d69501d311fe413e",
       "version": "jless 0.9.0",
       "warmup_ms": 46.811375000000005,
       "runs_ms": [
@@ -42,8 +42,8 @@
     },
     {
       "name": "baseline",
-      "binary": "/var/folders/s2/8v9rgs8n2m70c5qxy0rz97nc0000gn/T/tless-render-references-xw_oeplc/tless/target/release/tless",
-      "sha256": "d3f8236b5126858a8b61e524f798ae1ef28320ac90e1528ce0094f694510f378  /var/folders/s2/8v9rgs8n2m70c5qxy0rz97nc0000gn/T/tless-render-references-xw_oeplc/tless/target/release/tless",
+      "binary": "tless",
+      "sha256": "d3f8236b5126858a8b61e524f798ae1ef28320ac90e1528ce0094f694510f378",
       "version": "tless 0.1.3",
       "warmup_ms": 995.127291,
       "runs_ms": [
@@ -74,8 +74,8 @@
     },
     {
       "name": "candidate",
-      "binary": "/Users/reno/Development/commandzero/tless/target/release/tless",
-      "sha256": "e5cd30b70fc848920851e42b93de100d4eda00c69c0885e2d77d6223a4a31167  /Users/reno/Development/commandzero/tless/target/release/tless",
+      "binary": "tless",
+      "sha256": "e5cd30b70fc848920851e42b93de100d4eda00c69c0885e2d77d6223a4a31167",
       "version": "tless 0.1.3",
       "warmup_ms": 414.41854099999995,
       "runs_ms": [
