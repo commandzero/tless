@@ -27,7 +27,7 @@ pub fn parse(yaml: String) -> Result<(ChunkedVec<Row>, String, usize, DocumentMe
         Err(err) => return Err(format!("{err}")),
     };
 
-    let mut prev_sibling = OptionIndex::Nil;
+    let mut prev_sibling = OptionIndex::NIL;
 
     for (i, doc) in docs.into_iter().enumerate() {
         if i != 0 {
@@ -37,11 +37,11 @@ pub fn parse(yaml: String) -> Result<(ChunkedVec<Row>, String, usize, DocumentMe
 
         parser.rows[index].prev_sibling = prev_sibling;
         parser.rows[index].index_in_parent = i;
-        if let OptionIndex::Index(prev) = prev_sibling {
-            parser.rows[prev].next_sibling = OptionIndex::Index(index);
+        if let Some(prev) = prev_sibling.as_option() {
+            parser.rows[prev].next_sibling = OptionIndex::from(index);
         }
 
-        prev_sibling = OptionIndex::Index(index);
+        prev_sibling = OptionIndex::from(index);
     }
 
     Ok((
@@ -136,7 +136,7 @@ impl YamlParser {
         self.parents.push(array_open_index);
         self.pretty_printed.push('[');
 
-        let mut prev_sibling = OptionIndex::Nil;
+        let mut prev_sibling = OptionIndex::NIL;
 
         for (i, child) in arr.into_iter().enumerate() {
             if i != 0 {
@@ -159,11 +159,11 @@ impl YamlParser {
 
             self.rows[child_index].prev_sibling = prev_sibling;
             self.rows[child_index].index_in_parent = i;
-            if let OptionIndex::Index(prev) = prev_sibling {
-                self.rows[prev].next_sibling = OptionIndex::Index(child_index);
+            if let Some(prev) = prev_sibling.as_option() {
+                self.rows[prev].next_sibling = OptionIndex::from(child_index);
             }
 
-            prev_sibling = OptionIndex::Index(child_index);
+            prev_sibling = OptionIndex::from(child_index);
         }
 
         self.parents.pop();
@@ -216,7 +216,7 @@ impl YamlParser {
         self.parents.push(object_open_index);
         self.pretty_printed.push('{');
 
-        let mut prev_sibling = OptionIndex::Nil;
+        let mut prev_sibling = OptionIndex::NIL;
 
         for (i, (key, value)) in hash.into_iter().enumerate() {
             if i == 0 {
@@ -260,11 +260,11 @@ impl YamlParser {
 
             self.rows[child_index].prev_sibling = prev_sibling;
             self.rows[child_index].index_in_parent = i;
-            if let OptionIndex::Index(prev) = prev_sibling {
-                self.rows[prev].next_sibling = OptionIndex::Index(child_index);
+            if let Some(prev) = prev_sibling.as_option() {
+                self.rows[prev].next_sibling = OptionIndex::from(child_index);
             }
 
-            prev_sibling = OptionIndex::Index(child_index);
+            prev_sibling = OptionIndex::from(child_index);
         }
 
         self.parents.pop();
@@ -374,8 +374,8 @@ impl YamlParser {
         let index = self.rows.len();
 
         let parent = match self.parents.last() {
-            None => OptionIndex::Nil,
-            Some(row_index) => OptionIndex::Index(*row_index),
+            None => OptionIndex::NIL,
+            Some(row_index) => OptionIndex::from(*row_index),
         };
 
         let range_start = self.pretty_printed.len();
@@ -393,8 +393,8 @@ impl YamlParser {
             range: range_start..range_start + 1,
 
             // To be filled in by caller
-            prev_sibling: OptionIndex::Nil,
-            next_sibling: OptionIndex::Nil,
+            prev_sibling: OptionIndex::NIL,
+            next_sibling: OptionIndex::NIL,
             index_in_parent: 0,
             key_range: None,
         });

@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T19:23:46Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T20:37:21Z }
 ---
 
 # TOON acceptance checks
@@ -121,6 +121,10 @@ Large YAML cases also exercise distant typed-key/decoded-string lookup, selected
 JSON export, and filtering across storage chunks. Collapse/reopen coverage
 includes repeated operations through paired delimiters and exact logical
 addresses before and after restoring an expanded projection.
+Filtered first fields retain their own selection identity; out-of-order selected
+roots preserve exact addresses across reflow and collapse. Repeated and shortened
+key shapes still recheck changed keys, escaped aliases, duplicate extensions,
+and scalar warnings.
 
 The native release comparison is opt-in. Build jless 0.9.0 and tless at
 `9bb9568` from identifiable source revisions in separate output directories.
@@ -158,6 +162,22 @@ Memory is measured in a separate launch with `ps` RSS samples at least 5 ms
 apart, stopping at useful-frame detection. Report the sampled pre-frame peak
 in KiB; it is neither an exact high-water mark nor whole-session memory.
 Record navigation, resize, wrapping, and search timings separately as diagnostics.
+
+For direct parsed-node traversal, also run a separate 20-round private-input
+comparison against both explicit jless modes: `--mode data` and `--mode line`.
+Use the same host, release compiler, default features, isolated configuration,
+140×40 terminal, warm-up, rotating launch order, useful-frame criterion, and
+separate RSS sampling described above. Against **each** mode, the candidate must
+have median and nearest-rank p95 startup time at most **1.5×** the reference and
+sampled startup peak RSS at most **1.2×** the reference. This is additional to,
+not a replacement for, the synthetic gate.
+
+Exercise broad objects, deep nesting, table-heavy arrays, and width-sensitive
+Unicode arrays through the actual terminal. Check first/last absolute-line jumps,
+collapse/reopen, wrapping, narrow/wide resize, search, filtering, successful exit,
+and terminal restoration. Compare rendered output with the preceding version
+where the display contract is unchanged. Keep private contents, source paths,
+identifiers, and screen captures out of committed evidence.
 
 ## Release checks
 

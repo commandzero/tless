@@ -1,8 +1,7 @@
 //! Width-dependent logical addresses, separate from semantic analysis and text.
-use super::index::{Analysis, children, key, numeric, string};
-use super::node_data::NodeData;
+use super::index::{Analysis, child_count, children, key, numeric, string};
+use super::line_index::LineIndex;
 use super::{quote_key, quote_value, scalar};
-use crate::chunked_vec::ChunkedVec;
 use crate::flatjson::{FlatJson, Value};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -34,11 +33,10 @@ impl Row {
     }
 }
 pub struct Geometry {
-    pub positions: NodeData<Position>,
-    pub rows: ChunkedVec<Row>,
+    lines: LineIndex,
+    root_lines: Vec<usize>,
     pub width: usize,
     inline_limit: usize,
-    widest_inline: usize,
 }
 
 pub fn key_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
@@ -92,38 +90,48 @@ impl Geometry {
     ) -> Self {
         let mut gutter = if numbers { 3 } else { 0 };
         let mut result = Self {
-            positions: analysis.nodes.filled_like(),
-            rows: ChunkedVec::new(),
+            lines: LineIndex::new(0),
+            root_lines: Vec::with_capacity(analysis.roots.len() + 1),
             width: 0,
             inline_limit,
-            widest_inline: 0,
         };
         loop {
             result.width = terminal_width.saturating_sub(gutter + 2);
-            result.rows.clear();
-            result.widest_inline = 0;
-            for &root in &analysis.roots {
-                let header = result.rows.len();
-                if analysis.roots.len() > 1 {
-                    result.rows.push(Row {
-                        owner: root,
-                        node: root,
-                        depth: 0,
-                        kind: Kind::Document,
-                    });
+            result.lines.reset(&analysis.lines);
+            let mut widest_inline = 0;
+            for &node in &analysis.arrays {
+                if expanded.contains(&node) {
+                    continue;
                 }
-                result.outline(flat, analysis, root, 0, false, true, expanded);
-                if analysis.roots.len() > 1 {
-                    result.positions[root].line = header;
+                let root = analysis.root_for(node).unwrap();
+                let depth = Self::depth(flat, root, node);
+                let list = node != root
+                    && flat[node]
+                        .parent
+                        .as_option()
+                        .is_some_and(|parent| flat[parent].is_array());
+                if let Some(width) =
+                    result.inline_width(flat, analysis, node, depth, list, node == root)
+                {
+                    widest_inline = widest_inline.max(width);
+                    result
+                        .lines
+                        .clear(node + 1..*flat.subtree_range(node).end());
                 }
             }
-            let required = if numbers {
-                digits(result.rows.len()).max(2) + 1
-            } else {
-                0
-            };
+            result.lines.finish();
+            result.root_lines.clear();
+            let mut total = 0;
+            for &root in &analysis.roots {
+                result.root_lines.push(total);
+                total += result.lines.rank(*flat.subtree_range(root).end() + 1)
+                    - result.lines.rank(root)
+                    + usize::from(analysis.roots.len() > 1);
+            }
+            result.root_lines.push(total);
+            let required = if numbers { digits(total).max(2) + 1 } else { 0 };
             let required_width = terminal_width.saturating_sub(required + 2);
-            if required <= gutter || result.widest_inline <= required_width {
+            if required <= gutter || widest_inline <= required_width {
                 result.width = required_width;
                 break;
             }
@@ -132,107 +140,104 @@ impl Geometry {
         result
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn outline(
-        &mut self,
-        flat: &FlatJson,
-        analysis: &Analysis,
-        node: usize,
-        depth: usize,
-        list: bool,
-        root: bool,
-        expanded: &HashSet<usize>,
-    ) {
-        let start = self.rows.len();
-        self.positions[node] = Position {
-            line: start,
-            body_line: start,
-            end: start,
-            inline: false,
-        };
-        let object = matches!(flat[node].value, Value::EmptyObject)
-            || flat[node].is_opening_of_container() && !flat[node].is_array();
-        if object && (root || flat[node].key_range.is_none()) {
-            if analysis.nodes[node].child_count == 0 {
-                self.rows.push(Row {
-                    owner: node,
-                    node,
-                    depth,
-                    kind: Kind::Value { list, root },
-                });
-            } else {
-                for child in children(flat, node) {
-                    self.outline(
-                        flat,
-                        analysis,
-                        child,
-                        depth + usize::from(list),
-                        false,
-                        false,
-                        expanded,
-                    );
-                }
-                if list {
-                    self.rows[start].owner = node;
-                }
-            }
-        } else {
-            self.rows.push(Row {
-                owner: node,
-                node,
-                depth,
-                kind: Kind::Value { list, root },
+    pub fn line_count(&self) -> usize {
+        *self.root_lines.last().unwrap()
+    }
+
+    fn depth(flat: &FlatJson, root: usize, node: usize) -> usize {
+        let implicit_root = flat[root].is_opening_of_container() && !flat[root].is_array();
+        flat[node]
+            .depth
+            .saturating_sub(flat[root].depth + usize::from(implicit_root))
+    }
+
+    pub fn inline(&self, flat: &FlatJson, node: usize) -> bool {
+        flat[node].is_array()
+            && child_count(flat, node) != 0
+            && self.lines.rank(*flat.subtree_range(node).end() + 1) - self.lines.rank(node) == 1
+    }
+
+    /// Materialize only the requested descriptor. Rank/select handles wide
+    /// sibling lists without keeping positions or walking preceding values.
+    pub fn row(&self, flat: &FlatJson, analysis: &Analysis, line: usize) -> Option<Row> {
+        if line >= self.line_count() {
+            return None;
+        }
+        let ordinal = self.root_lines.partition_point(|&start| start <= line) - 1;
+        let root = analysis.roots[ordinal];
+        let sequence = usize::from(analysis.roots.len() > 1);
+        if sequence != 0 && line == self.root_lines[ordinal] {
+            return Some(Row {
+                owner: root,
+                node: root,
+                depth: 0,
+                kind: Kind::Document,
             });
-            if flat[node].is_array() || matches!(flat[node].value, Value::EmptyArray) {
-                let measured = if expanded.contains(&node) {
-                    None
-                } else {
-                    self.inline_width(flat, analysis, node, depth, list, root)
-                };
-                if analysis.nodes[node].child_count == 0 || measured.is_some() {
-                    self.positions[node].inline = analysis.nodes[node].child_count != 0;
-                    if self.positions[node].inline {
-                        self.widest_inline = self.widest_inline.max(measured.unwrap());
-                    }
-                    for child in children(flat, node) {
-                        self.positions[child] = Position {
-                            line: start,
-                            body_line: start,
-                            end: start + 1,
-                            inline: false,
-                        };
-                    }
-                } else if analysis.nodes[node].table {
-                    for row in children(flat, node) {
-                        let line = self.rows.len();
-                        self.positions[row] = Position {
-                            line,
-                            body_line: line,
-                            end: line + 1,
-                            inline: false,
-                        };
-                        for cell in children(flat, row) {
-                            self.positions[cell] = self.positions[row];
-                        }
-                        self.rows.push(Row {
-                            owner: row,
-                            node: row,
-                            depth: depth + 1,
-                            kind: Kind::TableRow,
-                        });
-                    }
-                } else {
-                    for child in children(flat, node) {
-                        self.outline(flat, analysis, child, depth + 1, true, false, expanded);
-                    }
-                }
-            } else if object {
-                for child in children(flat, node) {
-                    self.outline(flat, analysis, child, depth + 1, false, false, expanded);
+        }
+        let node = self
+            .lines
+            .select(self.lines.rank(root) + line - self.root_lines[ordinal] - sequence)?;
+        let table_row = analysis.table_row(flat, node);
+        let mut owner = node;
+        if node != root && !table_row && flat[node].index_in_parent == 0 {
+            if let Some(parent) = flat[node].parent.as_option() {
+                if parent != root && !flat[parent].is_array() && flat[parent].key_range.is_none() {
+                    owner = parent;
                 }
             }
         }
-        self.positions[node].end = self.rows.len();
+        Some(Row {
+            owner,
+            node,
+            depth: Self::depth(flat, root, node),
+            kind: if table_row {
+                Kind::TableRow
+            } else {
+                Kind::Value {
+                    list: node != root
+                        && flat[node]
+                            .parent
+                            .as_option()
+                            .is_some_and(|parent| flat[parent].is_array()),
+                    root: node == root,
+                }
+            },
+        })
+    }
+
+    pub fn position(&self, flat: &FlatJson, analysis: &Analysis, node: usize) -> Position {
+        let Some(ordinal) = analysis.root_index_for(node) else {
+            return Position::default();
+        };
+        let root = analysis.roots[ordinal];
+        let start = self.root_lines[ordinal];
+        let body = start + usize::from(analysis.roots.len() > 1);
+        if node == root {
+            return Position {
+                line: start,
+                body_line: body,
+                end: self.root_lines[ordinal + 1],
+                inline: self.inline(flat, node),
+            };
+        }
+        let shared = match flat[node].parent.as_option() {
+            Some(parent) if analysis.table_cell(flat, node) || self.inline(flat, parent) => {
+                Some(parent)
+            }
+            _ => None,
+        };
+        let anchor = shared.unwrap_or(node);
+        let line = body + self.lines.rank(anchor) - self.lines.rank(root);
+        Position {
+            line,
+            body_line: line,
+            end: if shared.is_some() {
+                line + 1
+            } else {
+                body + self.lines.rank(*flat.subtree_range(node).end() + 1) - self.lines.rank(root)
+            },
+            inline: self.inline(flat, node),
+        }
     }
 
     fn inline_width(
@@ -244,7 +249,7 @@ impl Geometry {
         list: bool,
         root: bool,
     ) -> Option<usize> {
-        let count = analysis.nodes[node].child_count;
+        let count = child_count(flat, node);
         if count > self.inline_limit {
             return None;
         }
@@ -261,7 +266,8 @@ impl Geometry {
                 return None;
             }
         }
-        if analysis.nodes[node].hidden_warnings == 0 && analysis.nodes[node].warning_count() == 0 {
+        let info = analysis.node(flat, node);
+        if info.hidden_warnings == 0 && info.warning_count() == 0 {
             return (width <= self.width).then_some(width);
         }
         // Annotation spelling is shared with the row formatter. Unusual warnings
@@ -287,7 +293,7 @@ impl Geometry {
         node: usize,
         source: Option<usize>,
     ) -> usize {
-        if analysis.nodes[node].table_cell
+        if analysis.table_cell(flat, node)
             && source.is_some_and(|offset| {
                 flat[node]
                     .key_range
@@ -296,12 +302,14 @@ impl Geometry {
             })
         {
             let row = flat[node].parent.unwrap();
-            return self.positions[flat[row].parent.unwrap()].body_line;
+            return self
+                .position(flat, analysis, flat[row].parent.unwrap())
+                .body_line;
         }
         if source.is_some() && scalar(flat, node) {
-            self.positions[node].body_line
+            self.position(flat, analysis, node).body_line
         } else {
-            self.positions[node].line
+            self.position(flat, analysis, node).line
         }
     }
 }

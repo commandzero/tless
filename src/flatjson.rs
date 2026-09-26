@@ -1,6 +1,6 @@
 use crate::chunked_vec::ChunkedVec;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Write};
 use std::ops::Range;
 
@@ -14,15 +14,19 @@ use crate::jsonstringunescaper::unsafe_unescape_json_string;
 
 pub type Index = usize;
 
+/// A single-word optional node link. `usize::MAX` cannot index a Rust allocation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum OptionIndex {
-    Nil,
-    Index(Index),
-}
+pub struct OptionIndex(Index);
 
 impl OptionIndex {
+    pub const NIL: Self = Self(NIL);
+
+    pub fn as_option(&self) -> Option<Index> {
+        (!self.is_nil()).then_some(self.0)
+    }
+
     pub fn is_nil(&self) -> bool {
-        matches!(self, OptionIndex::Nil)
+        self.0 == NIL
     }
 
     pub fn is_some(&self) -> bool {
@@ -30,10 +34,8 @@ impl OptionIndex {
     }
 
     pub fn unwrap(&self) -> Index {
-        match self {
-            OptionIndex::Nil => panic!("Called .unwrap() on Nil OptionIndex"),
-            OptionIndex::Index(i) => *i,
-        }
+        assert!(!self.is_nil(), "Called .unwrap() on Nil OptionIndex");
+        self.0
     }
 }
 
@@ -41,11 +43,7 @@ pub const NIL: usize = usize::MAX;
 
 impl From<usize> for OptionIndex {
     fn from(i: usize) -> Self {
-        if i == NIL {
-            OptionIndex::Nil
-        } else {
-            OptionIndex::Index(i)
-        }
+        Self(i)
     }
 }
 
@@ -75,7 +73,7 @@ pub struct FlatJson(
 pub struct DocumentMetadata {
     pub keys: HashMap<Index, KeyValue>,
     pub strings: HashMap<Index, String>,
-    collapsed: usize,
+    collapsed: HashSet<Index>,
 }
 
 impl FlatJson {
@@ -88,12 +86,16 @@ impl FlatJson {
     }
 
     pub fn has_collapsed(&self) -> bool {
-        self.3.collapsed != 0
+        !self.3.collapsed.is_empty()
+    }
+
+    pub fn collapsed_nodes(&self) -> impl Iterator<Item = Index> + '_ {
+        self.3.collapsed.iter().copied()
     }
     #[cfg(test)]
     pub fn prev_visible_row(&self, index: Index) -> OptionIndex {
         if index == 0 {
-            return OptionIndex::Nil;
+            return OptionIndex::NIL;
         }
 
         let row = &self.0[index - 1];
@@ -101,7 +103,7 @@ impl FlatJson {
         if row.is_closing_of_container() && row.is_collapsed() {
             row.pair_index()
         } else {
-            OptionIndex::Index(index - 1)
+            OptionIndex::from(index - 1)
         }
     }
 
@@ -114,53 +116,59 @@ impl FlatJson {
 
         // We can always go to the next row, unless we're at the end of the file.
         if index == self.0.len() - 1 {
-            return OptionIndex::Nil;
+            return OptionIndex::NIL;
         }
 
-        OptionIndex::Index(index + 1)
+        OptionIndex::from(index + 1)
     }
 
     #[cfg(test)]
     pub fn prev_item(&self, mut index: Index) -> OptionIndex {
-        while let OptionIndex::Index(i) = self.prev_visible_row(index) {
+        while let Some(i) = self.prev_visible_row(index).as_option() {
             if !self.0[i].is_closing_of_container() {
-                return OptionIndex::Index(i);
+                return OptionIndex::from(i);
             }
 
             index = i;
         }
 
-        OptionIndex::Nil
+        OptionIndex::NIL
     }
 
     #[cfg(test)]
     pub fn next_item(&self, mut index: Index) -> OptionIndex {
-        while let OptionIndex::Index(i) = self.next_visible_row(index) {
+        while let Some(i) = self.next_visible_row(index).as_option() {
             if !self.0[i].is_closing_of_container() {
-                return OptionIndex::Index(i);
+                return OptionIndex::from(i);
             }
 
             index = i;
         }
 
-        OptionIndex::Nil
+        OptionIndex::NIL
     }
 
     pub fn expand(&mut self, index: Index) {
-        if self[index].is_collapsed() {
-            self.3.collapsed -= 1;
-        }
-        if let OptionIndex::Index(pair) = self.0[index].pair_index() {
+        let open = match self[index].value {
+            Value::CloseContainer { open_index, .. } => open_index,
+            _ => index,
+        };
+        self.3.collapsed.remove(&open);
+        if let Some(pair) = self.0[index].pair_index().as_option() {
             self.0[pair].expand();
         }
         self.0[index].expand();
     }
 
     pub fn collapse(&mut self, index: Index) {
-        if self[index].is_container() && !self[index].is_collapsed() {
-            self.3.collapsed += 1;
+        if self[index].is_container() {
+            let open = match self[index].value {
+                Value::CloseContainer { open_index, .. } => open_index,
+                _ => index,
+            };
+            self.3.collapsed.insert(open);
         }
-        if let OptionIndex::Index(pair) = self.0[index].pair_index() {
+        if let Some(pair) = self.0[index].pair_index().as_option() {
             self.0[pair].collapse();
         }
         self.0[index].collapse();
@@ -199,7 +207,7 @@ impl FlatJson {
             return self.build_path_to_node_impl(path_type, row.pair_index().unwrap(), buf);
         }
 
-        if let OptionIndex::Index(parent_index) = row.parent {
+        if let Some(parent_index) = row.parent.as_option() {
             self.build_path_to_node_impl(path_type, parent_index, buf)?;
         }
 
@@ -302,10 +310,7 @@ impl FlatJson {
         } else {
             index
         };
-        let end = match self[start].pair_index() {
-            OptionIndex::Index(end) => end,
-            OptionIndex::Nil => start,
-        };
+        let end = self[start].pair_index().as_option().unwrap_or(start);
         start..=end
     }
 
@@ -722,23 +727,23 @@ impl Value {
 
     fn first_child(&self) -> OptionIndex {
         match self {
-            Value::OpenContainer { first_child, .. } => OptionIndex::Index(*first_child),
-            _ => OptionIndex::Nil,
+            Value::OpenContainer { first_child, .. } => OptionIndex::from(*first_child),
+            _ => OptionIndex::NIL,
         }
     }
 
     fn last_child(&self) -> OptionIndex {
         match self {
-            Value::CloseContainer { last_child, .. } => OptionIndex::Index(*last_child),
-            _ => OptionIndex::Nil,
+            Value::CloseContainer { last_child, .. } => OptionIndex::from(*last_child),
+            _ => OptionIndex::NIL,
         }
     }
 
     fn pair_index(&self) -> OptionIndex {
         match self {
-            Value::OpenContainer { close_index, .. } => OptionIndex::Index(*close_index),
-            Value::CloseContainer { open_index, .. } => OptionIndex::Index(*open_index),
-            _ => OptionIndex::Nil,
+            Value::OpenContainer { close_index, .. } => OptionIndex::from(*close_index),
+            Value::CloseContainer { open_index, .. } => OptionIndex::from(*open_index),
+            _ => OptionIndex::NIL,
         }
     }
 }
@@ -832,7 +837,7 @@ mod tests {
             "depth",
             &fj,
             vec![0, 1, 1, 2, 2, 1, 1, 2, 2, 2, 1, 1, 0],
-            |elem| OptionIndex::Index(elem.depth),
+            |elem| OptionIndex::from(elem.depth),
         );
     }
 

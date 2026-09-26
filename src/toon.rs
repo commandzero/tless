@@ -1,4 +1,4 @@
-use crate::flatjson::{self, FlatJson, Index, KeyValue, OptionIndex, Value};
+use crate::flatjson::{self, FlatJson, Index, KeyValue, Value};
 #[derive(Default, Clone, Copy)]
 pub struct EncodeOptions {
     _private: (),
@@ -73,7 +73,7 @@ fn export_value(
         let mut object = serde_json::Map::new();
         let mut array = Vec::new();
         let mut child = row.first_child();
-        while let OptionIndex::Index(index) = child {
+        while let Some(index) = child.as_option() {
             let child_row = &document[index];
             if row.is_array() {
                 array.push(export_value(

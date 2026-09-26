@@ -1,5 +1,5 @@
 //! TOON document layout over parsed row identities, independent of the optional codec.
-use crate::flatjson::{FlatJson, KeyValue, OptionIndex, Value};
+use crate::flatjson::{FlatJson, KeyValue, Value};
 #[cfg(test)]
 use std::collections::HashSet;
 use std::ops::Range;
@@ -10,7 +10,7 @@ mod format;
 mod geometry;
 mod index;
 pub mod layout;
-mod node_data;
+mod line_index;
 #[cfg(test)]
 use fixture::Fixture;
 
@@ -118,7 +118,7 @@ pub fn normalize_node(flat: &FlatJson, node: usize) -> usize {
 fn children(flat: &FlatJson, node: usize) -> Vec<usize> {
     let mut result = Vec::new();
     let mut next = flat[node].first_child();
-    while let OptionIndex::Index(i) = next {
+    while let Some(i) = next.as_option() {
         result.push(i);
         next = flat[i].next_sibling;
     }
@@ -1036,7 +1036,7 @@ mod tests {
         let visible = layout.layout.project_with_documents(&flat, &HashSet::new());
         let header = layout.layout.render(
             &flat,
-            layout.layout.visible_line(&visible, 0).unwrap(),
+            layout.layout.visible_line(&flat, &visible, 0).unwrap(),
             fields[0],
         );
         let key_span = header
@@ -1253,7 +1253,7 @@ mod tests {
         let projected = layout.layout.project_with_documents(&flat, &HashSet::new());
         let header = layout.layout.render(
             &flat,
-            layout.layout.visible_line(&projected, 0).unwrap(),
+            layout.layout.visible_line(&flat, &projected, 0).unwrap(),
             selected,
         );
         let key = header
@@ -1436,5 +1436,95 @@ mod tests {
             Fixture::for_view_with_roots(&stream, 120, &HashSet::new(), &[roots[2], roots[0]]);
         assert_eq!(filtered.lines[0].text, "--- (1 of 2)");
         assert_eq!(filtered.lines[2].text, "--- (2 of 2)");
+    }
+
+    #[test]
+    fn selected_first_field_is_not_merged_with_its_excluded_parent() {
+        for (input, header) in [
+            (r#"{"items":[{"a":1},{"a":2}]}"#, "[2]{a}:"),
+            (r#"{"value":1}"#, "1"),
+        ] {
+            let flat = json(input);
+            let root = children(&flat, 0)[0];
+            let layout = layout::Layout::new(&flat, &[root], 120, true, &HashSet::new());
+            let projection = layout.project_with_documents(&flat, &HashSet::new());
+            let row = layout.visible_line(&flat, &projection, 0).unwrap();
+            assert_eq!(row.owner, root);
+            assert_eq!(layout.render(&flat, row, root).text, header);
+        }
+    }
+
+    #[test]
+    fn filtered_out_of_order_subtrees_keep_exact_addresses_across_reflow_and_collapse() {
+        let input = format!(
+            r#"{{"skip":[{}],"first":{{"x":[1,2],"after":7}},"last":[{{"id":1}},{{"id":2}}]}}"#,
+            vec!["0"; 512].join(",")
+        );
+        let mut flat = json(&input);
+        let fields = children(&flat, 0);
+        let roots = [fields[2], fields[1]];
+        let x = children(&flat, fields[1])[0];
+        let after = children(&flat, fields[1])[1];
+        let mut layout = layout::Layout::new(&flat, &roots, 120, true, &HashSet::new());
+        let projection = layout.project_with_documents(&flat, &HashSet::new());
+        let lines: Vec<_> = (0..projection.len())
+            .map(|i| {
+                let row = layout.visible_line(&flat, &projection, i).unwrap();
+                layout.render(&flat, row, row.owner).text
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                "--- (1 of 2)",
+                "[2]{id}:",
+                "  1",
+                "  2",
+                "--- (2 of 2)",
+                "x[2]: 1,2",
+                "after: 7",
+            ]
+        );
+        assert_eq!(layout.node(&flat, after).line, 6);
+        layout.reflow(&flat, 9, true, &HashSet::new());
+        assert_eq!(layout.line_count(), 9);
+        assert_eq!(layout.node(&flat, after).line, 8);
+        flat.collapse(0); // An excluded ancestor must not collapse selected roots.
+        flat.collapse(x);
+        let projected = layout.project_with_documents(&flat, &HashSet::from([roots[0]]));
+        let addresses: Vec<_> = (0..projected.len())
+            .map(|i| layout.visible_line(&flat, &projected, i).unwrap().absolute)
+            .collect();
+        assert_eq!(addresses, [0, 4, 5, 8]);
+        assert_eq!(layout.row(&flat, 8).unwrap().owner, after);
+        layout.reflow(&flat, 120, true, &HashSet::new());
+        assert_eq!(layout.node(&flat, after).line, 6);
+    }
+
+    #[test]
+    fn repeated_key_shapes_recheck_changed_keys_and_scalar_warnings() {
+        let mut input = format!("[{},", vec![r#"{"a":1,"b":2}"#; 128].join(","));
+        input.push_str(r#"{"a":1},{"a":2,"b":3,"a":4},"#);
+        input.push_str(r#"{"\u0061":1e1000000,"b":3},"#);
+        input.push_str(r#"{"a":4,"\u0061":5},"#);
+        input.push_str(r#"{"\u0001":6,"b":7},"#);
+        input.push_str(r#"{"\u0001":8,"b":9}]"#);
+        let flat = json(&input);
+        let layout = Fixture::for_view(&flat, 120, &HashSet::new());
+        assert_eq!(layout.lines[0].text, "[134]:");
+        assert_eq!(layout.nodes[0].descendant_warnings, 7);
+        let kinds: Vec<_> = layout.warnings.iter().map(|warning| warning.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                WarningKind::DuplicateKey,
+                WarningKind::DuplicateKey,
+                WarningKind::NonCanonicalNumber,
+                WarningKind::DuplicateKey,
+                WarningKind::DuplicateKey,
+                WarningKind::NonStandardStringEscape,
+                WarningKind::NonStandardStringEscape,
+            ]
+        );
     }
 }

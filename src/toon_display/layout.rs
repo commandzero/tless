@@ -1,8 +1,8 @@
 //! The interactive layout owns structure; rendered rows belong to its caller.
-use super::geometry::{Geometry, Kind, Row};
+use super::geometry::{Geometry, Row};
 use super::index::Analysis;
-use super::{DisplayLine, FlatJson, OptionIndex, normalize_node};
-use crate::chunked_vec::ChunkedVec;
+use super::{DisplayLine, FlatJson, normalize_node};
+use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -34,6 +34,7 @@ pub struct VisibleLine {
     pub owner: usize,
     pub separator: bool,
     pub collapsed: bool,
+    descriptor: Row,
 }
 
 struct Collapsed {
@@ -144,8 +145,8 @@ impl Layout {
 
     pub fn node(&self, flat: &FlatJson, node: usize) -> NodeLayout {
         let node = normalize_node(flat, node);
-        let info = self.analysis.nodes[node];
-        let pos = self.geometry.positions[node];
+        let info = self.analysis.node(flat, node);
+        let pos = self.geometry.position(flat, &self.analysis, node);
         let root = self.analysis.is_root(node);
         let sequence = self.analysis.roots.len() > 1;
         let occurrence = self.analysis.occurrences.get(&node).copied();
@@ -175,8 +176,12 @@ impl Layout {
             .source_line(flat, &self.analysis, normalize_node(flat, node), source)
     }
 
-    pub fn rows(&self) -> &ChunkedVec<Row> {
-        &self.geometry.rows
+    pub fn line_count(&self) -> usize {
+        self.geometry.line_count()
+    }
+
+    pub fn row(&self, flat: &FlatJson, line: usize) -> Option<Row> {
+        self.geometry.row(flat, &self.analysis, line)
     }
 
     pub fn project_with_documents(
@@ -184,57 +189,50 @@ impl Layout {
         flat: &FlatJson,
         documents: &HashSet<usize>,
     ) -> Projection {
-        let mut visible = Projection::new(self.geometry.rows.len());
+        let mut visible = Projection::new(self.line_count());
         if !flat.has_collapsed() && documents.is_empty() {
             return visible;
         }
-        let mut absolute = 0;
-        while let Some(&row) = self.geometry.rows.get(absolute) {
-            let mut collapsed = None;
-            if row.kind == Kind::Document {
-                if documents.contains(&row.node) {
-                    collapsed = Some(row.node);
-                }
-            } else {
-                let mut node = row.node;
-                loop {
-                    if self.geometry.positions[node].body_line != absolute {
-                        break;
-                    }
-                    if flat[node].is_collapsed() && self.node(flat, node).collapsible {
-                        collapsed = Some(node);
-                    }
-                    if flat[node].index_in_parent != 0 || self.analysis.is_root(node) {
-                        break;
-                    }
-                    let OptionIndex::Index(parent) = flat[node].parent else {
-                        break;
-                    };
-                    node = parent;
+        let mut intervals = Vec::new();
+        for node in flat.collapsed_nodes() {
+            if self.analysis.root_for(node).is_some() && self.node(flat, node).collapsible {
+                let pos = self.geometry.position(flat, &self.analysis, node);
+                intervals.push((pos.body_line, Reverse(pos.end.max(pos.body_line + 1)), node));
+            }
+        }
+        if self.analysis.roots.len() > 1 {
+            for &node in documents {
+                if self.analysis.is_root(node) {
+                    let pos = self.geometry.position(flat, &self.analysis, node);
+                    intervals.push((pos.line, Reverse(pos.end), node));
                 }
             }
-            if let Some(node) = collapsed {
-                visible.collapse(
-                    absolute,
-                    self.geometry.positions[node].end.max(absolute + 1),
-                    node,
-                );
+        }
+        intervals.sort_unstable();
+        let mut end = 0;
+        for (absolute, Reverse(next_end), owner) in intervals {
+            if absolute >= end {
+                visible.collapse(absolute, next_end, owner);
+                end = next_end;
             }
-            absolute = collapsed.map_or(absolute + 1, |node| {
-                self.geometry.positions[node].end.max(absolute + 1)
-            });
         }
         visible
     }
 
-    pub fn visible_line(&self, projection: &Projection, index: usize) -> Option<VisibleLine> {
+    pub fn visible_line(
+        &self,
+        flat: &FlatJson,
+        projection: &Projection,
+        index: usize,
+    ) -> Option<VisibleLine> {
         let (absolute, collapsed) = projection.absolute(index)?;
-        let row = self.geometry.rows[absolute];
+        let row = self.row(flat, absolute)?;
         Some(VisibleLine {
             absolute,
             owner: collapsed.unwrap_or(row.owner),
             separator: row.separator(),
             collapsed: collapsed.is_some(),
+            descriptor: row,
         })
     }
 
@@ -243,7 +241,7 @@ impl Layout {
             flat,
             &self.analysis,
             &self.geometry,
-            self.geometry.rows[visible.absolute],
+            visible.descriptor,
             visible.collapsed.then_some(visible.owner),
             focused,
         )

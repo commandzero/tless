@@ -227,8 +227,7 @@ impl ScreenWriter {
         self.horizontal_offsets.retain(|absolute, _| {
             viewer
                 .layout
-                .rows()
-                .get(*absolute)
+                .row(&viewer.flatjson, *absolute)
                 .is_some_and(|line| viewer.effective_collapsed(line.owner))
         });
         self.last_focus = None;
@@ -236,7 +235,7 @@ impl ScreenWriter {
 
     fn number_width(&self, viewer: &JsonViewer) -> usize {
         if self.show_line_numbers || self.show_relative_line_numbers {
-            viewer.layout.rows().len().to_string().len().max(2) + 1
+            viewer.layout.line_count().to_string().len().max(2) + 1
         } else {
             0
         }
@@ -409,10 +408,12 @@ impl ScreenWriter {
             }
             self.terminal.write_char(' ')?;
             let focused_nodes = if index == focused {
-                viewer.focused_node..match viewer.flatjson[viewer.focused_node].pair_index() {
-                    crate::flatjson::OptionIndex::Index(end) => end + 1,
-                    _ => viewer.focused_node + 1,
-                }
+                viewer.focused_node
+                    ..viewer.flatjson[viewer.focused_node]
+                        .pair_index()
+                        .as_option()
+                        .unwrap_or(viewer.focused_node)
+                        + 1
             } else {
                 0..0
             };

@@ -35,7 +35,7 @@ pub fn row(
                 }
                 value(flat, &mut line, child);
             }
-        } else if geometry.positions[node].inline {
+        } else if geometry.inline(flat, node) {
             for (index, child) in children(flat, node).enumerate() {
                 line.token(
                     if index == 0 { " " } else { "," },
@@ -116,12 +116,12 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
     }
     if flat[node].is_array() || matches!(flat[node].value, Value::EmptyArray) {
         line.token(
-            &format!("[{}]", analysis.nodes[node].child_count),
+            &format!("[{}]", analysis.node(flat, node).child_count),
             node,
             TokenRole::ArrayIndex,
             None,
         );
-        if analysis.nodes[node].table {
+        if analysis.node(flat, node).table {
             line.token("{", node, TokenRole::ContainerDelimiter, None);
             let first = children(flat, node).next().unwrap();
             for (column, field) in children(flat, first).enumerate() {
@@ -137,10 +137,7 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
                     flat[field].key_range.clone(),
                 );
                 if focused != field
-                    && analysis
-                        .nodes
-                        .get(focused)
-                        .is_some_and(|info| info.table_cell)
+                    && analysis.table_cell(flat, focused)
                     && flat[focused].index_in_parent == column
                     && flat[flat[focused].parent.unwrap()].parent.unwrap() == node
                 {
@@ -155,7 +152,7 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
         line.token(
             ":",
             node,
-            if analysis.nodes[node].child_count == 0 {
+            if analysis.node(flat, node).child_count == 0 {
                 TokenRole::EmptyContainer
             } else {
                 TokenRole::Punctuation
@@ -191,7 +188,8 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
         .iter()
         .filter(|span| {
             !matches!(span.role, TokenRole::Key | TokenRole::FieldDefinition)
-                || geometry.positions[span.node].line == geometry.positions[line.owner].body_line
+                || geometry.position(flat, analysis, span.node).line
+                    == geometry.position(flat, analysis, line.owner).body_line
         })
         .map(|span| span.node)
         .collect();
@@ -211,14 +209,15 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
             }
             let locator = if analysis.is_root(node) {
                 String::new()
-            } else if analysis.nodes[node].table_cell {
+            } else if analysis.table_cell(flat, node) {
                 format!(
                     " at field {}",
                     quote_json(&key(flat, node).unwrap_or_default())
                 )
-            } else if let crate::flatjson::OptionIndex::Index(parent) = flat[node].parent {
+            } else if let Some(parent) = flat[node].parent.as_option() {
                 if flat[parent].is_array()
-                    && geometry.positions[node].line == geometry.positions[line.owner].body_line
+                    && geometry.position(flat, analysis, node).line
+                        == geometry.position(flat, analysis, line.owner).body_line
                 {
                     format!(" at [{}]", flat[node].index_in_parent)
                 } else {
@@ -275,7 +274,7 @@ fn preview(flat: &FlatJson, analysis: &Analysis, node: usize) -> Preview {
         } else if flat[child].is_array() || matches!(flat[child].value, Value::EmptyArray) {
             preview_append(
                 &mut preview,
-                &format!("[{}]: …", analysis.nodes[child].child_count),
+                &format!("[{}]: …", analysis.node(flat, child).child_count),
                 Some(flat[child].range.clone()),
             );
         } else {
@@ -318,7 +317,7 @@ fn collapsed_row(
     };
     if !document && !flat[node].is_array() {
         line.token(
-            &format!(" ({})", analysis.nodes[node].child_count),
+            &format!(" ({})", analysis.node(flat, node).child_count),
             node,
             TokenRole::Count,
             None,
@@ -330,7 +329,7 @@ fn collapsed_row(
         .iter()
         .map(|warning| warning.message().to_owned())
         .collect();
-    let hidden = analysis.nodes[node].hidden_warnings;
+    let hidden = analysis.node(flat, node).hidden_warnings;
     if hidden > 0 {
         messages.push(format!("Contains {hidden} hidden warnings"));
     }
@@ -342,7 +341,7 @@ fn collapsed_row(
     let mut inline = None;
     if !document
         && flat[node].is_array()
-        && analysis.nodes[node].child_count <= 5
+        && analysis.node(flat, node).child_count <= 5
         && children(flat, node).all(|child| scalar(flat, child))
     {
         let mut candidate = line.clone();
@@ -376,7 +375,7 @@ fn collapsed_row(
                 preview.source_map.clear();
                 preview_append(
                     &mut preview,
-                    &format!("[{}]:", analysis.nodes[node].child_count),
+                    &format!("[{}]:", analysis.node(flat, node).child_count),
                     None,
                 );
                 if !content.is_empty() {
@@ -508,7 +507,7 @@ pub fn highlight_shared_fields(
             .0
             .partition_point(|row| row.range_represented_by_row().start < query.end);
         for node in start..end {
-            if !analysis.nodes.get(node).is_some_and(|info| info.table_cell) {
+            if !analysis.table_cell(flat, node) {
                 continue;
             }
             let row = flat[node].parent.unwrap();

@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T19:23:46Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T20:59:10Z }
 ---
 
 # TOON document view
@@ -218,13 +218,21 @@ data therefore affects the first frame when required: a final nonuniform
 record prevents table form, and hidden warnings still contribute to totals.
 Array-width and gutter decisions do not require formatting every row.
 
-Parsed nodes keep exceptional typed keys and decoded strings in document-owned
-side tables rather than reserving space in every JSON node. Semantic and
-position metadata cover value nodes, not closing delimiters. Parsed and logical
-rows grow in bounded chunks without copying the existing document. Visibility
-is an identity mapping when expanded, with intervals for collapsed sections,
-not another entry for every displayed row. These are storage choices only:
-original node identities, source ranges, and logical line numbers are preserved.
+Parsed rows grow in bounded chunks without copying the existing document.
+Parent and sibling links use single-word optional indices without narrowing
+the parsed-node index range.
+Exceptional typed keys and decoded strings live in document-owned side tables.
+Semantic analysis retains table identities, candidate inline arrays, duplicate
+occurrences, and warning facts rather than a record for every value. Key-analysis
+scratch is temporary; reusing a warning-free sequence still checks every key.
+
+Logical rows and positions are derived directly from parsed relationships and
+compact contribution bitmaps with per-block prefix counts. There is no retained
+descriptor per logical row or position record per parsed value. Width changes
+recompute inline-array contributions and exact gutter widths without rebuilding
+a document-wide row collection. Visibility is an identity mapping when expanded,
+with intervals for explicitly collapsed sections. Original node identities,
+source ranges, filtered-root boundaries, and logical line numbers are preserved.
 
 Text, token spans, source mappings, and collapsed previews belong to the
 current frame or an explicitly requested navigation target. Visiting distant

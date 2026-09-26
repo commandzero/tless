@@ -1,5 +1,5 @@
 //! Append-only indexed storage whose growth never copies existing elements.
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Range};
 
 // Power-of-two chunks keep index translation cheap and bound unused capacity.
 const CHUNK_LEN: usize = 4096;
@@ -18,24 +18,40 @@ impl<T> ChunkedVec<T> {
         }
     }
 
+    #[inline]
     pub fn push(&mut self, value: T) {
         if self.len / CHUNK_LEN == self.chunks.len() {
-            self.chunks.push(Vec::with_capacity(CHUNK_LEN));
+            self.add_chunk();
         }
         self.chunks[self.len / CHUNK_LEN].push(value);
         self.len += 1;
+    }
+
+    #[cold]
+    fn add_chunk(&mut self) {
+        self.chunks.push(Vec::with_capacity(CHUNK_LEN));
     }
 
     pub fn len(&self) -> usize {
         self.len
     }
 
-    pub fn get(&self, index: usize) -> Option<&T> {
-        self.chunks.get(index / CHUNK_LEN)?.get(index % CHUNK_LEN)
-    }
-
+    #[cfg(test)]
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = &T> + ExactSizeIterator {
         (0..self.len).map(|index| &self[index])
+    }
+
+    /// Visit a parsed subtree sequentially without translating every node id.
+    pub fn iter_range(&self, range: Range<usize>) -> impl Iterator<Item = &T> {
+        let first = range.start / CHUNK_LEN;
+        self.chunks[first..range.end.div_ceil(CHUNK_LEN)]
+            .iter()
+            .enumerate()
+            .flat_map(move |(offset, chunk)| {
+                let origin = (first + offset) * CHUNK_LEN;
+                chunk[range.start.saturating_sub(origin)..(range.end - origin).min(chunk.len())]
+                    .iter()
+            })
     }
 
     pub fn partition_point(&self, mut predicate: impl FnMut(&T) -> bool) -> usize {
@@ -49,13 +65,6 @@ impl<T> ChunkedVec<T> {
             }
         }
         left
-    }
-
-    pub fn clear(&mut self) {
-        for chunk in &mut self.chunks {
-            chunk.clear();
-        }
-        self.len = 0;
     }
 }
 

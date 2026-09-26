@@ -61,11 +61,9 @@ impl Fixture {
             limit,
         );
         let layout = Layout { analysis, geometry };
-        let lines = layout
-            .geometry
-            .rows
-            .iter()
-            .map(|&row| {
+        let lines = (0..layout.line_count())
+            .map(|line| {
+                let row = layout.row(flat, line).unwrap();
                 super::format::row(
                     flat,
                     &layout.analysis,
@@ -108,7 +106,7 @@ impl Fixture {
         let projection = self.layout.project_with_documents(flat, documents);
         (0..projection.len())
             .map(|index| {
-                let row = self.layout.visible_line(&projection, index).unwrap();
+                let row = self.layout.visible_line(flat, &projection, index).unwrap();
                 FixtureRow {
                     absolute: row.absolute,
                     line: self.layout.render(flat, row, row.owner),
