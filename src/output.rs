@@ -76,7 +76,7 @@ fn encode_root(
             // The selected node is a standalone root: omit only its owning key.
             if !is_root {
                 if let Some(range) = &row.key_range {
-                    match &row.key_value {
+                    match document.key_value(index) {
                         Some(KeyValue::String(key)) => quote_mapping_key(output, key, yaml),
                         Some(key) if yaml => {
                             output.push_str("? ");
@@ -114,12 +114,12 @@ fn encode_root(
             Value::EmptyObject => output.push_str("{}"),
             Value::EmptyArray => output.push_str("[]"),
             Value::String => {
-                if !yaml && row.string_value.is_none() {
+                if !yaml && document.string_value(index).is_none() {
                     output.push_str(&document.1[row.range.clone()]);
                 } else {
-                    let text = match &row.string_value {
-                        Some(text) => text.clone(),
-                        None => decode(&document.1[row.range.clone()])?,
+                    let text = match document.string_value(index) {
+                        Some(text) => std::borrow::Cow::Borrowed(text),
+                        None => std::borrow::Cow::Owned(decode(&document.1[row.range.clone()])?),
                     };
                     quote(output, &text, yaml);
                 }
@@ -268,10 +268,8 @@ mod tests {
     fn selected_yaml_root_does_not_validate_excluded_typed_keys() {
         let document =
             parse_input("good: 42\n? [bad]\n: .inf\n".to_owned(), DataFormat::Yaml).unwrap();
-        let good = document
-            .0
-            .iter()
-            .position(|row| matches!(row.key_value.as_ref(), Some(KeyValue::String(key)) if key == "good"))
+        let good = (0..document.0.len())
+            .find(|&index| matches!(document.key_value(index), Some(KeyValue::String(key)) if key == "good"))
             .unwrap();
         assert_eq!(
             serialize_roots(&document, OutputFormat::Json, &[good]).unwrap(),

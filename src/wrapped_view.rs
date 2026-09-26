@@ -4,7 +4,6 @@
 //! that produced it, so wrapping cannot change copy, search, or serialization
 //! coordinates.
 
-use crate::toon_display::VisibleLine;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -14,7 +13,7 @@ use unicode_width::UnicodeWidthStr;
 pub struct PhysicalRow {
     /// Index into the current `JsonViewer::visible` projection.
     pub logical_line: usize,
-    /// Byte range in `visible[logical_line].line.text`.
+    /// Byte range in the materialized logical line's text.
     pub bytes: Range<usize>,
     /// Cell offset in the original logical line, including its indentation.
     pub cell_start: usize,
@@ -25,173 +24,108 @@ pub struct PhysicalRow {
     pub placeholder: bool,
 }
 
-/// Build physical rows for a logical visibility projection.
-///
-/// `width` is the document width after gutters. `indentation` is the number
-/// of leading indentation cells already removed by the screen writer. The
-/// corresponding leading spaces are omitted from the first wrapped row, and
-/// continuation rows begin at the document area's left edge. `eligible`
-/// identifies expanded lines; collapsed previews and separators remain one
-/// physical row even when wrapping is enabled.
-pub fn build_physical_rows(
-    visible: &[VisibleLine],
-    width: usize,
-    indentation: usize,
-    wrapping_enabled: bool,
-    eligible: &[bool],
-) -> Vec<PhysicalRow> {
-    let mut rows = Vec::new();
-    for (logical_line, visible_line) in visible.iter().enumerate() {
-        let line = &visible_line.line;
-        let wrap = wrapping_enabled
-            && eligible.get(logical_line).copied().unwrap_or(false)
-            && !line.separator;
-        if !wrap {
-            rows.push(PhysicalRow {
-                logical_line,
-                bytes: 0..line.text.len(),
-                cell_start: 0,
-                first: true,
-                placeholder: false,
-            });
-            continue;
-        }
-        rows.extend(wrap_line(
-            logical_line,
-            line.text.as_str(),
-            width,
-            indentation,
-        ));
-    }
-    rows
-}
-
-fn wrap_line(
+/// Row-local iteration retains no continuation vector, even for a long value.
+pub fn rows(
     logical_line: usize,
     text: &str,
     width: usize,
     indentation: usize,
-) -> Vec<PhysicalRow> {
-    let mut start_byte = 0;
-    let mut start_cell = 0;
+    wrap: bool,
+) -> Rows<'_> {
     let mut removed = 0;
-    for (byte, grapheme) in text.grapheme_indices(true) {
-        if removed >= indentation || !grapheme.chars().all(|ch| ch == ' ') {
-            start_byte = byte;
-            start_cell = removed;
-            break;
-        }
-        removed += UnicodeWidthStr::width(grapheme);
-        start_byte = byte + grapheme.len();
-        start_cell = removed;
-    }
-    if text.is_empty() {
-        start_byte = 0;
-        start_cell = 0;
-    }
-
-    // A zero-cell document area cannot display text, but still needs a finite
-    // row for every logical line so the viewer can select and scroll it.
-    if width == 0 {
-        return vec![PhysicalRow {
-            logical_line,
-            bytes: start_byte..text.len(),
-            cell_start: start_cell,
-            first: true,
-            placeholder: false,
-        }];
-    }
-
-    let mut rows = Vec::new();
-    let mut row_start = start_byte;
-    let mut row_cell_start = start_cell;
-    let mut used = 0;
-    let mut first = true;
-    let mut had_grapheme = false;
-    for (relative_byte, grapheme) in text[start_byte..].grapheme_indices(true) {
-        let byte = start_byte + relative_byte;
-        let end = byte + grapheme.len();
-        let cells = UnicodeWidthStr::width(grapheme);
-        had_grapheme = true;
-
-        if cells > width {
-            if row_start < byte || used > 0 {
-                rows.push(PhysicalRow {
-                    logical_line,
-                    bytes: row_start..byte,
-                    cell_start: row_cell_start,
-                    first,
-                    placeholder: false,
-                });
-                first = false;
+    if wrap {
+        for grapheme in text.graphemes(true) {
+            if removed >= indentation || !grapheme.chars().all(|ch| ch == ' ') {
+                break;
             }
-            rows.push(PhysicalRow {
-                logical_line,
-                bytes: byte..end,
-                cell_start: row_cell_start + used,
-                first,
-                placeholder: true,
-            });
-            first = false;
-            row_start = end;
-            row_cell_start += used + cells;
-            used = 0;
-        } else if used.saturating_add(cells) <= width {
-            used += cells;
-        } else {
-            rows.push(PhysicalRow {
-                logical_line,
-                bytes: row_start..byte,
-                cell_start: row_cell_start,
-                first,
-                placeholder: false,
-            });
-            first = false;
-            row_start = byte;
-            row_cell_start += used;
-            used = cells;
+            removed += grapheme.len();
         }
     }
-
-    if row_start < text.len() || used > 0 || !had_grapheme || rows.is_empty() {
-        rows.push(PhysicalRow {
-            logical_line,
-            bytes: row_start..text.len(),
-            cell_start: row_cell_start,
-            first,
-            placeholder: false,
-        });
+    Rows {
+        text,
+        logical_line,
+        width,
+        byte: removed,
+        cell: removed,
+        first: true,
+        done: false,
+        wrap,
     }
-    rows
+}
+
+pub struct Rows<'a> {
+    text: &'a str,
+    logical_line: usize,
+    width: usize,
+    byte: usize,
+    cell: usize,
+    first: bool,
+    done: bool,
+    wrap: bool,
+}
+
+impl Iterator for Rows<'_> {
+    type Item = PhysicalRow;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        let start = self.byte;
+        let cell_start = self.cell;
+        let first = self.first;
+        let mut end = self.text.len();
+        let mut used: usize = 0;
+        let mut placeholder = false;
+        if self.wrap && self.width > 0 {
+            for (offset, grapheme) in self.text[start..].grapheme_indices(true) {
+                let byte = start + offset;
+                let cells = UnicodeWidthStr::width(grapheme);
+                if cells > self.width {
+                    if byte == start {
+                        end = byte + grapheme.len();
+                        used = cells;
+                        placeholder = true;
+                    } else {
+                        end = byte;
+                    }
+                    break;
+                }
+                if used.saturating_add(cells) > self.width {
+                    end = byte;
+                    break;
+                }
+                used += cells;
+            }
+        }
+        self.byte = end;
+        self.cell += used;
+        self.first = false;
+        self.done = end == self.text.len();
+        Some(PhysicalRow {
+            logical_line: self.logical_line,
+            bytes: start..end,
+            cell_start,
+            first,
+            placeholder,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::toon_display::{DisplayLine, VisibleLine};
-
-    fn line(text: &str) -> Vec<VisibleLine> {
-        vec![VisibleLine {
-            absolute: 0,
-            line: DisplayLine {
-                text: text.into(),
-                spans: vec![],
-                owner: 0,
-                separator: false,
-            },
-        }]
-    }
 
     fn rows(text: &str, width: usize, indentation: usize) -> Vec<PhysicalRow> {
-        build_physical_rows(&line(text), width, indentation, true, &[true])
+        super::rows(0, text, width, indentation, true).collect()
     }
 
     #[test]
     fn wraps_greedily_at_grapheme_boundaries() {
         let result = rows("ab界é", 3, 0);
         assert_eq!(result.len(), 2);
-        assert_eq!(&line("ab界é")[0].line.text[result[0].bytes.clone()], "ab");
-        assert_eq!(&line("ab界é")[0].line.text[result[1].bytes.clone()], "界é");
+        assert_eq!(&"ab界é"[result[0].bytes.clone()], "ab");
+        assert_eq!(&"ab界é"[result[1].bytes.clone()], "界é");
         assert_eq!(result[0].cell_start, 0);
         assert_eq!(result[1].cell_start, 2);
         assert!(result[0].first);
@@ -216,7 +150,7 @@ mod tests {
     fn keeps_combining_sequences_together() {
         let result = rows("xéy", 1, 0);
         assert_eq!(result.len(), 3);
-        assert_eq!(&line("xéy")[0].line.text[result[1].bytes.clone()], "é");
+        assert_eq!(&"xéy"[result[1].bytes.clone()], "é");
     }
 
     #[test]
@@ -225,7 +159,7 @@ mod tests {
         let emoji_width = UnicodeWidthStr::width("👩‍💻");
         let result = rows(text, emoji_width, 0);
         assert_eq!(result.len(), 3);
-        let source = &line(text)[0].line.text;
+        let source = text;
         assert_eq!(&source[result[0].bytes.clone()], "a");
         assert_eq!(&source[result[1].bytes.clone()], "👩‍💻");
         assert_eq!(&source[result[2].bytes.clone()], "b");
@@ -236,7 +170,7 @@ mod tests {
     fn escaped_control_text_wraps_as_literal_display_text() {
         let text = r#"value: \n\t\u001b[31m"#;
         let result = rows(text, 4, 0);
-        let source = &line(text)[0].line.text;
+        let source = text;
         let joined: String = result
             .iter()
             .map(|row| &source[row.bytes.clone()])
@@ -293,26 +227,8 @@ mod tests {
     }
 
     #[test]
-    fn collapsed_and_separator_lines_stay_single_rows() {
-        let mut visible = line("abcdef");
-        visible.push(VisibleLine {
-            absolute: 1,
-            line: DisplayLine {
-                text: "ghijkl".into(),
-                spans: vec![],
-                owner: 0,
-                separator: true,
-            },
-        });
-        let result = build_physical_rows(&visible, 2, 0, true, &[false, true]);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].bytes, 0..6);
-        assert_eq!(result[1].bytes, 0..6);
-    }
-
-    #[test]
     fn disabled_wrapping_keeps_full_logical_rows() {
-        let result = build_physical_rows(&line("abcdef"), 2, 0, false, &[true]);
+        let result: Vec<_> = super::rows(0, "abcdef", 2, 0, false).collect();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].bytes, 0..6);
     }

@@ -1,21 +1,25 @@
 use yaml_rust::YamlLoader;
 use yaml_rust::yaml::{Array, Hash, Yaml};
 
+use crate::chunked_vec::ChunkedVec;
+use crate::flatjson::DocumentMetadata;
 use crate::flatjson::{ContainerType, Index, KeyValue, OptionIndex, Row, Value};
 
 struct YamlParser {
     parents: Vec<Index>,
-    rows: Vec<Row>,
+    rows: ChunkedVec<Row>,
     pretty_printed: String,
     max_depth: usize,
+    values: DocumentMetadata,
 }
 
-pub fn parse(yaml: String) -> Result<(Vec<Row>, String, usize), String> {
+pub fn parse(yaml: String) -> Result<(ChunkedVec<Row>, String, usize, DocumentMetadata), String> {
     let mut parser = YamlParser {
         parents: vec![],
-        rows: vec![],
+        rows: ChunkedVec::new(),
         pretty_printed: String::new(),
         max_depth: 0,
+        values: DocumentMetadata::default(),
     };
 
     let docs = match YamlLoader::load_from_str(&yaml) {
@@ -23,7 +27,7 @@ pub fn parse(yaml: String) -> Result<(Vec<Row>, String, usize), String> {
         Err(err) => return Err(format!("{err}")),
     };
 
-    let mut prev_sibling = OptionIndex::Nil;
+    let mut prev_sibling = OptionIndex::NIL;
 
     for (i, doc) in docs.into_iter().enumerate() {
         if i != 0 {
@@ -33,14 +37,19 @@ pub fn parse(yaml: String) -> Result<(Vec<Row>, String, usize), String> {
 
         parser.rows[index].prev_sibling = prev_sibling;
         parser.rows[index].index_in_parent = i;
-        if let OptionIndex::Index(prev) = prev_sibling {
-            parser.rows[prev].next_sibling = OptionIndex::Index(index);
+        if let Some(prev) = prev_sibling.as_option() {
+            parser.rows[prev].next_sibling = OptionIndex::from(index);
         }
 
-        prev_sibling = OptionIndex::Index(index);
+        prev_sibling = OptionIndex::from(index);
     }
 
-    Ok((parser.rows, parser.pretty_printed, parser.max_depth))
+    Ok((
+        parser.rows,
+        parser.pretty_printed,
+        parser.max_depth,
+        parser.values,
+    ))
 }
 
 impl YamlParser {
@@ -93,7 +102,7 @@ impl YamlParser {
 
     fn parse_string(&mut self, s: String) -> usize {
         let row_index = self.create_row(Value::String);
-        self.rows[row_index].string_value = Some(s.clone());
+        self.values.strings.insert(row_index, s.clone());
 
         // Escape newlines.
         let s = s.replace('\n', "\\n");
@@ -127,7 +136,7 @@ impl YamlParser {
         self.parents.push(array_open_index);
         self.pretty_printed.push('[');
 
-        let mut prev_sibling = OptionIndex::Nil;
+        let mut prev_sibling = OptionIndex::NIL;
 
         for (i, child) in arr.into_iter().enumerate() {
             if i != 0 {
@@ -150,11 +159,11 @@ impl YamlParser {
 
             self.rows[child_index].prev_sibling = prev_sibling;
             self.rows[child_index].index_in_parent = i;
-            if let OptionIndex::Index(prev) = prev_sibling {
-                self.rows[prev].next_sibling = OptionIndex::Index(child_index);
+            if let Some(prev) = prev_sibling.as_option() {
+                self.rows[prev].next_sibling = OptionIndex::from(child_index);
             }
 
-            prev_sibling = OptionIndex::Index(child_index);
+            prev_sibling = OptionIndex::from(child_index);
         }
 
         self.parents.pop();
@@ -207,7 +216,7 @@ impl YamlParser {
         self.parents.push(object_open_index);
         self.pretty_printed.push('{');
 
-        let mut prev_sibling = OptionIndex::Nil;
+        let mut prev_sibling = OptionIndex::NIL;
 
         for (i, (key, value)) in hash.into_iter().enumerate() {
             if i == 0 {
@@ -235,7 +244,7 @@ impl YamlParser {
             let child_index = self.parse_yaml_item(value)?;
 
             self.rows[child_index].key_range = Some(key_range);
-            self.rows[child_index].key_value = Some(typed_key);
+            self.values.keys.insert(child_index, typed_key);
 
             if i == 0 {
                 match self.rows[object_open_index].value {
@@ -251,11 +260,11 @@ impl YamlParser {
 
             self.rows[child_index].prev_sibling = prev_sibling;
             self.rows[child_index].index_in_parent = i;
-            if let OptionIndex::Index(prev) = prev_sibling {
-                self.rows[prev].next_sibling = OptionIndex::Index(child_index);
+            if let Some(prev) = prev_sibling.as_option() {
+                self.rows[prev].next_sibling = OptionIndex::from(child_index);
             }
 
-            prev_sibling = OptionIndex::Index(child_index);
+            prev_sibling = OptionIndex::from(child_index);
         }
 
         self.parents.pop();
@@ -365,8 +374,8 @@ impl YamlParser {
         let index = self.rows.len();
 
         let parent = match self.parents.last() {
-            None => OptionIndex::Nil,
-            Some(row_index) => OptionIndex::Index(*row_index),
+            None => OptionIndex::NIL,
+            Some(row_index) => OptionIndex::from(*row_index),
         };
 
         let range_start = self.pretty_printed.len();
@@ -384,12 +393,10 @@ impl YamlParser {
             range: range_start..range_start + 1,
 
             // To be filled in by caller
-            prev_sibling: OptionIndex::Nil,
-            next_sibling: OptionIndex::Nil,
+            prev_sibling: OptionIndex::NIL,
+            next_sibling: OptionIndex::NIL,
             index_in_parent: 0,
             key_range: None,
-            key_value: None,
-            string_value: None,
         });
 
         index
@@ -435,7 +442,7 @@ mod tests {
             ddd: []
         "#}
         .to_owned();
-        let (rows, _, _) = parse(yaml).unwrap();
+        let (rows, _, _, _) = parse(yaml).unwrap();
 
         assert_eq!(rows[0].range, 0..43); // Object
         assert_eq!(rows[1].key_range, Some(2..5)); // "a": 1
@@ -457,7 +464,7 @@ mod tests {
             - {}
         "#}
         .to_owned();
-        let (rows, _, _) = parse(yaml).unwrap();
+        let (rows, _, _, _) = parse(yaml).unwrap();
 
         assert_eq!(rows[0].range, 0..24); // Array
         assert_eq!(rows[1].range, 1..3); // 14
@@ -477,7 +484,7 @@ mod tests {
             - false
         "#}
         .to_owned();
-        let (rows, _, _) = parse(yaml).unwrap();
+        let (rows, _, _, _) = parse(yaml).unwrap();
 
         assert_eq!(rows[0].range, 0..52); // Array
         assert_eq!(rows[1].range, 1..38); // Object
@@ -503,7 +510,7 @@ mod tests {
         .to_owned();
         //              0 2       1012 15                  3537   42
         let pretty = r#"{ [[1, 2]]: 1, [{ "a": 1, "b": 2 }]: true }"#;
-        let (rows, parsed_pretty, _) = parse(yaml).unwrap();
+        let (rows, parsed_pretty, _, _) = parse(yaml).unwrap();
 
         assert_eq!(pretty, parsed_pretty);
 
@@ -535,7 +542,7 @@ mod tests {
         .to_owned();
         let pretty =
             r#"{ "str1": "fl ow", "str2": "a\nb\n", "str3": "fol ded\n", "key\nstring\n": 1 }"#;
-        let (_, parsed_pretty, _) = parse(yaml).unwrap();
+        let (_, parsed_pretty, _, _) = parse(yaml).unwrap();
 
         assert_eq!(pretty, parsed_pretty);
     }

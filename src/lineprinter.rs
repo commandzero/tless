@@ -338,9 +338,18 @@ fn grapheme_style(
                 .iter()
                 .any(|range| range.start < byte + byte_len && byte < range.end)
         };
-        let search = if overlaps(current) {
+        let shared = line
+            .shared_matches
+            .iter()
+            .filter(|(range, _)| range.start < byte + byte_len && byte < range.end)
+            .fold((false, false), |(_, active), (_, current)| {
+                (true, active || *current)
+            });
+        let current_hit = shared.1 || overlaps(current);
+        let match_hit = shared.0 || matches.iter().any(overlaps);
+        let search = if current_hit {
             SearchState::CurrentMatch
-        } else if matches.iter().any(overlaps) {
+        } else if match_hit {
             SearchState::Match
         } else {
             SearchState::None
@@ -387,11 +396,11 @@ fn grapheme_style(
             if focused.contains(&span.node) && !annotation {
                 style.fg = style.fg.bright();
             }
-            if matches.iter().any(overlaps) {
+            if match_hit {
                 style.fg = crate::terminal::YELLOW;
                 style.underlined = true;
             }
-            if overlaps(current) {
+            if current_hit {
                 style.fg = crate::terminal::LIGHT_YELLOW;
                 style.underlined = true;
             }
@@ -511,7 +520,7 @@ mod tests {
     use crate::flatjson::{parse_top_level_json, parse_top_level_yaml};
     use crate::terminal::test::{TextOnlyTerminal, VisibleEscapesTerminal};
     use crate::theme::Theme;
-    use crate::toon_display::{Layout, Span};
+    use crate::toon_display::{Span, fixture::Fixture};
     fn text(line: &DisplayLine, width: usize, offset: usize) -> String {
         let mut terminal = TextOnlyTerminal::new();
         paint(
@@ -540,7 +549,7 @@ mod tests {
             let Some(row) = viewer.screen_row(index) else {
                 break;
             };
-            let line = &viewer.visible[row.logical_line].line;
+            let line = &viewer.rendered_line(row.logical_line);
             let mut text = TextOnlyTerminal::new();
             paint_wrapped(&mut text, line, 0..1, row, 5, &[], &(0..0)).unwrap();
             assert!(UnicodeWidthStr::width(text.output()) <= 5);
@@ -561,7 +570,7 @@ mod tests {
                 highlighted_rows += 1;
             }
         }
-        assert_eq!(joined, viewer.visible[0].line.text);
+        assert_eq!(joined, viewer.rendered_line(0).text);
         assert!(highlighted_rows >= 2, "match spans multiple physical rows");
     }
 
@@ -572,7 +581,7 @@ mod tests {
         viewer.set_wrap_geometry(1, 0);
         viewer.toggle_wrapping();
         let row = viewer.screen_row(0).unwrap();
-        let line = &viewer.visible[0].line;
+        let line = &viewer.rendered_line(0);
         let mut terminal = TextOnlyTerminal::new();
         paint_wrapped(&mut terminal, line, 0..1, row, 1, &[], &(0..0)).unwrap();
         assert_eq!(terminal.output(), "…");
@@ -591,9 +600,9 @@ mod tests {
         let row = viewer
             .physical_rows
             .iter()
-            .find(|row| row.first && viewer.visible[row.logical_line].line.text == "  abc,界")
+            .find(|row| row.first && viewer.rendered_line(row.logical_line).text == "  abc,界")
             .unwrap();
-        let line = &viewer.visible[row.logical_line].line;
+        let line = &viewer.rendered_line(row.logical_line);
         assert_ne!(hit_test_wrapped(line, row, 2).0, line.owner);
         assert_eq!(hit_test_wrapped(line, row, 6), (line.owner, None));
         let continuation = viewer
@@ -628,7 +637,7 @@ mod tests {
             };
             let mut highlighted_rows = 0;
             for row in &viewer.physical_rows {
-                let line = &viewer.visible[row.logical_line].line;
+                let line = &viewer.rendered_line(row.logical_line);
                 let mut terminal = AnsiTerminal::new(String::new());
                 paint_wrapped_themed(&mut terminal, &theme, line, 0..1, row, 5, &[], &(0..0))
                     .unwrap();
@@ -667,7 +676,7 @@ mod tests {
         let flat =
             parse_top_level_json(r#"{"obj":{"value":"long text with spaces inside"}}"#.into())
                 .unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[1];
         assert!(line.text.starts_with("  "));
         for name in [
@@ -713,7 +722,7 @@ mod tests {
     #[cfg(not(feature = "colorscheme"))]
     fn selected_row_fallback_background_reaches_document_text() {
         let flat = parse_top_level_json(r#"{"value":"text"}"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let mut terminal = VisibleEscapesTerminal::new(false, true);
         paint_themed(
             &mut terminal,
@@ -766,7 +775,7 @@ mod tests {
     #[test]
     fn quoted_key_delimiters_use_punctuation_style() {
         let flat = parse_top_level_json(r#"{"needs quotes":1}"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[0];
         let key = line
             .spans
@@ -779,7 +788,7 @@ mod tests {
         let flat =
             parse_top_level_json(r#"{"rows":[{"needs quotes":1},{"needs quotes":2}]}"#.into())
                 .unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[0];
         let field = line
             .spans
@@ -794,7 +803,7 @@ mod tests {
     #[cfg(feature = "colorscheme")]
     fn borealis_table_fields_and_punctuation_use_plain_text() {
         let flat = parse_top_level_json(r#"{"rows":[{"field":1,"name":true}]}"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[0];
         let theme = Theme::built_in(crate::theme::ThemeName::Borealis);
         let mut terminal = crate::terminal::AnsiTerminal::new(String::new());
@@ -822,7 +831,7 @@ mod tests {
     #[test]
     fn reveal_window_reserves_only_actual_clipping_markers() {
         let flat = parse_top_level_json(r#"{"x":"aaaaaaaaaaaaaaaaaaaaaaaaaaZ"}"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[0];
         for (width, offset, visible, expected) in [
             (30, 0, 0..30, "x: aaaaaaaaaaaaaaaaaaaaaaaaaaZ"),
@@ -840,7 +849,7 @@ mod tests {
     #[test]
     fn clipping_uses_grapheme_cell_boundaries_and_horizontal_scrolling() {
         let flat = parse_top_level_json(r#"["界","é",3]"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[0];
         for width in 0..20 {
             for offset in 0..16 {
@@ -863,7 +872,7 @@ mod tests {
     #[test]
     fn counts_and_final_warnings_take_space_before_previews() {
         let mut flat = parse_top_level_yaml("box:\n  a: .inf\n  b: ordinary\n".into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         flat.collapse(1);
         let projection = layout.project(&flat);
         let line = &projection[0].line;
@@ -922,7 +931,7 @@ mod tests {
             .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
             .map(|(node, _)| node)
             .collect();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let projected =
             layout.project_with_documents(&flat, &std::collections::HashSet::from([roots[0]]));
         let fitted = fit_annotations(&projected[0].line, 24);
@@ -946,7 +955,7 @@ mod tests {
     #[test]
     fn expanded_scalars_have_distinct_styles_and_only_annotations_are_dimmed() {
         let flat = parse_top_level_json(r#"[1,true,null,"hello"]"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let mut terminal = VisibleEscapesTerminal::new(false, true);
         paint(
             &mut terminal,
@@ -972,7 +981,7 @@ mod tests {
     #[test]
     fn generated_warning_text_is_not_highlighted_as_a_search_match() {
         let flat = parse_top_level_yaml("value: .inf".into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let line = &layout.lines[0];
         assert!(
             line.spans
@@ -988,7 +997,7 @@ mod tests {
     #[cfg(feature = "colorscheme")]
     fn default_theme_dims_warning_annotations_without_brightening_them() {
         let flat = parse_top_level_yaml("value: .inf".into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let mut terminal = VisibleEscapesTerminal::new(false, true);
         paint_themed(
             &mut terminal,
@@ -1010,7 +1019,7 @@ mod tests {
     fn container_focus_brightens_row_values_and_implicit_root_fields() {
         for (input, focus) in [(r#"[{"a":1}]"#, 1), (r#"{"a":1}"#, 0)] {
             let flat = parse_top_level_json(input.into()).unwrap();
-            let layout = Layout::canonical(&flat);
+            let layout = Fixture::canonical(&flat);
             let line = &layout.lines[layout.nodes[focus].line];
             let end = flat[focus].pair_index().unwrap() + 1;
             let mut terminal = VisibleEscapesTerminal::new(false, true);
@@ -1033,7 +1042,7 @@ mod tests {
     #[test]
     fn mapped_search_does_not_highlight_unrelated_string_characters() {
         let flat = parse_top_level_json(r#""aaaaNEEDLEzz""#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let source = flat.1.find("NEEDLE").unwrap();
         let query = source..source + 6;
         let mut terminal = VisibleEscapesTerminal::new(false, true);
@@ -1098,7 +1107,7 @@ mod tests {
     #[test]
     fn indentation_reduction_removes_only_layout_spaces_without_scroll_ellipsis() {
         let flat = parse_top_level_json(r#"{"root":{"nested":{"value":1}}}"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let root = &layout.lines[0];
         let nested = &layout.lines[2];
         assert_eq!(
@@ -1119,11 +1128,11 @@ mod tests {
         );
         assert_eq!(nested.text, "    value: 1", "cached layout is unchanged");
         let flat = parse_top_level_json(r#"[{"values":[1],"other":{}}]"#.into()).unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let list = &layout.lines[1];
         assert!(reduced_text(list, LineViewport::new(list, 0, 100), 100).starts_with("- values"));
         let roots = parse_top_level_json("1 2".into()).unwrap();
-        let layout = Layout::canonical(&roots);
+        let layout = Fixture::canonical(&roots);
         let separator = &layout.lines[0];
         assert_eq!(
             reduced_text(separator, LineViewport::new(separator, 0, 100), 100),
@@ -1135,7 +1144,7 @@ mod tests {
     fn reduced_indentation_keeps_unicode_cell_hits_and_search_coordinates() {
         let flat = parse_top_level_json(r#"{"root":{"rows":[{"id":1,"name":"界NEEDLE"}]}}"#.into())
             .unwrap();
-        let layout = Layout::canonical(&flat);
+        let layout = Fixture::canonical(&flat);
         let source_start = flat.1.find("NEEDLE").unwrap();
         let query = source_start..source_start + 6;
         let line = layout
@@ -1176,7 +1185,7 @@ mod tests {
             (r#"{"outer":{"nested":["界",2]}}"#, 2),
         ] {
             let flat = parse_top_level_json(input.into()).unwrap();
-            let layout = Layout::canonical(&flat);
+            let layout = Fixture::canonical(&flat);
             let line = layout
                 .lines
                 .iter()

@@ -1,4 +1,6 @@
+use crate::chunked_vec::ChunkedVec;
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Write};
 use std::ops::Range;
 
@@ -12,15 +14,19 @@ use crate::jsonstringunescaper::unsafe_unescape_json_string;
 
 pub type Index = usize;
 
+/// A single-word optional node link. `usize::MAX` cannot index a Rust allocation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum OptionIndex {
-    Nil,
-    Index(Index),
-}
+pub struct OptionIndex(Index);
 
 impl OptionIndex {
+    pub const NIL: Self = Self(NIL);
+
+    pub fn as_option(&self) -> Option<Index> {
+        (!self.is_nil()).then_some(self.0)
+    }
+
     pub fn is_nil(&self) -> bool {
-        matches!(self, OptionIndex::Nil)
+        self.0 == NIL
     }
 
     pub fn is_some(&self) -> bool {
@@ -28,10 +34,8 @@ impl OptionIndex {
     }
 
     pub fn unwrap(&self) -> Index {
-        match self {
-            OptionIndex::Nil => panic!("Called .unwrap() on Nil OptionIndex"),
-            OptionIndex::Index(i) => *i,
-        }
+        assert!(!self.is_nil(), "Called .unwrap() on Nil OptionIndex");
+        self.0
     }
 }
 
@@ -39,11 +43,7 @@ pub const NIL: usize = usize::MAX;
 
 impl From<usize> for OptionIndex {
     fn from(i: usize) -> Self {
-        if i == NIL {
-            OptionIndex::Nil
-        } else {
-            OptionIndex::Index(i)
-        }
+        Self(i)
     }
 }
 
@@ -58,19 +58,44 @@ pub enum PathType {
 
 #[derive(Debug)]
 pub struct FlatJson(
-    pub Vec<Row>,
+    pub ChunkedVec<Row>,
     // Single-line pretty printed version of the JSON.
     // Rows will contain references into this.
     pub String,
     // Max nesting depth.
     pub usize,
+    pub DocumentMetadata,
 );
 
+/// Parsed values that cannot be recovered from the JSON spelling. Ordinary JSON
+/// nodes pay no per-node cost for YAML's typed keys and decoded strings.
+#[derive(Debug, Default)]
+pub struct DocumentMetadata {
+    pub keys: HashMap<Index, KeyValue>,
+    pub strings: HashMap<Index, String>,
+    collapsed: HashSet<Index>,
+}
+
 impl FlatJson {
+    pub fn key_value(&self, index: Index) -> Option<&KeyValue> {
+        self.3.keys.get(&index)
+    }
+
+    pub fn string_value(&self, index: Index) -> Option<&str> {
+        self.3.strings.get(&index).map(String::as_str)
+    }
+
+    pub fn has_collapsed(&self) -> bool {
+        !self.3.collapsed.is_empty()
+    }
+
+    pub fn collapsed_nodes(&self) -> impl Iterator<Item = Index> + '_ {
+        self.3.collapsed.iter().copied()
+    }
     #[cfg(test)]
     pub fn prev_visible_row(&self, index: Index) -> OptionIndex {
         if index == 0 {
-            return OptionIndex::Nil;
+            return OptionIndex::NIL;
         }
 
         let row = &self.0[index - 1];
@@ -78,7 +103,7 @@ impl FlatJson {
         if row.is_closing_of_container() && row.is_collapsed() {
             row.pair_index()
         } else {
-            OptionIndex::Index(index - 1)
+            OptionIndex::from(index - 1)
         }
     }
 
@@ -91,47 +116,59 @@ impl FlatJson {
 
         // We can always go to the next row, unless we're at the end of the file.
         if index == self.0.len() - 1 {
-            return OptionIndex::Nil;
+            return OptionIndex::NIL;
         }
 
-        OptionIndex::Index(index + 1)
+        OptionIndex::from(index + 1)
     }
 
     #[cfg(test)]
     pub fn prev_item(&self, mut index: Index) -> OptionIndex {
-        while let OptionIndex::Index(i) = self.prev_visible_row(index) {
+        while let Some(i) = self.prev_visible_row(index).as_option() {
             if !self.0[i].is_closing_of_container() {
-                return OptionIndex::Index(i);
+                return OptionIndex::from(i);
             }
 
             index = i;
         }
 
-        OptionIndex::Nil
+        OptionIndex::NIL
     }
 
     #[cfg(test)]
     pub fn next_item(&self, mut index: Index) -> OptionIndex {
-        while let OptionIndex::Index(i) = self.next_visible_row(index) {
+        while let Some(i) = self.next_visible_row(index).as_option() {
             if !self.0[i].is_closing_of_container() {
-                return OptionIndex::Index(i);
+                return OptionIndex::from(i);
             }
 
             index = i;
         }
 
-        OptionIndex::Nil
+        OptionIndex::NIL
     }
 
     pub fn expand(&mut self, index: Index) {
-        if let OptionIndex::Index(pair) = self.0[index].pair_index() {
+        let open = match self[index].value {
+            Value::CloseContainer { open_index, .. } => open_index,
+            _ => index,
+        };
+        self.3.collapsed.remove(&open);
+        if let Some(pair) = self.0[index].pair_index().as_option() {
             self.0[pair].expand();
         }
         self.0[index].expand();
     }
 
     pub fn collapse(&mut self, index: Index) {
-        if let OptionIndex::Index(pair) = self.0[index].pair_index() {
+        if self[index].is_container() {
+            let open = match self[index].value {
+                Value::CloseContainer { open_index, .. } => open_index,
+                _ => index,
+            };
+            self.3.collapsed.insert(open);
+        }
+        if let Some(pair) = self.0[index].pair_index().as_option() {
             self.0[pair].collapse();
         }
         self.0[index].collapse();
@@ -170,7 +207,7 @@ impl FlatJson {
             return self.build_path_to_node_impl(path_type, row.pair_index().unwrap(), buf);
         }
 
-        if let OptionIndex::Index(parent_index) = row.parent {
+        if let Some(parent_index) = row.parent.as_option() {
             self.build_path_to_node_impl(path_type, parent_index, buf)?;
         }
 
@@ -246,7 +283,7 @@ impl FlatJson {
     }
     pub fn decoded_string_key(&self, index: Index) -> Result<Option<Cow<'_, str>>, String> {
         let row = &self[index];
-        match &row.key_value {
+        match self.key_value(index) {
             Some(KeyValue::String(text)) => Ok(Some(Cow::Borrowed(text))),
             Some(_) => Ok(None),
             None => {
@@ -273,10 +310,7 @@ impl FlatJson {
         } else {
             index
         };
-        let end = match self[start].pair_index() {
-            OptionIndex::Index(end) => end,
-            OptionIndex::Nil => start,
-        };
+        let end = self[start].pair_index().as_option().unwrap_or(start);
         start..=end
     }
 
@@ -378,7 +412,7 @@ impl FlatJson {
                 if index != root {
                     if let Some(key_range) = &row.key_range {
                         buf.push('(');
-                        let decoded = match &row.key_value {
+                        let decoded = match self.key_value(index) {
                             Some(KeyValue::String(value)) => Some(value.as_str()),
                             _ => None,
                         };
@@ -390,11 +424,9 @@ impl FlatJson {
                 match &row.value {
                     Value::Null | Value::EmptyObject | Value::EmptyArray => buf.push_str("()"),
                     Value::Boolean | Value::Number => buf.push_str(&self.1[row.range.clone()]),
-                    Value::String => self.write_sexp_atom(
-                        &mut buf,
-                        row.range.clone(),
-                        row.string_value.as_deref(),
-                    )?,
+                    Value::String => {
+                        self.write_sexp_atom(&mut buf, row.range.clone(), self.string_value(index))?
+                    }
                     Value::OpenContainer { .. } => buf.push('('),
                     Value::CloseContainer { .. } => buf.push(')'),
                 }
@@ -508,8 +540,6 @@ pub struct Row {
     pub index_in_parent: usize,
     pub range: Range<usize>,
     pub key_range: Option<Range<usize>>,
-    pub key_value: Option<KeyValue>,
-    pub string_value: Option<String>,
     pub value: Value,
 }
 
@@ -697,35 +727,35 @@ impl Value {
 
     fn first_child(&self) -> OptionIndex {
         match self {
-            Value::OpenContainer { first_child, .. } => OptionIndex::Index(*first_child),
-            _ => OptionIndex::Nil,
+            Value::OpenContainer { first_child, .. } => OptionIndex::from(*first_child),
+            _ => OptionIndex::NIL,
         }
     }
 
     fn last_child(&self) -> OptionIndex {
         match self {
-            Value::CloseContainer { last_child, .. } => OptionIndex::Index(*last_child),
-            _ => OptionIndex::Nil,
+            Value::CloseContainer { last_child, .. } => OptionIndex::from(*last_child),
+            _ => OptionIndex::NIL,
         }
     }
 
     fn pair_index(&self) -> OptionIndex {
         match self {
-            Value::OpenContainer { close_index, .. } => OptionIndex::Index(*close_index),
-            Value::CloseContainer { open_index, .. } => OptionIndex::Index(*open_index),
-            _ => OptionIndex::Nil,
+            Value::OpenContainer { close_index, .. } => OptionIndex::from(*close_index),
+            Value::CloseContainer { open_index, .. } => OptionIndex::from(*open_index),
+            _ => OptionIndex::NIL,
         }
     }
 }
 
 pub fn parse_top_level_json(json: String) -> Result<FlatJson, String> {
     let (rows, pretty, depth) = jsonparser::parse(json)?;
-    Ok(FlatJson(rows, pretty, depth))
+    Ok(FlatJson(rows, pretty, depth, DocumentMetadata::default()))
 }
 
 pub fn parse_top_level_yaml(yaml: String) -> Result<FlatJson, String> {
-    let (rows, pretty, depth) = yamlparser::parse(yaml)?;
-    Ok(FlatJson(rows, pretty, depth))
+    let (rows, pretty, depth, values) = yamlparser::parse(yaml)?;
+    Ok(FlatJson(rows, pretty, depth, values))
 }
 
 #[cfg(test)]
@@ -807,7 +837,7 @@ mod tests {
             "depth",
             &fj,
             vec![0, 1, 1, 2, 2, 1, 1, 2, 2, 2, 1, 1, 0],
-            |elem| OptionIndex::Index(elem.depth),
+            |elem| OptionIndex::from(elem.depth),
         );
     }
 

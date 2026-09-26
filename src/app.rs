@@ -105,14 +105,17 @@ impl App {
         input_filename: String,
         stdout: crate::screenwriter::TerminalOutput,
     ) -> App {
-        let mut viewer = if opt.path.is_some() {
-            JsonViewer::with_roots(flatjson, roots)
-        } else {
-            JsonViewer::new(flatjson)
-        };
+        let dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
+        let mut viewer = JsonViewer::with_roots(
+            flatjson,
+            roots,
+            dimensions.without_status_bar(),
+            opt.show_line_numbers || opt.show_relative_line_numbers,
+            opt.path.is_some(),
+        );
         viewer.scrolloff_setting = opt.scrolloff;
 
-        let screen_writer = ScreenWriter::init(opt, theme, stdout, TTYDimensions::default());
+        let screen_writer = ScreenWriter::init(opt, theme, stdout, dimensions);
 
         App {
             #[cfg(feature = "colorscheme")]

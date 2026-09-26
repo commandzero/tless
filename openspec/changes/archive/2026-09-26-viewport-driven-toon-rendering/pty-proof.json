@@ -1,0 +1,302 @@
+{
+  "method": "Synthetic PTYs; pyte 0.8.2 screen capture; interaction timings include driver/emulator overhead, not startup benchmark",
+  "table": {
+    "events": [
+      {
+        "action": "table startup",
+        "elapsed_ms": 8.398207999562146,
+        "columns": 80,
+        "rows": 12,
+        "screen": [
+          "   1 \u25be rows[2000]{id,text}:",
+          "   2     0,item",
+          "   3     1,item",
+          "   4     2,item",
+          "   5     3,item",
+          "   6     4,item",
+          "   7     5,item",
+          "   8     6,item",
+          "   9     7,item",
+          "  10     8,item",
+          ".                                                                   fixture.json",
+          ""
+        ]
+      },
+      {
+        "action": "enable wrapping",
+        "elapsed_ms": 0.7382910007436294,
+        "columns": 80,
+        "rows": 12,
+        "screen": [
+          "   1 \u25be rows[2000]{id,text}:",
+          "   2     0,item",
+          "   3     1,item",
+          "   4     2,item",
+          "   5     3,item",
+          "   6     4,item",
+          "   7     5,item",
+          "   8     6,item",
+          "   9     7,item",
+          "  10     8,item",
+          ".                                                                   fixture.json",
+          "Line wrapping on"
+        ]
+      },
+      {
+        "action": "search prompt",
+        "elapsed_ms": 0.32854199889698066,
+        "columns": 80,
+        "rows": 12,
+        "screen": [
+          "   1 \u25be rows[2000]{id,text}:",
+          "   2     0,item",
+          "   3     1,item",
+          "   4     2,item",
+          "   5     3,item",
+          "   6     4,item",
+          "   7     5,item",
+          "   8     6,item",
+          "   9     7,item",
+          "  10     8,item",
+          ".                                                                   fixture.json",
+          "/"
+        ]
+      },
+      {
+        "action": "search never-painted wrapped tail",
+        "elapsed_ms": 1.6830000022309832,
+        "columns": 80,
+        "rows": 12,
+        "screen": [
+          "1999     1997,item",
+          "2000     1998,item",
+          "2001     1999,\u754c\u00e9abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabc",
+          "       defabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "       efabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcde",
+          "       fabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef",
+          "       abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefa",
+          "       bcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefab",
+          "       cdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefNEEDLE",
+          "2002   outside: excluded",
+          ".rows[1999].text                                                    fixture.json",
+          "/NEEDLE                                                      [1/1]"
+        ]
+      },
+      {
+        "action": "resize preserving searched field",
+        "elapsed_ms": 1.353792002191767,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "       bcdefabcdefabcdefabcdefabcdefabcdefabcdefab",
+          "       cdefabcdefabcdefabcdefabcdefabcdefabcdefabc",
+          "       defabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "       efabcdefabcdefabcdefabcdefabcdefabcdefabcde",
+          "",
+          "       abcdefabcdefabcdefabcdefabcdefabcdefabcdefa",
+          "       bcdefabcdefabcdefNEEDLE",
+          "2002   outside: excluded",
+          ".rows[1999].text                      fixture.json",
+          "/NEEDLE                        [1/1]"
+        ]
+      },
+      {
+        "action": "path prompt",
+        "elapsed_ms": 0.5131249999976717,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "       bcdefabcdefabcdefabcdefabcdefabcdefabcdefab",
+          "       cdefabcdefabcdefabcdefabcdefabcdefabcdefabc",
+          "       defabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+          "       efabcdefabcdefabcdefabcdefabcdefabcdefabcde",
+          "       fabcdefabcdefabcdefabcdefabcdefabcdefabcdef",
+          "       abcdefabcdefabcdefabcdefabcdefabcdefabcdefa",
+          "       bcdefabcdefabcdefNEEDLE",
+          "2002   outside: excluded",
+          ".rows[1999].text                      fixture.json",
+          ":"
+        ]
+      },
+      {
+        "action": "filter table root",
+        "elapsed_ms": 0.7874589973653201,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "   1 \u25be [2000]{id,text}:",
+          "   2     0,item",
+          "   3     1,item",
+          "   4     2,item",
+          "   5     3,item",
+          "   6     4,item",
+          "   7     5,item",
+          "   8     6,item",
+          ".rows                                 fixture.json",
+          ""
+        ]
+      },
+      {
+        "action": "disable wrapping",
+        "elapsed_ms": 0.43045800339314155,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "   1 \u25be [2000]{id,text}:",
+          "   2     0,item",
+          "   3     1,item",
+          "   4     2,item",
+          "   5     3,item",
+          "   6     4,item",
+          "   7     5,item",
+          "   8     6,item",
+          ".rows                                 fixture.json",
+          "Line wrapping off"
+        ]
+      },
+      {
+        "action": "number prompt",
+        "elapsed_ms": 0.18475000251783058,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "   1 \u25be [2000]{id,text}:",
+          "   2     0,item",
+          "   3     1,item",
+          "   4     2,item",
+          "   5     3,item",
+          "   6     4,item",
+          "   7     5,item",
+          "   8     6,item",
+          ".rows                                 fixture.json",
+          ":"
+        ]
+      },
+      {
+        "action": "hide line numbers",
+        "elapsed_ms": 0.7831670009181835,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "\u25be [2000]{id,text}:",
+          "    0,item",
+          "    1,item",
+          "    2,item",
+          "    3,item",
+          "    4,item",
+          "    5,item",
+          "    6,item",
+          ".rows                                 fixture.json",
+          ""
+        ]
+      },
+      {
+        "action": "mouse collapse",
+        "elapsed_ms": 0.4672499999287538,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "\u25b8 \u2026 \u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026,\u2026\u2026",
+          "~",
+          "~",
+          "~",
+          "~",
+          "~",
+          "~",
+          "~",
+          ".rows                                 fixture.json",
+          ""
+        ]
+      },
+      {
+        "action": "mouse reopen",
+        "elapsed_ms": 0.37637499917764217,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "\u25be [2000]{id,text}:",
+          "    0,item",
+          "    1,item",
+          "    2,item",
+          "    3,item",
+          "    4,item",
+          "    5,item",
+          "    6,item",
+          ".rows                                 fixture.json",
+          ""
+        ]
+      },
+      {
+        "action": "counted logical motion",
+        "elapsed_ms": 0.6944169981579762,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "\u25be [2000]{id,text}:",
+          "    0,item",
+          "    1,item",
+          "    2,item",
+          "    3,item",
+          "    4,item",
+          "    5,item",
+          "    6,item",
+          ".rows[2]                              fixture.json",
+          ""
+        ]
+      },
+      {
+        "action": "absolute distant jump",
+        "elapsed_ms": 1.6585420016781427,
+        "columns": 50,
+        "rows": 10,
+        "screen": [
+          "    1494,item",
+          "    1495,item",
+          "    1496,item",
+          "    1497,item",
+          "    1498,item",
+          "    1499,item",
+          "    1500,item",
+          "    1501,item",
+          ".rows[1498]                           fixture.json",
+          ""
+        ]
+      }
+    ],
+    "exit_code": 0,
+    "termios_restored": true,
+    "alternate_screen_restored": true,
+    "cursor_restored": true
+  },
+  "sequence": {
+    "events": [
+      {
+        "action": "sequence list warnings",
+        "elapsed_ms": 14.344499999424443,
+        "columns": 120,
+        "rows": 12,
+        "screen": [
+          " 1 \u25be --- (1 of 2)",
+          " 2 \u25be records[2]:",
+          " 3 \u25be   - a: 2",
+          " 4 \u25be   - a: .inf  # WARN Non-finite number",
+          " 5       b: \"\\u0001\"  # WARN Non-standard string escape",
+          " 6 \u25be --- (2 of 2)",
+          " 7 \u25b8 tags[2]: \u754c,\u00e9",
+          " 8   long: NEEDLE",
+          "~",
+          "~",
+          "[0]                                                                                                        sequence.yaml",
+          ""
+        ]
+      },
+      {
+        "action": "collapse first document",
+        "elapsed_ms": 0.6525419994432013,
+        "columns": 120,
+        "rows": 12,
+        "screen": [
+          " 1 \u25b8 --- (1 of 2) records: [2]: \u2026  # WARN Contains 2 hidden warnings",
+          " 6 \u25be --- (2 of 2)",
+
+[Showing lines 1-300 of 360. Use :301 to continue]
