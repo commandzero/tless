@@ -66,6 +66,8 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
+    // libc takes a mutable window-size pointer on macOS and a const pointer on Linux.
+    let size_ptr = std::ptr::addr_of_mut!(size);
     // Isolated test PTY. Both descriptors become owned Files only after success.
     assert_eq!(
         unsafe {
@@ -74,7 +76,7 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
                 &mut slave,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                &mut size,
+                size_ptr,
             )
         },
         0

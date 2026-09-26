@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T20:37:21Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T22:45:08Z }
 ---
 
 # TOON acceptance checks
@@ -144,6 +144,9 @@ TLESS_PERFORMANCE_REPORT=/tmp/tless-first-frame.json \
 cargo test --release --locked --test performance -- --ignored --nocapture
 ```
 
+The benchmark is ignored during ordinary test execution, but still compiles and
+must pass the Linux/macOS build and Clippy checks applied to test targets.
+
 The harness generates the 10,238,903-byte, 150,000-record synthetic input,
 isolates user configuration, and opens each executable in a 140×40 PTY with
 numbers enabled and wrapping disabled. It excludes one warm-up, rotates
@@ -171,6 +174,9 @@ separate RSS sampling described above. Against **each** mode, the candidate must
 have median and nearest-rank p95 startup time at most **1.5×** the reference and
 sampled startup peak RSS at most **1.2×** the reference. This is additional to,
 not a replacement for, the synthetic gate.
+The committed `tests/performance.rs` enforces the synthetic gates only; this
+private-input comparison is a separate local acceptance procedure, not an
+assertion made by that test or ordinary CI.
 
 Exercise broad objects, deep nesting, table-heavy arrays, and width-sensitive
 Unicode arrays through the actual terminal. Check first/last absolute-line jumps,
