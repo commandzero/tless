@@ -11,6 +11,10 @@ Earlier upstream history is preserved below.
 
 - Open documents with millions of nodes faster and with substantially lower startup memory use. [#29](https://github.com/commandzero/tless/pull/29).
 
+### Fixed
+
+- Correct in-app TOON help to describe decimal rounding and last-value-wins duplicate-key export. [#30](https://github.com/commandzero/tless/pull/30).
+
 ## [0.1.3] - 2026-09-24
 
 ### Added
