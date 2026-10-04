@@ -85,21 +85,21 @@ fn filtered_nested_containers_keep_matching_delimiter_indentation() {
 
 #[test]
 fn path_arguments_distinguish_syntax_errors_from_resolution_errors() {
-    for args in [&["--path"][..], &["--path", ".a[]"], &["--path", "./a~2"]] {
+    // Argument validation can exit before stdin is written; these cases need no input.
+    for args in [
+        &["--path"][..],
+        &["--path", ".a[]"],
+        &["--path", "./a~2"],
+        &["--path", ".a[01]"],
+        &["--path", ".a[-1]"],
+    ] {
         let output = run(args, "");
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
     }
-    for path in [".absent", ".a[01]", ".a[99]", ".a[-1]", ".a.0.child"] {
+    for path in [".absent", ".a[99]", ".a.0.child"] {
         let output = run(&["--path", path, "-o", "json"], r#"{"a":[1]}"#);
-        // Bracket-index grammar errors are argument errors; valid but missing
-        // locations are resolution errors.
-        let expected = if matches!(path, ".a[01]" | ".a[-1]") {
-            2
-        } else {
-            1
-        };
-        assert_eq!(output.status.code(), Some(expected), "{path}");
+        assert_eq!(output.status.code(), Some(1), "{path}");
         assert!(output.stdout.is_empty());
     }
 }

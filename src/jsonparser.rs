@@ -1,23 +1,24 @@
 use logos::{Lexer, Logos};
 
+use crate::chunked_vec::ChunkedVec;
 use crate::flatjson::{ContainerType, Index, OptionIndex, Row, Value};
 use crate::jsontokenizer::JsonToken;
 
 struct JsonParser<'a> {
     tokenizer: Lexer<'a, JsonToken>,
     parents: Vec<Index>,
-    rows: Vec<Row>,
+    rows: ChunkedVec<Row>,
     pretty_printed: String,
     max_depth: usize,
 
     peeked_token: Option<Option<JsonToken>>,
 }
 
-pub fn parse(json: String) -> Result<(Vec<Row>, String, usize), String> {
+pub fn parse(json: String) -> Result<(ChunkedVec<Row>, String, usize), String> {
     let mut parser = JsonParser {
         tokenizer: JsonToken::lexer(&json),
         parents: vec![],
-        rows: vec![],
+        rows: ChunkedVec::new(),
         pretty_printed: String::new(),
         max_depth: 0,
         peeked_token: None,
@@ -91,9 +92,9 @@ impl<'a> JsonParser<'a> {
             let next_top_level = self.parse_elem()?;
             num_child += 1;
 
-            self.rows[next_top_level].prev_sibling = OptionIndex::Index(prev_top_level);
+            self.rows[next_top_level].prev_sibling = OptionIndex::from(prev_top_level);
             self.rows[next_top_level].index_in_parent = num_child;
-            self.rows[prev_top_level].next_sibling = OptionIndex::Index(next_top_level);
+            self.rows[prev_top_level].next_sibling = OptionIndex::from(next_top_level);
 
             prev_top_level = next_top_level;
         }
@@ -134,13 +135,13 @@ impl<'a> JsonParser<'a> {
             close_index: 0,
         };
 
-        let array_open_index = self.create_row(open_value);
+        let array_open_index = self.create_row(open_value, 1);
 
         self.parents.push(array_open_index);
         self.pretty_printed.push('[');
         self.advance_and_consume_whitespace();
 
-        let mut prev_sibling = OptionIndex::Nil;
+        let mut prev_sibling = OptionIndex::NIL;
         let mut num_children = 0;
 
         loop {
@@ -183,12 +184,12 @@ impl<'a> JsonParser<'a> {
 
             self.rows[child].prev_sibling = prev_sibling;
             self.rows[child].index_in_parent = num_children;
-            if let OptionIndex::Index(prev) = prev_sibling {
-                self.rows[prev].next_sibling = OptionIndex::Index(child);
+            if let Some(prev) = prev_sibling.as_option() {
+                self.rows[prev].next_sibling = OptionIndex::from(child);
             }
 
             num_children += 1;
-            prev_sibling = OptionIndex::Index(child);
+            prev_sibling = OptionIndex::from(child);
         }
 
         self.parents.pop();
@@ -204,7 +205,7 @@ impl<'a> JsonParser<'a> {
                 open_index: array_open_index,
             };
 
-            let array_close_index = self.create_row(close_value);
+            let array_close_index = self.create_row(close_value, 1);
 
             // Update end of the Array range; we add the ']' to pretty_printed
             // below, hence the + 1.
@@ -234,13 +235,13 @@ impl<'a> JsonParser<'a> {
             close_index: 0,
         };
 
-        let object_open_index = self.create_row(open_value);
+        let object_open_index = self.create_row(open_value, 1);
 
         self.parents.push(object_open_index);
         self.pretty_printed.push('{');
         self.advance_and_consume_whitespace();
 
-        let mut prev_sibling = OptionIndex::Nil;
+        let mut prev_sibling = OptionIndex::NIL;
         let mut num_children = 0;
 
         loop {
@@ -307,12 +308,12 @@ impl<'a> JsonParser<'a> {
 
             self.rows[child].prev_sibling = prev_sibling;
             self.rows[child].index_in_parent = num_children;
-            if let OptionIndex::Index(prev) = prev_sibling {
-                self.rows[prev].next_sibling = OptionIndex::Index(child);
+            if let Some(prev) = prev_sibling.as_option() {
+                self.rows[prev].next_sibling = OptionIndex::from(child);
             }
 
             num_children += 1;
-            prev_sibling = OptionIndex::Index(child);
+            prev_sibling = OptionIndex::from(child);
         }
 
         self.parents.pop();
@@ -331,7 +332,7 @@ impl<'a> JsonParser<'a> {
                 open_index: object_open_index,
             };
 
-            let object_close_index = self.create_row(close_value);
+            let object_close_index = self.create_row(close_value, 1);
 
             // Update end of the Object range; we add the '}' to pretty_printed
             // below, hence the + 1.
@@ -354,8 +355,7 @@ impl<'a> JsonParser<'a> {
 
     fn parse_null(&mut self) -> Result<usize, String> {
         self.advance();
-        let row_index = self.create_row(Value::Null);
-        self.rows[row_index].range.end = self.rows[row_index].range.start + 4;
+        let row_index = self.create_row(Value::Null, 4);
         self.pretty_printed.push_str("null");
         Ok(row_index)
     }
@@ -363,33 +363,26 @@ impl<'a> JsonParser<'a> {
     fn parse_bool(&mut self, b: bool) -> Result<usize, String> {
         self.advance();
 
-        let row_index = self.create_row(Value::Boolean);
         let (bool_str, len) = if b { ("true", 4) } else { ("false", 5) };
 
-        self.rows[row_index].range.end = self.rows[row_index].range.start + len;
+        let row_index = self.create_row(Value::Boolean, len);
         self.pretty_printed.push_str(bool_str);
 
         Ok(row_index)
     }
 
     fn parse_number(&mut self) -> Result<usize, String> {
-        let row_index = self.create_row(Value::Number);
+        let row_index = self.create_row(Value::Number, self.tokenizer.slice().len());
         self.pretty_printed.push_str(self.tokenizer.slice());
-
-        self.rows[row_index].range.end =
-            self.rows[row_index].range.start + self.tokenizer.slice().len();
-
         self.advance();
         Ok(row_index)
     }
 
     fn parse_string(&mut self) -> Result<usize, String> {
-        let row_index = self.create_row(Value::String);
+        let row_index = self.create_row(Value::String, self.tokenizer.slice().len());
 
         // The token includes the quotation marks.
         self.pretty_printed.push_str(self.tokenizer.slice());
-        self.rows[row_index].range.end =
-            self.rows[row_index].range.start + self.tokenizer.slice().len();
 
         self.advance();
         Ok(row_index)
@@ -400,12 +393,13 @@ impl<'a> JsonParser<'a> {
     // self.pretty_printed should NOT include the added row yet;
     // we use the current length of self.pretty_printed as the
     // starting index of the row's range.
-    fn create_row(&mut self, value: Value) -> usize {
+    #[inline(always)]
+    fn create_row(&mut self, value: Value, length: usize) -> usize {
         let index = self.rows.len();
 
         let parent = match self.parents.last() {
-            None => OptionIndex::Nil,
-            Some(row_index) => OptionIndex::Index(*row_index),
+            None => OptionIndex::NIL,
+            Some(row_index) => OptionIndex::from(*row_index),
         };
 
         let range_start = self.pretty_printed.len();
@@ -416,19 +410,15 @@ impl<'a> JsonParser<'a> {
             depth: self.parents.len(),
             value,
 
-            // The start of this range is set by us, but then we set
-            // the end when we're done parsing the row. We'll set
-            // the default end to be one character so we don't have to
-            // update it after ']' and '}'.
-            range: range_start..range_start + 1,
+            // Scalars are complete immediately; containers extend this range
+            // when their closing delimiter is parsed.
+            range: range_start..range_start + length,
 
             // To be filled in by caller
-            prev_sibling: OptionIndex::Nil,
-            next_sibling: OptionIndex::Nil,
+            prev_sibling: OptionIndex::NIL,
+            next_sibling: OptionIndex::NIL,
             index_in_parent: 0,
             key_range: None,
-            key_value: None,
-            string_value: None,
         });
 
         index

@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: codex/gpt-5.6-luna, at: 2026-09-13T16:32:02Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T23:29:01Z }
 ---
 
 # TOON acceptance checks
@@ -37,6 +37,10 @@ The known large-number round-trip failure has an explicit string-result assertio
 Tests use isolated pseudoterminals and disposable files. They do not write to the
 user's clipboard or controlling terminal. Rerun terminal-setup permission failures
 with terminal access; do not count them as passing or skipped tests.
+
+Pipeline argument-error cases supply no stdin payload: validation can exit before
+reading input. Resolution-error cases supply documents and assert status 1 rather
+than the status 2 used for invalid arguments.
 
 ## Manual release checks
 
@@ -110,6 +114,82 @@ release checks above remain separate.
 8. Confirm `--mode` and `-m` fail with argument errors, `m` does not switch
    modes, and help has no closing-delimiter controls. Confirm JSON and standard
    TOON exports contain no generated annotations and keep codec behavior.
+
+## Startup and presentation resource checks
+
+Ordinary tests cover late table disqualifiers, hidden warning totals, distant
+escaped table-key and filtered inline-element matches, and bounded presentation
+across substantially different tails and repeated distant navigation. They
+assert row-materialization and retained span/map bounds, not wall-clock limits.
+Large YAML cases also exercise distant typed-key/decoded-string lookup, selected
+JSON export, and filtering across storage chunks. Collapse/reopen coverage
+includes repeated operations through paired delimiters and exact logical
+addresses before and after restoring an expanded projection.
+Filtered first fields retain their own selection identity; out-of-order selected
+roots preserve exact addresses across reflow and collapse. Repeated and shortened
+key shapes still recheck changed keys, escaped aliases, duplicate extensions,
+and scalar warnings.
+
+The native release comparison is opt-in. Build jless 0.9.0 and tless at
+`9bb9568` from identifiable source revisions in separate output directories.
+Use the same compiler and default features, and record any reference build
+adjustments. Set these environment variables before running:
+
+| Variable | Value |
+| --- | --- |
+| `JLESS_REFERENCE` | Absolute path to the jless 0.9.0 release executable |
+| `TLESS_REFERENCE` | Absolute path to the frozen `9bb9568` release executable |
+| `TLESS_BUILD_PROVENANCE` | Compiler, host, revisions, features, and build commands for all three executables |
+
+```sh
+cargo build --release --locked
+TLESS_CANDIDATE="$PWD/target/release/tless" \
+TLESS_PERFORMANCE_REPORT=/tmp/tless-first-frame.json \
+cargo test --release --locked --test performance -- --ignored --nocapture
+```
+
+The benchmark is ignored during ordinary test execution, but still compiles and
+must pass the Linux/macOS build and Clippy checks applied to test targets.
+
+The harness generates the 10,238,903-byte, 150,000-record synthetic input,
+isolates user configuration, and opens each executable in a 140×40 PTY with
+numbers enabled and wrapping disabled. It excludes one warm-up, rotates
+executable order across 20 launches, responds to cursor-position queries, and
+requires document content plus filename/status on the final terminal row
+before timing successful startup. Every launch must quit successfully.
+
+The JSON report retains warm-ups, individual observations, executable hashes,
+median, and nearest-rank p95 (the nineteenth sorted observation). Acceptance
+requires both candidate statistics to be at most three times jless and the
+candidate median to be at most one fifth of frozen tless. Run without concurrent
+builds or profiling. These thresholds are comparison gates, not a latency
+promise for every document or a timing assertion for shared CI.
+
+Memory is measured in a separate launch with `ps` RSS samples at least 5 ms
+apart, stopping at useful-frame detection. Report the sampled pre-frame peak
+in KiB; it is neither an exact high-water mark nor whole-session memory.
+The memory launch samples before its first PTY read, so a complete initial frame
+delivered in one read still has an RSS observation.
+Record navigation, resize, wrapping, and search timings separately as diagnostics.
+
+For direct parsed-node traversal, also run a separate 20-round private-input
+comparison against both explicit jless modes: `--mode data` and `--mode line`.
+Use the same host, release compiler, default features, isolated configuration,
+140×40 terminal, warm-up, rotating launch order, useful-frame criterion, and
+separate RSS sampling described above. Against **each** mode, the candidate must
+have median and nearest-rank p95 startup time at most **1.5×** the reference and
+sampled startup peak RSS at most **1.2×** the reference. This is additional to,
+not a replacement for, the synthetic gate.
+The committed `tests/performance.rs` enforces the synthetic gates only; this
+private-input comparison is a separate local acceptance procedure, not an
+assertion made by that test or ordinary CI.
+
+Exercise broad objects, deep nesting, table-heavy arrays, and width-sensitive
+Unicode arrays through the actual terminal. Check first/last absolute-line jumps,
+collapse/reopen, wrapping, narrow/wide resize, search, filtering, successful exit,
+and terminal restoration. Compare rendered output with the preceding version
+where the display contract is unchanged. Keep private contents, source paths,
+identifiers, and screen captures out of committed evidence.
 
 ## Release checks
 

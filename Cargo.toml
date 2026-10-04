@@ -1,6 +1,6 @@
 [package]
 name = "tless"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Ryan Eno <cargo@commandzero.com>", "Paul Julius Martinez <pauljuliusmartinez@gmail.com>"]
 license = "MIT"
 description = "A terminal viewer for JSON, YAML, and TOON"
@@ -28,11 +28,11 @@ unicode-width = "0.2.2"
 unicode-segmentation = "1.13.3"
 rustyline = { version = "18.0.1", default-features = false, features = ["custom-bindings"] }
 regex = "1.13.1"
-lazy_static = "1.5.0"
+lazy_static = "1.5.1"
 termion = "4.0.6"
 signal-hook = "0.4.4"
 nix = { version = "0.31.3", default-features = false, features = ["fs", "poll", "event", "signal"] }
-clap = { version = "4.6.6", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive"] }
 yaml-rust = "0.4.5"
 arboard = { version = "3.6.1", default-features = false }
 toon-format = { version = "=0.5.0", default-features = false }

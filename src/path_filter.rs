@@ -1,13 +1,14 @@
-use crate::flatjson::{FlatJson, OptionIndex, Value};
+use crate::flatjson::{FlatJson, Value};
 
 /// Return the non-closing rows that begin each original document.
 pub fn document_roots(flat: &FlatJson) -> Vec<usize> {
-    flat.0
-        .iter()
-        .enumerate()
-        .filter(|(_, row)| row.parent.is_nil() && !row.is_closing_of_container())
-        .map(|(index, _)| index)
-        .collect()
+    let mut roots = Vec::new();
+    let mut node = 0;
+    while node < flat.0.len() {
+        roots.push(node);
+        node = flat.subtree_range(node).end() + 1;
+    }
+    roots
 }
 
 /// A parsed path selection. Empty `tokens` means the original document roots.
@@ -316,7 +317,7 @@ fn checked_index(text: &str) -> Result<usize, String> {
 
 fn child_at_index(flat: &FlatJson, node: usize, index: usize) -> Option<usize> {
     let mut child = flat[node].first_child();
-    while let OptionIndex::Index(child_index) = child {
+    while let Some(child_index) = child.as_option() {
         if flat[child_index].index_in_parent == index {
             return Some(child_index);
         }
@@ -328,7 +329,7 @@ fn child_at_index(flat: &FlatJson, node: usize, index: usize) -> Option<usize> {
 fn child_for_key(flat: &FlatJson, node: usize, key: &str) -> Result<usize, String> {
     let mut child = flat[node].first_child();
     let mut matched = None;
-    while let OptionIndex::Index(child_index) = child {
+    while let Some(child_index) = child.as_option() {
         if let Some(candidate) = flat.decoded_string_key(child_index)? {
             if candidate.as_ref() == key {
                 if matched.is_some() {
