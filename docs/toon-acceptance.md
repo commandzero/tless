@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T20:37:21Z }
+generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T23:29:01Z }
 ---
 
 # TOON acceptance checks
@@ -37,6 +37,10 @@ The known large-number round-trip failure has an explicit string-result assertio
 Tests use isolated pseudoterminals and disposable files. They do not write to the
 user's clipboard or controlling terminal. Rerun terminal-setup permission failures
 with terminal access; do not count them as passing or skipped tests.
+
+Pipeline argument-error cases supply no stdin payload: validation can exit before
+reading input. Resolution-error cases supply documents and assert status 1 rather
+than the status 2 used for invalid arguments.
 
 ## Manual release checks
 
@@ -144,6 +148,9 @@ TLESS_PERFORMANCE_REPORT=/tmp/tless-first-frame.json \
 cargo test --release --locked --test performance -- --ignored --nocapture
 ```
 
+The benchmark is ignored during ordinary test execution, but still compiles and
+must pass the Linux/macOS build and Clippy checks applied to test targets.
+
 The harness generates the 10,238,903-byte, 150,000-record synthetic input,
 isolates user configuration, and opens each executable in a 140×40 PTY with
 numbers enabled and wrapping disabled. It excludes one warm-up, rotates
@@ -161,6 +168,8 @@ promise for every document or a timing assertion for shared CI.
 Memory is measured in a separate launch with `ps` RSS samples at least 5 ms
 apart, stopping at useful-frame detection. Report the sampled pre-frame peak
 in KiB; it is neither an exact high-water mark nor whole-session memory.
+The memory launch samples before its first PTY read, so a complete initial frame
+delivered in one read still has an RSS observation.
 Record navigation, resize, wrapping, and search timings separately as diagnostics.
 
 For direct parsed-node traversal, also run a separate 20-round private-input
@@ -171,6 +180,9 @@ separate RSS sampling described above. Against **each** mode, the candidate must
 have median and nearest-rank p95 startup time at most **1.5×** the reference and
 sampled startup peak RSS at most **1.2×** the reference. This is additional to,
 not a replacement for, the synthetic gate.
+The committed `tests/performance.rs` enforces the synthetic gates only; this
+private-input comparison is a separate local acceptance procedure, not an
+assertion made by that test or ordinary CI.
 
 Exercise broad objects, deep nesting, table-heavy arrays, and width-sensitive
 Unicode arrays through the actual terminal. Check first/last absolute-line jumps,
