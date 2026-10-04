@@ -5,6 +5,8 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-04
+
 ### Changed
 
 - Open documents with millions of nodes faster and with substantially lower startup memory use. [#29](https://github.com/commandzero/tless/pull/29).
