@@ -5,9 +5,15 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-04
+
 ### Changed
 
 - Open documents with millions of nodes faster and with substantially lower startup memory use. [#29](https://github.com/commandzero/tless/pull/29).
+
+### Fixed
+
+- Correct in-app TOON help to describe decimal rounding and last-value-wins duplicate-key export. [#30](https://github.com/commandzero/tless/pull/30).
 
 ## [0.1.3] - 2026-09-24
 
@@ -81,7 +87,8 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/CommandZero/tless/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/CommandZero/tless/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/CommandZero/tless/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/CommandZero/tless/compare/v0.1.0...v0.1.1
