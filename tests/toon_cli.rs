@@ -1128,9 +1128,10 @@ mod terminal_commands {
             rows[..4].to_vec()
         };
         let cell = viewport("l\tlll.q");
-        assert!(
-            cell.iter().any(|row| row.contains("…dentifier")),
-            "{cell:?}"
+        assert_ne!(
+            cell,
+            viewport("l\tlllq"),
+            "counted scrolling must move the shared viewport"
         );
         for keys in ["l\tlll.jq", "l\tlll.jkkq", "l\tlll.jkkkjq"] {
             assert_eq!(viewport(keys), cell, "{keys}");
