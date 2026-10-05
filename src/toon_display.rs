@@ -4,9 +4,9 @@ use crate::flatjson::{FlatJson, KeyValue, Value};
 use std::collections::HashSet;
 use std::ops::Range;
 
+pub(crate) mod alignment;
 #[cfg(test)]
 pub mod fixture;
-pub(crate) mod alignment;
 mod format;
 mod geometry;
 mod index;

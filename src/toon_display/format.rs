@@ -35,7 +35,8 @@ pub fn row(
                 let table = flat[node].parent.unwrap();
                 let start = TableMetrics::field_start(flat, analysis, geometry, table);
                 let indentation = descriptor.depth * 2;
-                line.text.extend(std::iter::repeat_n(' ', start.saturating_sub(indentation)));
+                line.text
+                    .extend(std::iter::repeat_n(' ', start.saturating_sub(indentation)));
             }
             for (column, child) in children(flat, node).enumerate() {
                 if column > 0 {
@@ -46,7 +47,8 @@ pub fn row(
                 if let Some(metrics) = alignment {
                     if column + 1 < metrics.widths.len() {
                         let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
-                        line.text.extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+                        line.text
+                            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
                     }
                 }
             }
@@ -171,7 +173,8 @@ fn header(
                 if let Some(metrics) = alignment {
                     if column + 1 < metrics.widths.len() {
                         let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
-                        line.text.extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+                        line.text
+                            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
                     }
                 }
             }

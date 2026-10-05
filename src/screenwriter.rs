@@ -847,7 +847,6 @@ mod tests {
         assert_eq!(scroll_owner(&viewer, 1), ScrollOwner::Table(table));
     }
 
-
     #[test]
     #[cfg(feature = "colorscheme")]
     fn selected_row_fill_covers_width_and_clears_when_focus_moves() {

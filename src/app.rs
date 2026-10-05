@@ -338,7 +338,8 @@ impl App {
                         }
                         Key::Char('\t') => {
                             if let Some(table) = self.viewer.toggle_table_alignment() {
-                                self.screen_writer.reset_table_alignment(&self.viewer, table);
+                                self.screen_writer
+                                    .reset_table_alignment(&self.viewer, table);
                             }
                             None
                         }

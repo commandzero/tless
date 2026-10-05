@@ -3410,13 +3410,22 @@ mod tests {
         assert_eq!(v.focused_node, cell);
         assert_eq!(v.absolute_anchor_line, anchor);
         assert_eq!(v.layout_generation, generation);
-        v.perform_action(Action::FocusNode { node: other, source: None });
+        v.perform_action(Action::FocusNode {
+            node: other,
+            source: None,
+        });
         assert_eq!(v.focused_table(), None);
         assert_eq!(v.toggle_table_alignment(), None);
-        v.perform_action(Action::FocusNode { node: b, source: None });
+        v.perform_action(Action::FocusNode {
+            node: b,
+            source: None,
+        });
         assert_eq!(v.toggle_table_alignment(), Some(b));
         assert!(v.table_alignment_enabled(a));
-        v.perform_action(Action::FocusNode { node: a, source: None });
+        v.perform_action(Action::FocusNode {
+            node: a,
+            source: None,
+        });
         v.perform_action(Action::ToggleCollapsed);
         assert!(v.flatjson[a].is_collapsed());
         assert_eq!(v.focused_table(), Some(a));
@@ -3432,7 +3441,10 @@ mod tests {
         v.set_roots(vec![row]);
         assert_eq!(v.focused_table(), None);
         v.set_roots(vec![0]);
-        v.perform_action(Action::FocusNode { node: cell, source: None });
+        v.perform_action(Action::FocusNode {
+            node: cell,
+            source: None,
+        });
         assert_eq!(v.focused_table(), Some(a));
         assert!(v.table_alignment_enabled(a));
         let mut sequence = viewer(r#"[{"x":1}] {"tail":0}"#);
@@ -3444,25 +3456,52 @@ mod tests {
 
     #[test]
     fn aligned_tokens_keep_terminal_columns_and_padding_outside_source_spans() {
-        let mut v = viewer(
-            r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]}"#,
-        );
+        let mut v = viewer(r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]}"#);
         let table = v.flatjson[0].first_child().unwrap();
-        v.perform_action(Action::FocusNode { node: table, source: None });
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
         assert_eq!(v.toggle_table_alignment(), Some(table));
         let lines: Vec<_> = (0..v.visible.len()).map(|i| v.render_line(i)).collect();
-        assert_eq!(lines.iter().map(|line| line.text.as_str()).collect::<Vec<_>>(),
-            ["users[2]{id ,name}:", "         1  ,Ada", "         200,Lin"]);
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "users[2]{id ,name}:",
+                "         1  ,Ada",
+                "         200,Lin"
+            ]
+        );
         assert_eq!(v.table_indentation(table), 0);
         assert_eq!(v.aligned_table_width(table), 19);
         let header = &lines[0];
         let first_row = &lines[1];
-        let id = first_row.spans.iter().find(|span| span.role == crate::toon_display::TokenRole::Number).unwrap();
-        let comma = first_row.spans.iter().find(|span| span.role == crate::toon_display::TokenRole::PrimitiveTrailingComma).unwrap();
+        let id = first_row
+            .spans
+            .iter()
+            .find(|span| span.role == crate::toon_display::TokenRole::Number)
+            .unwrap();
+        let comma = first_row
+            .spans
+            .iter()
+            .find(|span| span.role == crate::toon_display::TokenRole::PrimitiveTrailingComma)
+            .unwrap();
         assert_eq!(&first_row.text[id.range.end..comma.range.start], "  ");
-        assert_eq!(crate::lineprinter::hit_test(first_row, 10), (first_row.owner, None));
-        assert_eq!(crate::lineprinter::hit_test(first_row, 11), (first_row.owner, None));
-        assert_eq!(crate::lineprinter::hit_test(header, 11), (header.owner, None));
+        assert_eq!(
+            crate::lineprinter::hit_test(first_row, 10),
+            (first_row.owner, None)
+        );
+        assert_eq!(
+            crate::lineprinter::hit_test(first_row, 11),
+            (first_row.owner, None)
+        );
+        assert_eq!(
+            crate::lineprinter::hit_test(header, 11),
+            (header.owner, None)
+        );
         let source = id.source.clone().unwrap();
         assert_eq!(id.matching_ranges(&source), vec![id.range.clone()]);
         assert_eq!(crate::lineprinter::hit_test(first_row, 9).0, id.node);
@@ -3475,11 +3514,22 @@ mod tests {
         values[COUNT - 1] = r#"{"id":999,"text":"界🦊,\\\u0001"}"#;
         let input = format!(r#"{{"box":{{"rows":[{}]}}}}"#, values.join(","));
         let mut v = viewer(&input);
-        v.set_viewport(TTYDimensions { width: 28, height: 4 }, true);
+        v.set_viewport(
+            TTYDimensions {
+                width: 28,
+                height: 4,
+            },
+            true,
+        );
         let box_node = v.flatjson[0].first_child().unwrap();
         let table = v.flatjson[box_node].first_child().unwrap();
-        let last = v.flatjson[v.flatjson[table].pair_index().unwrap()].last_child().unwrap();
-        v.perform_action(Action::FocusNode { node: table, source: None });
+        let last = v.flatjson[v.flatjson[table].pair_index().unwrap()]
+            .last_child()
+            .unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
         let before = Layout::formatted_rows();
         assert_eq!(v.toggle_table_alignment(), Some(table));
         assert!(Layout::formatted_rows() - before <= 12);
@@ -3494,14 +3544,23 @@ mod tests {
             UnicodeWidthStr::width(&line.text[..span.range.start])
         };
         use crate::toon_display::TokenRole;
-        assert_eq!(token_column(&header, TokenRole::FieldDefinition),
-            token_column(&first, TokenRole::Number));
+        assert_eq!(
+            token_column(&header, TokenRole::FieldDefinition),
+            token_column(&first, TokenRole::Number)
+        );
         let text_column = |line: &DisplayLine| {
-            let span = line.spans.iter().find(|span| span.role == TokenRole::String).unwrap();
+            let span = line
+                .spans
+                .iter()
+                .find(|span| span.role == TokenRole::String)
+                .unwrap();
             UnicodeWidthStr::width(&line.text[..span.range.start])
         };
         assert_eq!(text_column(&first), text_column(&widest));
-        assert_eq!(v.aligned_table_width(table), UnicodeWidthStr::width(widest.text.as_str()));
+        assert_eq!(
+            v.aligned_table_width(table),
+            UnicodeWidthStr::width(widest.text.as_str())
+        );
         assert!(widest.text.contains("# WARN Non-standard string escape"));
         let width = v.aligned_table_width(table);
         v.set_wrap_geometry(14, v.table_indentation(table));
@@ -3515,15 +3574,25 @@ mod tests {
         v.toggle_wrapping();
         assert!(!v.is_wrapped_line(v.focused_line_index()));
         assert!(!v.is_wrapped_line(last_line));
-        v.perform_action(Action::FocusNode { node: box_node, source: None });
+        v.perform_action(Action::FocusNode {
+            node: box_node,
+            source: None,
+        });
         assert!(v.is_wrapped_line(v.focused_line_index()));
-        v.perform_action(Action::FocusNode { node: table, source: None });
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
         let generation = v.layout_generation;
         v.toggle_table_alignment();
         assert_eq!(v.layout_generation, generation);
         assert!(v.is_wrapped_line(v.focused_line_index()));
         assert_eq!(v.focused_node, table);
-        assert!(v.render_line(v.focused_line_index()).text.contains("{id,text}"));
+        assert!(
+            v.render_line(v.focused_line_index())
+                .text
+                .contains("{id,text}")
+        );
     }
     #[test]
     fn nested_grid_retains_columns_across_gutters_and_indentation_reduction() {
@@ -3534,29 +3603,55 @@ mod tests {
         let outer = v.flatjson[0].first_child().unwrap();
         let object = v.flatjson[outer].first_child().unwrap();
         let table = v.flatjson[object].first_child().unwrap();
-        v.perform_action(Action::FocusNode { node: table, source: None });
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
         v.toggle_table_alignment();
         for numbers in [true, false, true] {
-            v.set_viewport(TTYDimensions { width: 24, height: 8 }, numbers);
+            v.set_viewport(
+                TTYDimensions {
+                    width: 24,
+                    height: 8,
+                },
+                numbers,
+            );
             let logical = v.focused_line_index();
             let header = v.render_line(logical);
             let row = v.render_line(logical + 1);
             let long = v.render_line(logical + 2);
             let indentation = v.table_indentation(table);
             let column = |line: &DisplayLine, role: TokenRole, ordinal| {
-                let span = line.spans.iter().filter(|span| span.role == role).nth(ordinal).unwrap();
+                let span = line
+                    .spans
+                    .iter()
+                    .filter(|span| span.role == role)
+                    .nth(ordinal)
+                    .unwrap();
                 UnicodeWidthStr::width(&line.text[..span.range.start]) - indentation
             };
-            assert_eq!(column(&header, TokenRole::FieldDefinition, 0),
-                column(&row, TokenRole::Number, 0));
-            assert_eq!(column(&header, TokenRole::FieldDefinition, 1),
-                column(&row, TokenRole::String, 0));
-            assert_eq!(column(&row, TokenRole::String, 0),
-                column(&long, TokenRole::String, 0));
+            assert_eq!(
+                column(&header, TokenRole::FieldDefinition, 0),
+                column(&row, TokenRole::Number, 0)
+            );
+            assert_eq!(
+                column(&header, TokenRole::FieldDefinition, 1),
+                column(&row, TokenRole::String, 0)
+            );
+            assert_eq!(
+                column(&row, TokenRole::String, 0),
+                column(&long, TokenRole::String, 0)
+            );
             assert_eq!(v.aligned_table_for_line(logical), Some(table));
             assert_eq!(v.aligned_table_for_line(logical + 1), Some(table));
-            assert_eq!(v.aligned_table_width(table),
-                [header, row, long].iter().map(|line| UnicodeWidthStr::width(line.text.as_str())).max().unwrap());
+            assert_eq!(
+                v.aligned_table_width(table),
+                [header, row, long]
+                    .iter()
+                    .map(|line| UnicodeWidthStr::width(line.text.as_str()))
+                    .max()
+                    .unwrap()
+            );
             v.set_wrap_geometry(10, indentation);
             assert!(!v.is_wrapped_line(logical));
         }
