@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T20:59:10Z }
+generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T02:08:32Z }
 ---
 
 # TOON document view
@@ -293,17 +293,41 @@ containing `# WARN` are quoted data and do not increase warning counts.
 Extended display text is not standard TOON 3.0. Its warnings, collapse arrows,
 counts, and previews are presentation annotations, not a new file format.
 Copy and print commands operate on the selected parsed value. Selecting a
-document row targets its parsed root. Whole-document write commands (`:w`,
-`:wt`, and feature-enabled `:ws`, including long aliases and overwrite forms)
-serialize all active roots as standalone values, not the screen or just the
-focused value. Reset with `:.` to export the full original input. JSON preserves
-selected token spellings, duplicate keys, and order; YAML retains document
-framing. Standard TOON still requires exactly one root and applies its normal
-conversion restrictions. Encoding finishes before opening an output file, so
-failed conversion cannot truncate an existing file.
+document row targets its parsed root. At the `:` prompt, whole-document writes
+serialize **all active roots**, including filtered subtrees, not just the focused
+value or screen text. Reset with `:.` to write the full original input.
 
-Interactive JSON commands stay JSON. Redirected stdout defaults to standard TOON;
-use `-o json` or `-o yaml` to select a different machine-output format. Standard TOON export through `yt`, `pt`, and
-`:wt` retains the [published codec's conversion behavior](toon-codec.md),
-including last-value-wins duplicates and possible numeric precision loss.
+| Commands | Encoding |
+| --- | --- |
+| `:write`, `:w`, `:write-toon`, `:wt` | Standard TOON; exactly one active root |
+| `:write-json`, `:wj` | Two-space pretty JSON; one final LF per root, no array wrapper |
+| `:write-yaml`, `:wy` | YAML stream; `---` before every root and final LF per document |
+| `:write-ndjson`, `:write-jsonl`, `:wn` | Compact JSON; one LF-terminated record per root |
+| `:write-sexp`, `:ws` | S-expressions, only with the optional `sexp` feature |
+
+Every listed spelling also accepts a trailing `!` on the command token to
+create or truncate an existing destination (for example `:wj!` or
+`:write-jsonl!`). Without `!`, an existing destination is left untouched.
+Every command requires exactly one explicit filename and uses it literally:
+`:write report` creates `report` containing TOON, while
+`:write-json report.toon` creates JSON in `report.toon`. `.toon`, `.json`,
+`.yaml`, `.ndjson`, `.jsonl`, and `.sexp` are naming conventions, not
+extension-based format selectors. NDJSON/JSONL keeps an active array root as
+one array record, never one record per element. JSON and NDJSON/JSONL retain
+JSON number spellings, duplicate entries, and entry order where parsed.
+Standard TOON instead retains the
+[published codec's conversion behavior](toon-codec.md), including
+last-value-wins duplicates and possible numeric precision loss.
+
+Every active root is fully encoded before the file is opened; encoding errors
+cannot create or truncate a destination. Open, write, or flush failures
+can leave partial output after opening; `!` does not imply atomic replacement.
+To migrate former JSON `:write`/`:w` calls, use `:write-json`/`:wj`.
+Removed `:writetoon`/`:writetoon!` becomes `:write-toon`/`:write-toon!`;
+removed optional `:writesexp`/`:writesexp!` becomes
+`:write-sexp`/`:write-sexp!`. Default builds do not include s-expression
+output. Redirected stdout still defaults to standard TOON; use `-o json`
+or `-o yaml` for other machine-output formats. CLI `-i`/`--input-format`
+and `-o`/`--output-format` retain only `toon`, `json`, and `yaml` selectors:
+NDJSON/JSONL and sexp are interactive writes, not CLI output choices.
 Redirected stdout retains the [command-line contract](../README.md#command-line-arguments).

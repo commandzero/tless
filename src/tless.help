@@ -179,11 +179,39 @@
 
                                     [1mWRITING[0m
 
-  :w[rite]  <name>   Write all active roots as JSON to a file.
-  :w[rite]! <name>   Write all active roots as JSON, even if the file exists.
-                       TOON and s-expression writes use the same filter scope.
-                       TOON still requires exactly one root. Failed encoding
-                       does not open or truncate the destination.
+  :write  <name>           Write active roots as standard TOON (one root only).
+  :w      <name>           Short form of :write.
+  :write-toon  <name>      Explicit TOON; :wt is the short form.
+  :write-json  <name>      Two-space pretty JSON; :wj is the short form.
+  :write-yaml  <name>      YAML document stream; :wy is the short form.
+  :write-ndjson  <name>    Compact JSON, one root per LF-terminated record.
+  :write-jsonl  <name>     Same as :write-ndjson; :wn is the short form.
+  :write-sexp  <name>      S-expression output; :ws is the short form.
+                            Only available in builds with the sexp feature.
+
+      Add ! to any available command token to create or replace a file:
+      :write!, :w!, :write-toon!, :wt!, :write-json!, :wj!,
+      :write-yaml!, :wy!, :write-ndjson!, :write-jsonl!, :wn!,
+      and, with sexp, :write-sexp! or :ws!.
+      Without ! an existing file is not overwritten. Exactly one filename
+      is required; it is literal, with no inferred format or added suffix.
+      :write report creates TOON in "report"; :write-json report.toon
+      creates JSON in "report.toon". Names like .toon and .json are conventions.
+
+      All active roots are encoded before the destination is opened. Failed
+      encoding leaves files unchanged, but file I/O failure after opening
+      may leave partial output; ! does not promise atomic replacement.
+      Reset with :. to write all original roots. Writes ignore screen
+      annotations and focus; filters select which root subtrees to write.
+      TOON needs exactly one active root. JSON writes each pretty root
+      followed by LF, without an array wrapper; YAML starts each root with
+      --- and ends each document with LF. NDJSON/JSONL writes each root as
+      one compact JSON record plus LF; array roots stay arrays, not rows.
+      Optional sexp is unavailable in default builds.
+      For former JSON :write or :w, use :write-json or :wj. Old
+      :writetoon and :writesexp are removed: use :write-toon and
+      feature-gated :write-sexp instead. CLI output selectors remain
+      toon, json, yaml; NDJSON/JSONL and sexp are interactive writes only.
 
                                      [1mSEARCH[0m
 

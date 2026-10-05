@@ -1,10 +1,4 @@
-# Command autocomplete
-
-## Purpose
-
-Help users discover and enter supported command names in the interactive `:` prompt without changing command execution or search input.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Available command names
 
@@ -58,28 +52,6 @@ Completion SHALL operate only at the end of the first command token, including w
 - **WHEN** the user types `WR`, `unknown`, or `é` as the command token
 - **THEN** no command-name hint SHALL appear and Tab SHALL leave input unchanged
 
-### Requirement: Suggestions while typing
-
-At the end of a nonempty command-only input, the prompt SHALL display the remaining suffix of the first matching candidate as a visually distinct inline hint. The hint SHALL NOT be part of the input buffer. No hint SHALL appear for an exact long-form candidate, an empty prefix, arguments, or an unmatched prefix. Typing, deleting, or moving the cursor SHALL update or remove the hint to match the current input. Right at the end of input SHALL accept the displayed suffix into the buffer without executing it.
-
-#### Scenario: Suggest and accept a unique match
-
-- **WHEN** the user types `:se`
-- **THEN** the prompt SHALL display `t` as a hint after `se`
-- **AND** Right SHALL change the buffer to `set` without executing a command
-
-#### Scenario: Exact commands do not suggest stronger variants
-
-- **WHEN** the command token is exactly `write`
-- **THEN** the prompt SHALL show no suffix hint, including no `!` hint
-- **AND** explicit Tab cycling SHALL remain available
-
-#### Scenario: Enter does not accept a hint
-
-- **WHEN** the buffer is `se`, the hint is `t`, and the user presses Enter
-- **THEN** the application SHALL submit `se` through its existing command parser
-- **AND** it SHALL NOT silently submit `set`
-
 ### Requirement: Completion selection and execution
 
 Tab SHALL insert the first match and successive Tab presses SHALL cycle forward through the matches for the original prefix. Shift-Tab as the first completion key SHALL insert the last match; successive Shift-Tab presses SHALL cycle backward. Cycling SHALL include the original uncompleted input as a restore position before repeating. Completion SHALL NOT append spaces or execute commands. Editing the buffer or moving the cursor SHALL end that cycle so the next completion uses the new buffer and cursor. Enter SHALL submit the current buffer using existing execution and validation behavior. Escape during a completion cycle SHALL restore the buffer and cursor from before that cycle, end the cycle, and leave the prompt open. Ctrl-C SHALL cancel the prompt without executing the selected command.
@@ -111,30 +83,3 @@ Tab SHALL insert the first match and successive Tab presses SHALL cycle forward 
 
 - **WHEN** the user completes `wri` to `write`, deletes the final `e`, and presses Tab
 - **THEN** completion SHALL use the current prefix `writ` instead of advancing the previous cycle
-
-### Requirement: Prompt isolation and terminal presentation
-
-Command completion and hints SHALL be enabled only for `:` input. The `/` and `?` prompts SHALL retain their existing search editing and submission behavior. The `:` marker SHALL appear while command input is active and SHALL be absent during normal viewing after submission or cancellation. Closing or reopening a prompt SHALL clear any completion cycle. Hints SHALL fit in the available command-row cells without wrapping into document or status rows; a hint that does not fit SHALL be clipped or omitted. Completion redraws SHALL preserve command foreground and background styling, distinguish hint text, and remove stale hints after edits, cancellation, submission, resizing, and theme changes. Interactive help SHALL describe selection, hint acceptance, submission, and the command-name-only scope.
-
-#### Scenario: Switch to search
-
-- **WHEN** the user cancels `:se` and opens `/` or `?` with `se` as input
-- **THEN** no command-name hint or completion SHALL appear
-- **AND** submitting the input SHALL search for `se`
-
-#### Scenario: Narrow terminal and themed redraw
-
-- **WHEN** a hint would extend beyond the command row or the terminal is resized while a hint is visible
-- **THEN** the hint SHALL remain within the command row and SHALL NOT leave stale text after redraw
-- **AND** themed builds SHALL retain the active command-row colors, including after a session theme switch
-
-#### Scenario: Reopen the command prompt
-
-- **WHEN** the user closes a prompt during completion and opens `:` again
-- **THEN** completion SHALL start from the new input with no prior selection or hint
-
-#### Scenario: Hide the command marker outside input
-
-- **WHEN** the viewer is not accepting command input because no command prompt is open or the previous command was submitted or cancelled
-- **THEN** the status row SHALL NOT display `:`
-- **AND** pressing `:` SHALL display the marker for the active command prompt
