@@ -17,6 +17,15 @@ lazy_static::lazy_static! {
 pub struct LineViewport {
     pub horizontal_offset: usize,
     pub removed_indentation: usize,
+    mode: OffsetMode,
+}
+
+/// A shared table offset is a cell coordinate, never snapped separately for
+/// each row. A cut wide grapheme occupies blank cells in its original position.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OffsetMode {
+    Line,
+    Table,
 }
 
 impl LineViewport {
@@ -48,6 +57,26 @@ impl LineViewport {
         Self {
             horizontal_offset,
             removed_indentation,
+            mode: OffsetMode::Line,
+        }
+    }
+
+    pub fn table(
+        line: &DisplayLine,
+        horizontal_offset: usize,
+        reduction: usize,
+        indentation: usize,
+    ) -> Self {
+        let removed_indentation = line
+            .text
+            .bytes()
+            .take(reduction.min(indentation))
+            .take_while(|byte| *byte == b' ')
+            .count();
+        Self {
+            horizontal_offset,
+            removed_indentation,
+            mode: OffsetMode::Table,
         }
     }
 
@@ -55,6 +84,36 @@ impl LineViewport {
         self.removed_indentation
             + self.horizontal_offset
             + viewport_column.saturating_sub(usize::from(self.horizontal_offset > 0))
+    }
+
+    /// Resolve only painted cells; clipping markers and the remainder of a
+    /// grapheme cut by a shared table offset have no source token.
+    pub fn hit_test(
+        self,
+        line: &DisplayLine,
+        column: usize,
+        width: usize,
+    ) -> (usize, Option<usize>) {
+        let window = self.paint_window(line, width);
+        if column < window.left || column >= window.left + window.available {
+            return (line.owner, None);
+        }
+        let source_column = self.source_column(column);
+        if self.mode == OffsetMode::Table {
+            let offset = self.removed_indentation + self.horizontal_offset;
+            let mut cells = 0;
+            for grapheme in line.text.graphemes(true) {
+                let end = cells + UnicodeWidthStr::width(grapheme);
+                if end > source_column {
+                    if cells < offset {
+                        return (line.owner, None);
+                    }
+                    break;
+                }
+                cells = end;
+            }
+        }
+        hit_test(line, source_column)
     }
 
     pub fn reduced_column(self, source_column: usize) -> usize {
@@ -175,6 +234,13 @@ fn paint_impl(
         let start = column;
         column += cells;
         if start < offset {
+            if viewport.mode == OffsetMode::Table && column > offset {
+                let blank = (column - offset).min(available.saturating_sub(used));
+                for _ in 0..blank {
+                    terminal.write_char(' ')?;
+                }
+                used += blank;
+            }
             continue;
         }
         if used + cells > available {
@@ -535,6 +601,43 @@ mod tests {
         .unwrap();
         terminal.output().to_string()
     }
+
+    #[test]
+    fn table_viewport_keeps_cell_columns_when_a_wide_grapheme_is_cut() {
+        let line = |text: &str, owner: usize| {
+            let start = text.find('Z').unwrap();
+            DisplayLine {
+                text: text.to_owned(),
+                spans: vec![Span {
+                    range: start..start + 1,
+                    node: owner + 1,
+                    role: TokenRole::String,
+                    source: Some(40..41),
+                    source_map: vec![],
+                }],
+                owner,
+                separator: false,
+                shared_matches: vec![],
+            }
+        };
+        let wide = line("  界Z", 10);
+        let narrow = line("  abZ", 20);
+        let wide_view = LineViewport::table(&wide, 1, 2, 2);
+        let narrow_view = LineViewport::table(&narrow, 1, 2, 2);
+        let draw = |line: &DisplayLine, viewport| {
+            let mut terminal = TextOnlyTerminal::new();
+            paint(&mut terminal, line, 0..0, viewport, 6, &[], &(0..0)).unwrap();
+            terminal.output().to_owned()
+        };
+        assert_eq!(draw(&wide, wide_view), "… Z");
+        assert_eq!(draw(&narrow, narrow_view), "…bZ");
+        assert_eq!(wide_view.hit_test(&wide, 1, 6), (10, None));
+        assert_eq!(wide_view.hit_test(&wide, 2, 6), (11, Some(40)));
+        assert_eq!(narrow_view.hit_test(&narrow, 2, 6), (21, Some(40)));
+        assert_eq!(wide_view.source_column(2), 4);
+        assert_eq!(narrow_view.source_column(2), 4);
+    }
+
     #[test]
     fn wrapped_paint_preserves_graphemes_text_and_search_styles() {
         let flat = parse_top_level_json(r#""ab界éNEEDLEzz""#.into()).unwrap();
