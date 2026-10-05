@@ -578,6 +578,13 @@ impl App {
 
             if let Some(action) = action {
                 self.viewer.perform_action(action);
+                if self.viewer.focused_node != focused_node_before
+                    && self.viewer.focused_table().is_some()
+                    && matches!(action, Action::MoveLeft | Action::MoveRight)
+                {
+                    // Horizontal cell selection explicitly requests its token.
+                    self.screen_writer.invalidate_focus();
+                }
                 if self.viewer.wrapping_enabled
                     && matches!(
                         action,
@@ -639,11 +646,20 @@ impl App {
             self.screen_writer.dimensions.without_status_bar(),
             self.screen_writer.show_line_numbers || self.screen_writer.show_relative_line_numbers,
         );
-        let reflow = self.screen_writer.sync_wrap_geometry(&mut self.viewer)
+        let wrap_changed = self.screen_writer.sync_wrap_geometry(&mut self.viewer);
+        let reflow = wrap_changed
             || generation != self.viewer.layout_generation
             || previous_dimensions.height != self.viewer.dimensions.height;
         if reflow {
-            self.screen_writer.invalidate_focus();
+            // Projection-only changes and gutter/wrap reflows preserve an
+            // aligned table's shared viewport. Explicit filtering invalidates
+            // focus in apply_path; terminal size changes can require a reveal.
+            if previous_dimensions.width != self.viewer.dimensions.width
+                || previous_dimensions.height != self.viewer.dimensions.height
+                || self.viewer.focused_table().is_none()
+            {
+                self.screen_writer.invalidate_focus();
+            }
             if self.search_state.active_search_state().is_some() {
                 self.reveal_current_match();
             }

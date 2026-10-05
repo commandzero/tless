@@ -153,19 +153,19 @@ impl ScreenWriter {
     fn sync_layout(&mut self, viewer: &JsonViewer) {
         if self.layout_generation != viewer.layout_generation {
             self.horizontal_offsets.clear();
-            self.last_focus = None;
             self.layout_generation = viewer.layout_generation;
         }
-        // Table offsets are keyed by parsed identity, not changing line addresses.
+        // Parsed identity outlives projection changes. A hidden header has no
+        // usable geometry, including when an ancestor is collapsed.
         let reduction = usize::from(self.indentation_reduction) * 2;
         self.table_offsets.retain(|table, offset| {
             if !viewer.table_alignment_enabled(*table) {
                 return false;
             }
-            let width = viewer
-                .aligned_table_width(*table)
-                .saturating_sub(reduction.min(viewer.table_indentation(*table)));
-            *offset = (*offset).min(width.saturating_sub(1));
+            if viewer.aligned_table_header_visible(*table) {
+                let width = Self::reduced_table_width(viewer, *table, reduction);
+                *offset = (*offset).min(width.saturating_sub(1));
+            }
             true
         });
     }
@@ -181,7 +181,12 @@ impl ScreenWriter {
         if self.last_focus != Some(focus) {
             if search_state.active_search_state().is_some() {
                 self.scroll_line_to_search_match(viewer, search_state.current_match_range());
-            } else {
+            } else if !viewer
+                .aligned_table_for_line(viewer.focused_line_index())
+                .is_some_and(|table| self.table_offsets.contains_key(&table) && self.last_focus.is_some())
+            {
+                // Vertical movement and projection-only changes must not reveal
+                // another member's token through a shared table viewport.
                 self.reveal_focused_span(viewer);
             }
             self.last_focus = Some(focus);
@@ -303,10 +308,23 @@ impl ScreenWriter {
         }
     }
 
+    fn reduced_table_width(viewer: &JsonViewer, table: Index, reduction: usize) -> usize {
+        viewer
+            .aligned_table_width(table)
+            .saturating_sub(reduction.min(viewer.table_indentation(table)))
+    }
+
     fn table_content_width(&self, viewer: &JsonViewer, table: Index) -> usize {
-        viewer.aligned_table_width(table).saturating_sub(
-            (usize::from(self.indentation_reduction) * 2).min(viewer.table_indentation(table)),
-        )
+        Self::reduced_table_width(viewer, table, usize::from(self.indentation_reduction) * 2)
+    }
+
+    fn content_width(&self, viewer: &JsonViewer, logical: usize, owner: ScrollOwner) -> usize {
+        match owner {
+            ScrollOwner::Line(_) => self
+                .line_viewport(viewer, logical)
+                .content_width(viewer.rendered_line(logical)),
+            ScrollOwner::Table(table) => self.table_content_width(viewer, table),
+        }
     }
 
     fn offset_mut(&mut self, owner: ScrollOwner) -> &mut usize {
@@ -776,12 +794,7 @@ impl ScreenWriter {
         }
         let logical = viewer.focused_line_index();
         let owner = scroll_owner(viewer, logical);
-        let width = match owner {
-            ScrollOwner::Line(_) => self
-                .line_viewport(viewer, logical)
-                .content_width(viewer.rendered_line(logical)),
-            ScrollOwner::Table(table) => self.table_content_width(viewer, table),
-        };
+        let width = self.content_width(viewer, logical, owner);
         let offset = self.offset_mut(owner);
         *offset = if right {
             offset.saturating_add(count).min(width.saturating_sub(1))
@@ -796,12 +809,7 @@ impl ScreenWriter {
         }
         let logical = viewer.focused_line_index();
         let owner = scroll_owner(viewer, logical);
-        let width = match owner {
-            ScrollOwner::Line(_) => self
-                .line_viewport(viewer, logical)
-                .content_width(viewer.rendered_line(logical)),
-            ScrollOwner::Table(table) => self.table_content_width(viewer, table),
-        };
+        let width = self.content_width(viewer, logical, owner);
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
         let end = end_scroll_offset(width, available);

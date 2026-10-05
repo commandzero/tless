@@ -362,25 +362,33 @@ impl JsonViewer {
         self.table_alignment_enabled(table).then_some(table)
     }
 
+    /// The expanded header must actually be in the active projection before
+    /// its geometry can be used to clamp a saved horizontal offset.
+    pub fn aligned_table_header_visible(&self, table: Index) -> bool {
+        if self.active_root_for(table).is_none() {
+            return false;
+        }
+        let absolute = self.layout.node(&self.flatjson, table).body_line;
+        self.visible
+            .visible_index(absolute)
+            .is_some_and(|logical| self.aligned_table_for_line(logical) == Some(table))
+    }
+
     /// Unreduced terminal-cell extent, including the longest actual annotation.
     pub fn aligned_table_width(&self, table: Index) -> usize {
         self.aligned_tables.get(&table).map_or(0, |metrics| {
-            metrics.extent(TableMetrics::field_start(
+            metrics.extent(self.layout.geometry.table_field_start(
                 &self.flatjson,
                 &self.layout.analysis,
-                &self.layout.geometry,
                 table,
             ))
         })
     }
 
     pub fn table_indentation(&self, table: Index) -> usize {
-        TableMetrics::indentation(
-            &self.flatjson,
-            &self.layout.analysis,
-            &self.layout.geometry,
-            table,
-        )
+        self.layout
+            .geometry
+            .table_indentation(&self.flatjson, &self.layout.analysis, table)
     }
 
     fn wrap_eligible(&self, logical_line: usize) -> bool {
@@ -412,7 +420,7 @@ impl JsonViewer {
             .aligned_table_for_line(logical)
             .and_then(|table| self.aligned_tables.get(&table));
         self.layout
-            .render_aligned(&self.flatjson, visible, self.focused_node, alignment)
+            .render(&self.flatjson, visible, self.focused_node, alignment)
     }
 
     pub fn rendered_line(&self, logical: usize) -> &DisplayLine {
@@ -3406,13 +3414,11 @@ mod tests {
             assert_eq!(v.focused_table(), Some(a));
         }
         let anchor = v.absolute_anchor_line;
-        let generation = v.layout_generation;
         assert_eq!(v.toggle_table_alignment(), Some(a));
         assert!(v.table_alignment_enabled(a));
         assert!(!v.table_alignment_enabled(b));
         assert_eq!(v.focused_node, cell);
         assert_eq!(v.absolute_anchor_line, anchor);
-        assert_eq!(v.layout_generation, generation);
         v.perform_action(Action::FocusNode {
             node: other,
             source: None,
@@ -3586,9 +3592,7 @@ mod tests {
             node: table,
             source: None,
         });
-        let generation = v.layout_generation;
         v.toggle_table_alignment();
-        assert_eq!(v.layout_generation, generation);
         assert!(v.is_wrapped_line(v.focused_line_index()));
         assert_eq!(v.focused_node, table);
         assert!(

@@ -1,7 +1,7 @@
 //! Enabled-table measurements, independent of formatted viewport rows.
-use super::geometry::{Geometry, Kind, key_text, value_text};
-use super::index::{Analysis, children, key, string};
-use super::{FlatJson, Value, quote_json, quote_json_into, value_needs_quotes};
+use super::geometry::{key_text, value_text};
+use super::index::{Analysis, children, string};
+use super::{FlatJson, Value, quote_json_into, value_needs_quotes};
 use unicode_width::UnicodeWidthStr;
 
 pub struct TableMetrics {
@@ -20,10 +20,11 @@ impl TableMetrics {
         let mut widths: Vec<_> = children(flat, first)
             .map(|field| UnicodeWidthStr::width(key_text(flat, field).as_ref()))
             .collect();
-        let header_tail =
-            widths.last().copied().unwrap() + 2 + annotation_width(flat, analysis, table, false);
-        let mut max_row_tail = 0;
         let mut quoted = String::new();
+        let header_tail = widths.last().copied().unwrap()
+            + 2
+            + annotation_width(flat, analysis, table, false, &mut quoted);
+        let mut max_row_tail = 0;
         for row in children(flat, table) {
             let mut last_width = 0;
             for (column, cell) in children(flat, row).enumerate() {
@@ -41,8 +42,9 @@ impl TableMetrics {
                 widths[column] = widths[column].max(width);
                 last_width = width;
             }
-            max_row_tail =
-                max_row_tail.max(last_width + annotation_width(flat, analysis, row, true));
+            max_row_tail = max_row_tail.max(
+                last_width + annotation_width(flat, analysis, row, true, &mut quoted),
+            );
         }
         Self {
             widths,
@@ -51,46 +53,6 @@ impl TableMetrics {
         }
     }
 
-    pub fn indentation(
-        flat: &FlatJson,
-        analysis: &Analysis,
-        geometry: &Geometry,
-        table: usize,
-    ) -> usize {
-        let position = geometry.position(flat, analysis, table);
-        geometry
-            .row(flat, analysis, position.body_line)
-            .unwrap()
-            .depth
-            * 2
-    }
-
-    /// The first field's terminal column, counting the structural header prefix.
-    pub fn field_start(
-        flat: &FlatJson,
-        analysis: &Analysis,
-        geometry: &Geometry,
-        table: usize,
-    ) -> usize {
-        let position = geometry.position(flat, analysis, table);
-        let descriptor = geometry.row(flat, analysis, position.body_line).unwrap();
-        let Kind::Value { list, root } = descriptor.kind else {
-            unreachable!("table header is a value row")
-        };
-        descriptor.depth * 2
-            + if list { 2 } else { 0 }
-            + if !root && flat[table].key_range.is_some() {
-                UnicodeWidthStr::width(key_text(flat, table).as_ref())
-            } else {
-                0
-            }
-            + analysis
-                .node(flat, table)
-                .child_count
-                .checked_ilog10()
-                .unwrap_or(0) as usize
-            + 4 // decimal digit, '[' and ']', and '{'
-    }
 
     pub fn extent(&self, field_start: usize) -> usize {
         let preceding = self
@@ -106,22 +68,31 @@ impl TableMetrics {
     }
 }
 
-/// Mirrors the warning spelling appended by `format::annotate`, but does not
-/// construct a formatted row or retain annotation strings for every cell.
-fn annotation_width(flat: &FlatJson, analysis: &Analysis, node: usize, row: bool) -> usize {
+/// Count the on-screen warning fragments without materializing an off-screen
+/// row, warning list, or formatted annotation.
+fn annotation_width(
+    flat: &FlatJson,
+    analysis: &Analysis,
+    node: usize,
+    row: bool,
+    quoted: &mut String,
+) -> usize {
     let mut width = 0;
+    let mut first = true;
     for owner in
         std::iter::once(node).chain(children(flat, node).take(if row { usize::MAX } else { 0 }))
     {
         for warning in analysis.warnings(owner) {
-            width += if width == 0 { 9 } else { 2 }; // "  # WARN " / "; "
-            width += warning.message().len();
-            if row && owner != node {
-                width += " at field ".len()
-                    + UnicodeWidthStr::width(
-                        quote_json(&key(flat, owner).unwrap_or_default()).as_str(),
-                    );
-            }
+            super::format::warning_parts(
+                flat,
+                owner,
+                warning,
+                first,
+                row && owner != node,
+                quoted,
+                |part, _| width += UnicodeWidthStr::width(part),
+            );
+            first = false;
         }
     }
     width

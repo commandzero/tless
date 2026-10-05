@@ -236,7 +236,7 @@ impl Layout {
         })
     }
 
-    pub fn render_aligned(
+    pub fn render(
         &self,
         flat: &FlatJson,
         visible: VisibleLine,

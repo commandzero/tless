@@ -1034,7 +1034,7 @@ mod tests {
         let rows = children(&flat, 0);
         let fields = children(&flat, rows[1]);
         let visible = layout.layout.project_with_documents(&flat, &HashSet::new());
-        let header = layout.layout.render_aligned(
+        let header = layout.layout.render(
             &flat,
             layout.layout.visible_line(&flat, &visible, 0).unwrap(),
             fields[0],
@@ -1252,7 +1252,7 @@ mod tests {
         let selected = children(&flat, rows[1])[0];
         flat.collapse(0);
         let projected = layout.layout.project_with_documents(&flat, &HashSet::new());
-        let header = layout.layout.render_aligned(
+        let header = layout.layout.render(
             &flat,
             layout.layout.visible_line(&flat, &projected, 0).unwrap(),
             selected,
@@ -1452,7 +1452,7 @@ mod tests {
             let projection = layout.project_with_documents(&flat, &HashSet::new());
             let row = layout.visible_line(&flat, &projection, 0).unwrap();
             assert_eq!(row.owner, root);
-            assert_eq!(layout.render_aligned(&flat, row, root, None).text, header);
+            assert_eq!(layout.render(&flat, row, root, None).text, header);
         }
     }
 
@@ -1472,7 +1472,7 @@ mod tests {
         let lines: Vec<_> = (0..projection.len())
             .map(|i| {
                 let row = layout.visible_line(&flat, &projection, i).unwrap();
-                layout.render_aligned(&flat, row, row.owner, None).text
+                layout.render(&flat, row, row.owner, None).text
             })
             .collect();
         assert_eq!(

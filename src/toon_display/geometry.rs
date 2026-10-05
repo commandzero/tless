@@ -212,6 +212,41 @@ impl Geometry {
         })
     }
 
+    /// A projected table's structural header (not an ancestor's preview).
+    pub fn table_header(&self, flat: &FlatJson, analysis: &Analysis, table: usize) -> Row {
+        let position = self.position(flat, analysis, table);
+        let descriptor = self.row(flat, analysis, position.body_line).unwrap();
+        assert_eq!(descriptor.node, table, "table header must be in projection");
+        descriptor
+    }
+
+    /// Leading spaces actually painted before the table header, accounting
+    /// for the dash replacing two spaces on the first field of a list object.
+    pub fn table_indentation(&self, flat: &FlatJson, analysis: &Analysis, table: usize) -> usize {
+        let header = self.table_header(flat, analysis, table);
+        (header.depth - usize::from(header.owner != header.node)) * 2
+    }
+
+    pub fn table_field_start(&self, flat: &FlatJson, analysis: &Analysis, table: usize) -> usize {
+        let descriptor = self.table_header(flat, analysis, table);
+        let Kind::Value { list, root } = descriptor.kind else {
+            unreachable!("table header is a value row")
+        };
+        descriptor.depth * 2
+            + if list { 2 } else { 0 }
+            + if !root && flat[table].key_range.is_some() {
+                UnicodeWidthStr::width(key_text(flat, table).as_ref())
+            } else {
+                0
+            }
+            + analysis
+                .node(flat, table)
+                .child_count
+                .checked_ilog10()
+                .unwrap_or(0) as usize
+            + 4 // decimal digit, '[' and ']', and '{'
+    }
+
     pub fn position(&self, flat: &FlatJson, analysis: &Analysis, node: usize) -> Position {
         let Some(ordinal) = analysis.root_index_for(node) else {
             return Position::default();

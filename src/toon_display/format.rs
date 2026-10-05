@@ -3,8 +3,8 @@ use super::alignment::TableMetrics;
 use super::geometry::{Geometry, Kind, Row, key_text, value_text};
 use super::index::{Analysis, children, key};
 use super::{
-    DisplayLine, FlatJson, Preview, SourceMap, Span, TokenRole, Value, bounded_prefix,
-    preview_append, quote_json, quote_key, scalar, string_source_map,
+    DisplayLine, FlatJson, Preview, SourceMap, Span, TokenRole, Value, WarningKind,
+    bounded_prefix, preview_append, quote_json_into, quote_key, scalar, string_source_map,
 };
 
 #[cfg(test)]
@@ -33,7 +33,7 @@ pub fn row(
         if descriptor.kind == Kind::TableRow {
             if alignment.is_some() {
                 let table = flat[node].parent.unwrap();
-                let start = TableMetrics::field_start(flat, analysis, geometry, table);
+                let start = geometry.table_field_start(flat, analysis, table);
                 let indentation = descriptor.depth * 2;
                 line.text
                     .extend(std::iter::repeat_n(' ', start.saturating_sub(indentation)));
@@ -45,11 +45,7 @@ pub fn row(
                 let start = line.text.len();
                 value(flat, &mut line, child);
                 if let Some(metrics) = alignment {
-                    if column + 1 < metrics.widths.len() {
-                        let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
-                        line.text
-                            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
-                    }
+                    pad_column(&mut line, metrics, column, start);
                 }
             }
         } else if geometry.inline(flat, node) {
@@ -175,11 +171,7 @@ fn header(
                     line.spans.push(alias);
                 }
                 if let Some(metrics) = alignment {
-                    if column + 1 < metrics.widths.len() {
-                        let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
-                        line.text
-                            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
-                    }
+                    pad_column(&mut line, metrics, column, start);
                 }
             }
             line.token("}", node, TokenRole::ContainerDelimiter, None);
@@ -202,6 +194,16 @@ fn header(
     line
 }
 
+/// Padding is display-only: the source-bearing token and its aliases have
+/// already been emitted, and the final column has no trailing padding.
+fn pad_column(line: &mut DisplayLine, metrics: &TableMetrics, column: usize, start: usize) {
+    if column + 1 < metrics.widths.len() {
+        let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
+        line.text
+            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+    }
+}
+
 fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize) {
     let role = match flat[node].value {
         Value::String => TokenRole::String,
@@ -215,6 +217,27 @@ fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize) {
         role,
         Some(flat[node].range.clone()),
     );
+}
+
+/// A single warning spelling contract for the painted row and its lazy extent.
+/// `prefix` distinguishes the separate owner-bound prefix span from the
+/// message/locator span; callers can paint or measure each borrowed fragment.
+pub(super) fn warning_parts(
+    flat: &FlatJson,
+    node: usize,
+    warning: WarningKind,
+    first: bool,
+    field: bool,
+    quoted: &mut String,
+    mut emit: impl FnMut(&str, bool),
+) {
+    emit(if first { "  # WARN " } else { "; " }, true);
+    emit(warning.message(), false);
+    if field {
+        emit(" at field ", false);
+        quote_json_into(&key(flat, node).unwrap_or_default(), quoted);
+        emit(quoted, false);
+    }
 }
 
 fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mut DisplayLine) {
@@ -232,41 +255,41 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
     nodes.sort_unstable();
     nodes.dedup();
     let mut first = true;
+    let mut quoted = String::new();
+    let mut message = String::new();
     for node in nodes {
         let mut warnings: Vec<_> = analysis.warnings(node).collect();
         warnings.sort();
         for warning in warnings {
-            if first {
-                line.token("  # WARN ", line.owner, TokenRole::Warning, None);
-                first = false;
-            } else {
-                line.token("; ", line.owner, TokenRole::Warning, None);
-            }
-            let locator = if analysis.is_root(node) {
-                String::new()
-            } else if analysis.table_cell(flat, node) {
-                format!(
-                    " at field {}",
-                    quote_json(&key(flat, node).unwrap_or_default())
-                )
-            } else if let Some(parent) = flat[node].parent.as_option() {
-                if flat[parent].is_array()
-                    && geometry.position(flat, analysis, node).line
-                        == geometry.position(flat, analysis, line.owner).body_line
-                {
-                    format!(" at [{}]", flat[node].index_in_parent)
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-            line.token(
-                &format!("{}{locator}", warning.message()),
+            message.clear();
+            warning_parts(
+                flat,
                 node,
-                TokenRole::Warning,
-                None,
+                warning,
+                first,
+                !analysis.is_root(node) && analysis.table_cell(flat, node),
+                &mut quoted,
+                |part, prefix| {
+                    if prefix {
+                        line.token(part, line.owner, TokenRole::Warning, None);
+                    } else {
+                        message.push_str(part);
+                    }
+                },
             );
+            first = false;
+            if !analysis.is_root(node) && !analysis.table_cell(flat, node) {
+                if let Some(parent) = flat[node].parent.as_option() {
+                    if flat[parent].is_array()
+                        && geometry.position(flat, analysis, node).line
+                            == geometry.position(flat, analysis, line.owner).body_line
+                    {
+                        use std::fmt::Write;
+                        write!(message, " at [{}]", flat[node].index_in_parent).unwrap();
+                    }
+                }
+            }
+            line.token(&message, node, TokenRole::Warning, None);
         }
     }
 }

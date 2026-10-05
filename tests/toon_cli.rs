@@ -1118,6 +1118,98 @@ mod terminal_commands {
     }
 
     #[test]
+    fn aligned_offset_survives_vertical_motion_leave_return_and_collapse() {
+        let input = format!(
+            r#"{{"users":[{{"identifier":"{}","name":"Ada"}},{{"identifier":"{}","name":"Lin"}}],"other":0}}"#,
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        );
+        let viewport = |keys: &str| {
+            let rows = rendered_rows(&session_with_width(&input, keys, None, 35), 35, 24);
+            rows[..4].to_vec()
+        };
+        let cell = viewport("l\tlll.q");
+        assert!(cell.iter().any(|row| row.contains("…dentifier")), "{cell:?}");
+        for keys in ["l\tlll.jq", "l\tlll.jkkq", "l\tlll.jkkkjq"] {
+            assert_eq!(viewport(keys), cell, "{keys}");
+        }
+
+        let header = viewport("l\t.q");
+        assert!(header.iter().any(|row| row.contains("…dentifier")), "{header:?}");
+        assert_eq!(viewport("l\t.  q"), header);
+        let selected = viewport("l\t.jlq");
+        assert!(selected.iter().any(|row| row.contains("…identifier")), "{selected:?}");
+        assert_ne!(selected, header, "horizontal selection must reveal its cell");
+
+        let nested = format!(r#"{{"nest":{input},"outside":0}}"#);
+        let nested_view = |keys: &str| {
+            let rows = rendered_rows(&session_with_width(&nested, keys, None, 35), 35, 24);
+            rows[..5].to_vec()
+        };
+        let before = nested_view("ll\t.q");
+        assert!(before.iter().any(|row| row.contains('…')), "{before:?}");
+        assert_eq!(nested_view("ll\t.k  jq"), before);
+    }
+
+    #[test]
+    fn hidden_aligned_table_restores_saturated_offset_after_filtering() {
+        let input = r#"{"table_with_a_long_name":[{"identifier":"0123456789ABCDEFGHIJ","name":"Ada"},{"identifier":"x","name":"Lin"}],"other":"outside"}"#;
+        let viewport = |keys: &str| {
+            let rows = rendered_rows(&session_with_width(input, keys, None, 50), 50, 24);
+            rows[..4].to_vec()
+        };
+        let before = viewport("l\t999999999.q");
+        assert!(before.iter().any(|row| row.contains("…:")), "{before:?}");
+        assert_eq!(viewport("l\t999999999.:.other\n:.\nq"), before);
+
+        let nested = r#"{"nest":{"users":[{"identifier":"0123456789ABCDEFGHIJ","name":"Ada"},{"identifier":"x","name":"Lin"}]},"other":0}"#;
+        let nested_view = |keys: &str| {
+            let rows = rendered_rows(&session_with_width(nested, keys, None, 50), 50, 24);
+            rows[..5].to_vec()
+        };
+        let ancestor = nested_view("ll\t999999999.q");
+        assert_eq!(nested_view("ll\t999999999.k  jq"), ancestor);
+
+        let sequence = r#"{"users":[{"identifier":"0123456789ABCDEFGHIJ","name":"Ada"},{"identifier":"x","name":"Lin"}],"a":1} {"a":2}"#;
+        let original = rendered_rows(
+            &session_with_width(sequence, "l\t999999999.q", None, 50),
+            50,
+            24,
+        );
+        let rows = rendered_rows(
+            &session_with_width(sequence, "l\t999999999.:.a\n:.\nq", None, 50),
+            50,
+            24,
+        );
+        assert_eq!(&rows[..7], &original[..7]);
+        assert!(rows[..22].join("\n").contains("--- (2 of 2)"), "{rows:?}");
+    }
+
+    #[test]
+    fn list_object_table_full_reduction_keeps_columns_and_mouse_identity() {
+        use unicode_width::UnicodeWidthStr;
+        let input = r#"{"list":[{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]},{"x":1}]}"#;
+        let keys = "lll\t<<";
+        let rows = rendered_rows(&session(input, &format!("{keys}q")), 120, 24);
+        let header = rows.iter().find(|row| row.contains("users[2]{")).unwrap();
+        let first = rows.iter().find(|row| row.contains(",Ada")).unwrap();
+        let second = rows.iter().find(|row| row.contains(",Lin")).unwrap();
+        let column = UnicodeWidthStr::width(header.split("name").next().unwrap());
+        assert_eq!(column, UnicodeWidthStr::width(first.split("Ada").next().unwrap()), "{rows:?}");
+        assert_eq!(column, UnicodeWidthStr::width(second.split("Lin").next().unwrap()), "{rows:?}");
+        let header_row = rows.iter().position(|row| row == header).unwrap() + 1;
+        let value_row = rows.iter().position(|row| row == second).unwrap() + 1;
+        for (row, expected) in [
+            (header_row, ".list[0].users[0].name"),
+            (value_row, ".list[0].users[1].name"),
+        ] {
+            let click = format!("\x1b[<0;{};{row}MpP q", column + 1);
+            let output = session(input, &format!("{keys}{click}"));
+            assert!(strip_styles(&output).contains(&format!("{expected}\r\n")), "{output:?}");
+        }
+    }
+
+    #[test]
     fn aligned_table_scrolling_and_wrapping_are_local() {
         let input = format!(
             r#"{{"users":[{{"id":1,"name":"Ada"}},{{"id":200,"name":"{}END"}}],"other":"{}"}}"#,
