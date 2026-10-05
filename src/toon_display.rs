@@ -6,6 +6,7 @@ use std::ops::Range;
 
 #[cfg(test)]
 pub mod fixture;
+pub(crate) mod alignment;
 mod format;
 mod geometry;
 mod index;
@@ -156,8 +157,13 @@ impl DisplayLine {
 }
 
 fn quote_json(value: &str) -> String {
-    use std::fmt::Write;
     let mut text = String::with_capacity(value.len() + 2);
+    quote_json_into(value, &mut text);
+    text
+}
+fn quote_json_into(value: &str, text: &mut String) {
+    use std::fmt::Write;
+    text.clear();
     text.push('"');
     for ch in value.chars() {
         match ch {
@@ -173,7 +179,6 @@ fn quote_json(value: &str) -> String {
         }
     }
     text.push('"');
-    text
 }
 fn decode_string(raw: &str) -> String {
     let inner = raw
@@ -213,9 +218,9 @@ fn quote_key(key: &str) -> String {
         quote_json(key)
     }
 }
-fn quote_value(value: &str) -> String {
+fn value_needs_quotes(value: &str) -> bool {
     lazy_static::lazy_static! { static ref NUMERIC: regex::Regex=regex::Regex::new(r"^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$").unwrap(); }
-    if value.is_empty()
+    value.is_empty()
         || value.trim() != value
         || matches!(
             value,
@@ -227,11 +232,6 @@ fn quote_value(value: &str) -> String {
         || value
             .chars()
             .any(|c| c.is_control() || ":\"\\[]{},".contains(c))
-    {
-        quote_json(value)
-    } else {
-        value.to_owned()
-    }
 }
 /// Exact decimal normalization, with the output length checked before allocating.
 fn number(raw: &str) -> (String, Option<WarningKind>) {

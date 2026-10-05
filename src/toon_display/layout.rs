@@ -237,6 +237,16 @@ impl Layout {
     }
 
     pub fn render(&self, flat: &FlatJson, visible: VisibleLine, focused: usize) -> DisplayLine {
+        self.render_aligned(flat, visible, focused, None)
+    }
+
+    pub fn render_aligned(
+        &self,
+        flat: &FlatJson,
+        visible: VisibleLine,
+        focused: usize,
+        alignment: Option<&super::alignment::TableMetrics>,
+    ) -> DisplayLine {
         super::format::row(
             flat,
             &self.analysis,
@@ -244,6 +254,7 @@ impl Layout {
             visible.descriptor,
             visible.collapsed.then_some(visible.owner),
             focused,
+            alignment,
         )
     }
 

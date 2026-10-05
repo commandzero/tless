@@ -1,7 +1,7 @@
 //! Width-dependent logical addresses, separate from semantic analysis and text.
 use super::index::{Analysis, child_count, children, key, numeric, string};
 use super::line_index::LineIndex;
-use super::{quote_key, quote_value, scalar};
+use super::{quote_json, quote_key, scalar, value_needs_quotes};
 use crate::flatjson::{FlatJson, Value};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -59,7 +59,14 @@ pub fn key_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
 }
 pub fn value_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
     match flat[node].value {
-        Value::String => Cow::Owned(quote_value(&string(flat, node))),
+        Value::String => {
+            let value = string(flat, node);
+            if value_needs_quotes(&value) {
+                Cow::Owned(quote_json(&value))
+            } else {
+                value
+            }
+        }
         Value::Number => numeric(&flat.1[flat[node].range.clone()]).0,
         Value::Boolean | Value::Null => Cow::Borrowed(&flat.1[flat[node].range.clone()]),
         _ => Cow::Borrowed(""),

@@ -1,4 +1,5 @@
 //! Materialization of one logical row from structural metadata.
+use super::alignment::TableMetrics;
 use super::geometry::{Geometry, Kind, Row, key_text, value_text};
 use super::index::{Analysis, children, key};
 use super::{
@@ -18,6 +19,7 @@ pub fn row(
     descriptor: Row,
     collapsed: Option<usize>,
     focused: usize,
+    alignment: Option<&TableMetrics>,
 ) -> DisplayLine {
     #[cfg(test)]
     FORMATTED_ROWS.with(|count| count.set(count.get() + 1));
@@ -26,14 +28,27 @@ pub fn row(
     } else if descriptor.kind == Kind::Document {
         document_header(analysis, descriptor.node)
     } else {
-        let mut line = header(flat, analysis, descriptor, focused);
+        let mut line = header(flat, analysis, descriptor, focused, alignment);
         let node = descriptor.node;
         if descriptor.kind == Kind::TableRow {
+            if let Some(metrics) = alignment {
+                let table = flat[node].parent.unwrap();
+                let start = TableMetrics::field_start(flat, analysis, geometry, table);
+                let indentation = descriptor.depth * 2;
+                line.text.extend(std::iter::repeat_n(' ', start.saturating_sub(indentation)));
+            }
             for (column, child) in children(flat, node).enumerate() {
                 if column > 0 {
                     line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
                 }
+                let start = line.text.len();
                 value(flat, &mut line, child);
+                if let Some(metrics) = alignment {
+                    if column + 1 < metrics.widths.len() {
+                        let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
+                        line.text.extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+                    }
+                }
             }
         } else if geometry.inline(flat, node) {
             for (index, child) in children(flat, node).enumerate() {
@@ -89,7 +104,13 @@ fn document_header(analysis: &Analysis, node: usize) -> DisplayLine {
     line
 }
 
-fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize) -> DisplayLine {
+fn header(
+    flat: &FlatJson,
+    analysis: &Analysis,
+    descriptor: Row,
+    focused: usize,
+    alignment: Option<&TableMetrics>,
+) -> DisplayLine {
     let node = descriptor.node;
     let mut line = DisplayLine::new(descriptor.owner, "  ".repeat(descriptor.depth));
     let Kind::Value { list, root } = descriptor.kind else {
@@ -130,6 +151,7 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
                 }
                 // Mouse targeting always uses the first row. One additional
                 // alias is enough for the explicitly focused field's identity.
+                let start = line.text.len();
                 line.token(
                     &key_text(flat, field),
                     field,
@@ -145,6 +167,12 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
                     alias.node = focused;
                     alias.source = flat[focused].key_range.clone();
                     line.spans.push(alias);
+                }
+                if let Some(metrics) = alignment {
+                    if column + 1 < metrics.widths.len() {
+                        let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
+                        line.text.extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+                    }
                 }
             }
             line.token("}", node, TokenRole::ContainerDelimiter, None);
@@ -311,7 +339,7 @@ fn collapsed_row(
                 root: false,
             };
         }
-        let mut line = header(flat, analysis, header_descriptor, focused);
+        let mut line = header(flat, analysis, header_descriptor, focused, None);
         line.owner = node;
         line
     };

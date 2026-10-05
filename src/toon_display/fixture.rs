@@ -71,6 +71,7 @@ impl Fixture {
                     row,
                     None,
                     row.owner,
+                    None,
                 )
             })
             .collect();
