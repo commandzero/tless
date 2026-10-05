@@ -172,6 +172,13 @@ impl ScreenWriter {
 
     pub fn print_viewer(&mut self, viewer: &mut JsonViewer, search_state: &SearchState) {
         self.sync_layout(viewer);
+        let aligned = viewer.aligned_table_for_line(viewer.focused_line_index());
+        if let Some(table) = aligned {
+            // Zero is a saved shared offset too. A freshly enabled table still
+            // reveals its selected span because reset_table_alignment cleared
+            // last_focus, not because the map happens to lack an entry.
+            self.table_offsets.entry(table).or_default();
+        }
         let focus = (
             viewer.focused_node,
             viewer.absolute_anchor_line,
@@ -181,15 +188,18 @@ impl ScreenWriter {
         if self.last_focus != Some(focus) {
             if search_state.active_search_state().is_some() {
                 self.scroll_line_to_search_match(viewer, search_state.current_match_range());
-            } else if !viewer
-                .aligned_table_for_line(viewer.focused_line_index())
-                .is_some_and(|table| {
-                    self.table_offsets.contains_key(&table) && self.last_focus.is_some()
-                })
-            {
-                // Vertical movement and projection-only changes must not reveal
-                // another member's token through a shared table viewport.
-                self.reveal_focused_span(viewer);
+            } else if aligned.is_some() && self.last_focus.is_some() {
+                // Vertical movement and projection-only changes preserve the
+                // shared offset. A narrower terminal may require a right-edge
+                // reveal, but must not reset a manually left-clipped header.
+                if self
+                    .last_focus
+                    .is_some_and(|(_, _, width, _)| width != self.dimensions.width)
+                {
+                    self.reveal_focused_span(viewer, false);
+                }
+            } else {
+                self.reveal_focused_span(viewer, true);
             }
             self.last_focus = Some(focus);
         }
@@ -739,18 +749,23 @@ impl ScreenWriter {
         self.indentation_reduction = self.indentation_reduction.saturating_sub(1)
     }
 
-    fn reveal_focused_span(&mut self, viewer: &mut JsonViewer) {
+    fn reveal_focused_span(&mut self, viewer: &mut JsonViewer, reveal_left: bool) {
         let line = viewer.rendered_line(viewer.focused_line_index());
         if let Some(span) = line
             .spans
             .iter()
             .find(|span| span.node == viewer.focused_node && span.source.is_some())
         {
-            self.reveal_byte_range(viewer, span.range.clone());
+            self.reveal_byte_range(viewer, span.range.clone(), reveal_left);
         }
     }
 
-    fn reveal_byte_range(&mut self, viewer: &mut JsonViewer, range: Range<usize>) {
+    fn reveal_byte_range(
+        &mut self,
+        viewer: &mut JsonViewer,
+        range: Range<usize>,
+        reveal_left: bool,
+    ) {
         if viewer.is_wrapped_line(viewer.focused_line_index()) {
             viewer.reveal_byte_range(range);
             return;
@@ -777,7 +792,7 @@ impl ScreenWriter {
             ScrollOwner::Line(_) => usize::MAX,
             ScrollOwner::Table(table) => self.table_content_width(viewer, table).saturating_sub(1),
         };
-        if start < visible_columns.start || end > visible_columns.end {
+        if (reveal_left && start < visible_columns.start) || end > visible_columns.end {
             *self.offset_mut(owner) = start.min(bound);
         }
     }
@@ -828,7 +843,7 @@ impl ScreenWriter {
             .filter(|span| span.node == viewer.focused_node)
             .find_map(|span| span.matching_ranges(&range).into_iter().next());
         if let Some(target) = target {
-            self.reveal_byte_range(viewer, target);
+            self.reveal_byte_range(viewer, target, true);
             // The match may lie deep inside the token; generic node focus must
             // not move the next paint back to that token's beginning.
             self.last_focus = Some((

@@ -565,8 +565,12 @@ mod terminal_commands {
                 && Instant::now() >= next_key_at
             {
                 if let Some(key) = keys.next() {
-                    if key == 0x12 {
-                        size.ws_col = 16;
+                    // ^R shrinks both dimensions; ^Q changes only the height
+                    // so table viewport regressions cannot hide behind width.
+                    if key == 0x12 || key == 0x11 {
+                        if key == 0x12 {
+                            size.ws_col = 16;
+                        }
                         size.ws_row = 8;
                         assert_ne!(
                             unsafe { libc::ioctl(master.as_raw_fd(), libc::TIOCSWINSZ, &size) },
@@ -1133,24 +1137,23 @@ mod terminal_commands {
             viewport("l\tlllq"),
             "counted scrolling must move the shared viewport"
         );
-        for keys in ["l\tlll.jq", "l\tlll.jkkq", "l\tlll.jkkkjq"] {
+        for keys in ["l\tlll.jq", "l\tlll.jkkq", "l\tlll.jkkkjq", "l\tlll.jjkq"] {
             assert_eq!(viewport(keys), cell, "{keys}");
         }
 
         let header = viewport("l\t.q");
-        assert!(
-            header.iter().any(|row| row.contains("…dentifier")),
-            "{header:?}"
-        );
-        assert_eq!(viewport("l\t.  q"), header);
+        assert_ne!(header, viewport("l\tq"), "header must scroll");
+        for keys in ["l\t.  q", "l\t.jhq"] {
+            assert_eq!(viewport(keys), header, "{keys}");
+        }
         let selected = viewport("l\t.jlq");
-        assert!(
-            selected.iter().any(|row| row.contains("…identifier")),
-            "{selected:?}"
-        );
         assert_ne!(
             selected, header,
             "horizontal selection must reveal its cell"
+        );
+        assert!(
+            selected.iter().any(|row| row.contains("ABCDEFGHIJ")),
+            "{selected:?}"
         );
 
         let nested = format!(r#"{{"nest":{input},"outside":0}}"#);
@@ -1161,6 +1164,53 @@ mod terminal_commands {
         let before = nested_view("ll\t.q");
         assert!(before.iter().any(|row| row.contains('…')), "{before:?}");
         assert_eq!(nested_view("ll\t.k  jq"), before);
+    }
+
+    #[test]
+    fn horizontal_cell_selection_reveals_without_vertical_cell_reveal() {
+        let input = r#"{"users":[{"identifier":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","name":"Ada"},{"identifier":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","name":"Lin"}]}"#;
+        let viewport = |keys: &str| {
+            let rows = rendered_rows(&session_with_width(input, keys, None, 35), 35, 24);
+            rows[..3].to_vec()
+        };
+        let id = viewport("l\tlllq");
+        let scrolled = viewport("l\tlll.q");
+        let name = viewport("l\tlll.Jq");
+        assert_ne!(name, scrolled, "sibling selection must reveal the name cell");
+        assert!(name.iter().any(|row| row.contains("Ada")), "{name:?}");
+        assert_eq!(viewport("l\tlll.$q"), name);
+        for keys in ["l\tlll.JKq", "l\tlll.J0q", "l\tlll.J^q"] {
+            assert_eq!(viewport(keys), id, "{keys}");
+        }
+
+        let uneven = r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"}]}"#;
+        let first = rendered_rows(
+            &session_with_width(uneven, "l\tllJq", None, 35),
+            35,
+            24,
+        );
+        let moved = rendered_rows(
+            &session_with_width(uneven, "l\tllJjq", None, 35),
+            35,
+            24,
+        );
+        assert_eq!(&moved[..3], &first[..3]);
+        assert!(moved[22].contains(".users[1].name"), "{moved:?}");
+    }
+
+    #[test]
+    fn resize_preserves_scrolled_header_and_reveals_newly_right_clipped_cell() {
+        let input = r#"{"users":[{"identifier":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","name":"Ada"},{"identifier":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","name":"Lin"}]}"#;
+        let before = rendered_rows(&session_with_width(input, "l\t.q", None, 35), 35, 24);
+        let height = rendered_rows(&session_with_width(input, "l\t.\x11q", None, 35), 35, 8);
+        assert_eq!(&height[..3], &before[..3], "height-only resize moved the table");
+        let narrow = rendered_rows(&session_with_width(input, "l\t.\x12q", None, 35), 16, 8);
+        let already_narrow = rendered_rows(&session_with_width(input, "l\t.q", None, 16), 16, 24);
+        assert_eq!(&narrow[..3], &already_narrow[..3], "width resize lost a valid offset");
+
+        let cell = r#"{"users":[{"id":"12345678","name":"Ada"},{"id":"87654321","name":"Lin"}]}"#;
+        let resized = rendered_rows(&session_with_width(cell, "l\tjlJ\x12q", None, 35), 16, 8);
+        assert!(resized[..6].join("\n").contains("Ada"), "{resized:?}");
     }
 
     #[test]

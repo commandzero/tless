@@ -579,10 +579,25 @@ impl App {
             if let Some(action) = action {
                 self.viewer.perform_action(action);
                 if self.viewer.focused_node != focused_node_before
-                    && self.viewer.focused_table().is_some()
-                    && matches!(action, Action::MoveLeft | Action::MoveRight)
+                    && self
+                        .viewer
+                        .layout
+                        .node(&self.viewer.flatjson, self.viewer.focused_node)
+                        .table_cell
+                    && matches!(
+                        action,
+                        Action::MoveLeft
+                            | Action::MoveRight
+                            | Action::FocusFirstSibling
+                            | Action::FocusLastSibling
+                            | Action::FocusPrevSibling(_)
+                            | Action::FocusNextSibling(_)
+                            | Action::FocusParentOrPreviousSibling
+                            | Action::FocusNextAtParentLevel
+                    )
                 {
-                    // Horizontal cell selection explicitly requests its token.
+                    // Only explicit horizontal cell selection requests a
+                    // reveal; vertical cell motion keeps the table viewport.
                     self.screen_writer.invalidate_focus();
                 }
                 if self.viewer.wrapping_enabled
@@ -651,13 +666,10 @@ impl App {
             || generation != self.viewer.layout_generation
             || previous_dimensions.height != self.viewer.dimensions.height;
         if reflow {
-            // Projection-only changes and gutter/wrap reflows preserve an
-            // aligned table's shared viewport. Explicit filtering invalidates
-            // focus in apply_path; terminal size changes can require a reveal.
-            if previous_dimensions.width != self.viewer.dimensions.width
-                || previous_dimensions.height != self.viewer.dimensions.height
-                || self.viewer.focused_table().is_none()
-            {
+            // Projection and height-only changes cannot create a horizontal
+            // reveal need. Width changes are handled by the table viewport's
+            // right-edge reveal; filtering invalidates focus in apply_path.
+            if self.viewer.focused_table().is_none() {
                 self.screen_writer.invalidate_focus();
             }
             if self.search_state.active_search_state().is_some() {
