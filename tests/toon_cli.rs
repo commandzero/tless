@@ -1176,7 +1176,10 @@ mod terminal_commands {
         let id = viewport("l\tlllq");
         let scrolled = viewport("l\tlll.q");
         let name = viewport("l\tlll.Jq");
-        assert_ne!(name, scrolled, "sibling selection must reveal the name cell");
+        assert_ne!(
+            name, scrolled,
+            "sibling selection must reveal the name cell"
+        );
         assert!(name.iter().any(|row| row.contains("Ada")), "{name:?}");
         assert_eq!(viewport("l\tlll.$q"), name);
         for keys in ["l\tlll.JKq", "l\tlll.J0q", "l\tlll.J^q"] {
@@ -1184,16 +1187,8 @@ mod terminal_commands {
         }
 
         let uneven = r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"}]}"#;
-        let first = rendered_rows(
-            &session_with_width(uneven, "l\tllJq", None, 35),
-            35,
-            24,
-        );
-        let moved = rendered_rows(
-            &session_with_width(uneven, "l\tllJjq", None, 35),
-            35,
-            24,
-        );
+        let first = rendered_rows(&session_with_width(uneven, "l\tllJq", None, 35), 35, 24);
+        let moved = rendered_rows(&session_with_width(uneven, "l\tllJjq", None, 35), 35, 24);
         assert_eq!(&moved[..3], &first[..3]);
         assert!(moved[22].contains(".users[1].name"), "{moved:?}");
     }
@@ -1203,10 +1198,18 @@ mod terminal_commands {
         let input = r#"{"users":[{"identifier":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","name":"Ada"},{"identifier":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789","name":"Lin"}]}"#;
         let before = rendered_rows(&session_with_width(input, "l\t.q", None, 35), 35, 24);
         let height = rendered_rows(&session_with_width(input, "l\t.\x11q", None, 35), 35, 8);
-        assert_eq!(&height[..3], &before[..3], "height-only resize moved the table");
+        assert_eq!(
+            &height[..3],
+            &before[..3],
+            "height-only resize moved the table"
+        );
         let narrow = rendered_rows(&session_with_width(input, "l\t.\x12q", None, 35), 16, 8);
         let already_narrow = rendered_rows(&session_with_width(input, "l\t.q", None, 16), 16, 24);
-        assert_eq!(&narrow[..3], &already_narrow[..3], "width resize lost a valid offset");
+        assert_eq!(
+            &narrow[..3],
+            &already_narrow[..3],
+            "width resize lost a valid offset"
+        );
 
         let cell = r#"{"users":[{"id":"12345678","name":"Ada"},{"id":"87654321","name":"Lin"}]}"#;
         let resized = rendered_rows(&session_with_width(cell, "l\tjlJ\x12q", None, 35), 16, 8);
