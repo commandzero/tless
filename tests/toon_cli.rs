@@ -1121,25 +1121,36 @@ mod terminal_commands {
     fn aligned_offset_survives_vertical_motion_leave_return_and_collapse() {
         let input = format!(
             r#"{{"users":[{{"identifier":"{}","name":"Ada"}},{{"identifier":"{}","name":"Lin"}}],"other":0}}"#,
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
         );
         let viewport = |keys: &str| {
             let rows = rendered_rows(&session_with_width(&input, keys, None, 35), 35, 24);
             rows[..4].to_vec()
         };
         let cell = viewport("l\tlll.q");
-        assert!(cell.iter().any(|row| row.contains("…dentifier")), "{cell:?}");
+        assert!(
+            cell.iter().any(|row| row.contains("…dentifier")),
+            "{cell:?}"
+        );
         for keys in ["l\tlll.jq", "l\tlll.jkkq", "l\tlll.jkkkjq"] {
             assert_eq!(viewport(keys), cell, "{keys}");
         }
 
         let header = viewport("l\t.q");
-        assert!(header.iter().any(|row| row.contains("…dentifier")), "{header:?}");
+        assert!(
+            header.iter().any(|row| row.contains("…dentifier")),
+            "{header:?}"
+        );
         assert_eq!(viewport("l\t.  q"), header);
         let selected = viewport("l\t.jlq");
-        assert!(selected.iter().any(|row| row.contains("…identifier")), "{selected:?}");
-        assert_ne!(selected, header, "horizontal selection must reveal its cell");
+        assert!(
+            selected.iter().any(|row| row.contains("…identifier")),
+            "{selected:?}"
+        );
+        assert_ne!(
+            selected, header,
+            "horizontal selection must reveal its cell"
+        );
 
         let nested = format!(r#"{{"nest":{input},"outside":0}}"#);
         let nested_view = |keys: &str| {
@@ -1188,15 +1199,24 @@ mod terminal_commands {
     #[test]
     fn list_object_table_full_reduction_keeps_columns_and_mouse_identity() {
         use unicode_width::UnicodeWidthStr;
-        let input = r#"{"list":[{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]},{"x":1}]}"#;
+        let input =
+            r#"{"list":[{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]},{"x":1}]}"#;
         let keys = "lll\t<<";
         let rows = rendered_rows(&session(input, &format!("{keys}q")), 120, 24);
         let header = rows.iter().find(|row| row.contains("users[2]{")).unwrap();
         let first = rows.iter().find(|row| row.contains(",Ada")).unwrap();
         let second = rows.iter().find(|row| row.contains(",Lin")).unwrap();
         let column = UnicodeWidthStr::width(header.split("name").next().unwrap());
-        assert_eq!(column, UnicodeWidthStr::width(first.split("Ada").next().unwrap()), "{rows:?}");
-        assert_eq!(column, UnicodeWidthStr::width(second.split("Lin").next().unwrap()), "{rows:?}");
+        assert_eq!(
+            column,
+            UnicodeWidthStr::width(first.split("Ada").next().unwrap()),
+            "{rows:?}"
+        );
+        assert_eq!(
+            column,
+            UnicodeWidthStr::width(second.split("Lin").next().unwrap()),
+            "{rows:?}"
+        );
         let header_row = rows.iter().position(|row| row == header).unwrap() + 1;
         let value_row = rows.iter().position(|row| row == second).unwrap() + 1;
         for (row, expected) in [
@@ -1205,7 +1225,10 @@ mod terminal_commands {
         ] {
             let click = format!("\x1b[<0;{};{row}MpP q", column + 1);
             let output = session(input, &format!("{keys}{click}"));
-            assert!(strip_styles(&output).contains(&format!("{expected}\r\n")), "{output:?}");
+            assert!(
+                strip_styles(&output).contains(&format!("{expected}\r\n")),
+                "{output:?}"
+            );
         }
     }
 

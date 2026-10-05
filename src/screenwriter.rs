@@ -183,7 +183,9 @@ impl ScreenWriter {
                 self.scroll_line_to_search_match(viewer, search_state.current_match_range());
             } else if !viewer
                 .aligned_table_for_line(viewer.focused_line_index())
-                .is_some_and(|table| self.table_offsets.contains_key(&table) && self.last_focus.is_some())
+                .is_some_and(|table| {
+                    self.table_offsets.contains_key(&table) && self.last_focus.is_some()
+                })
             {
                 // Vertical movement and projection-only changes must not reveal
                 // another member's token through a shared table viewport.

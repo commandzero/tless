@@ -42,9 +42,8 @@ impl TableMetrics {
                 widths[column] = widths[column].max(width);
                 last_width = width;
             }
-            max_row_tail = max_row_tail.max(
-                last_width + annotation_width(flat, analysis, row, true, &mut quoted),
-            );
+            max_row_tail = max_row_tail
+                .max(last_width + annotation_width(flat, analysis, row, true, &mut quoted));
         }
         Self {
             widths,
@@ -52,7 +51,6 @@ impl TableMetrics {
             header_tail,
         }
     }
-
 
     pub fn extent(&self, field_start: usize) -> usize {
         let preceding = self

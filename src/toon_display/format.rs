@@ -3,8 +3,8 @@ use super::alignment::TableMetrics;
 use super::geometry::{Geometry, Kind, Row, key_text, value_text};
 use super::index::{Analysis, children, key};
 use super::{
-    DisplayLine, FlatJson, Preview, SourceMap, Span, TokenRole, Value, WarningKind,
-    bounded_prefix, preview_append, quote_json_into, quote_key, scalar, string_source_map,
+    DisplayLine, FlatJson, Preview, SourceMap, Span, TokenRole, Value, WarningKind, bounded_prefix,
+    preview_append, quote_json_into, quote_key, scalar, string_source_map,
 };
 
 #[cfg(test)]
