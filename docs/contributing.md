@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: codex/gpt-6, at: 2026-09-11T00:29:19Z }
+generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T03:17:48Z }
 ---
 
 # Contributing
@@ -52,6 +52,9 @@ The root crate has no library target, so it has no library doctests.
 
 Tests use disposable files and isolated pseudoterminals. If a test fails because
 it lacks terminal access, rerun it with access. Do not skip it.
+PTY tests pace synthetic input and bound application-response waits separately
+from typing time. Keep prompt, redraw, and exit waits bounded; do not impose a
+fixed budget on an entire script whose length includes literal temporary paths.
 Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing.
 
 For documentation-only edits, run `scripts/validate-docs.sh` locally. It validates

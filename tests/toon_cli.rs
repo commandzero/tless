@@ -596,7 +596,12 @@ mod terminal_commands {
                         }
                     }
                     master.write_all(&input).unwrap();
-                    next_key_at = Instant::now()
+                    // Bound application-response waits, not the time spent
+                    // pacing a finite script. Long literal temp paths can
+                    // take more than ten seconds to type on loaded runners.
+                    let sent_at = Instant::now();
+                    deadline = sent_at + Duration::from_secs(10);
+                    next_key_at = sent_at
                         + Duration::from_millis(if input == [0x1b] {
                             600
                         } else if key == b':' || key == b'\n' {
