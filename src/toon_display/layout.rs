@@ -236,10 +236,6 @@ impl Layout {
         })
     }
 
-    pub fn render(&self, flat: &FlatJson, visible: VisibleLine, focused: usize) -> DisplayLine {
-        self.render_aligned(flat, visible, focused, None)
-    }
-
     pub fn render_aligned(
         &self,
         flat: &FlatJson,

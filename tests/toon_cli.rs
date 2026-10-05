@@ -1076,6 +1076,49 @@ mod terminal_commands {
     }
 
     #[test]
+    fn wrapping_preserves_scrolled_aligned_header_rows_and_cell_focus() {
+        let input = format!(
+            r#"{{"users":[{{"identifier":"{}","name":"Ada"}},{{"identifier":"{}","name":"Lin"}}],"other":"{}"}}"#,
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            "0123456789".repeat(8),
+        );
+        for (focus, path) in [
+            ("", ".users"),
+            ("j", ".users[0]"),
+            ("jl", ".users[0].identifier"),
+        ] {
+            let before = rendered_rows(
+                &session_with_width(&input, &format!("l\t{focus}.q"), None, 35),
+                35,
+                24,
+            );
+            assert!(before[0].contains("…dentifier"), "{focus}: {before:?}");
+            assert!(before[22].contains(path), "{focus}: {before:?}");
+            let wrapped = rendered_rows(
+                &session_with_width(&input, &format!("l\t{focus}.\x0cq"), None, 35),
+                35,
+                24,
+            );
+            assert_eq!(&before[..3], &wrapped[..3], "{focus}: {wrapped:?}");
+            assert!(wrapped[22].contains(path), "{focus}: {wrapped:?}");
+            let unwrapped = rendered_rows(
+                &session_with_width(&input, &format!("l\t{focus}.\x0c\x0cq"), None, 35),
+                35,
+                24,
+            );
+            assert_eq!(&before[..3], &unwrapped[..3], "{focus}: {unwrapped:?}");
+            let count = |rows: &[String]| {
+                rows[..22]
+                    .iter()
+                    .take_while(|row| row.as_str() != "~")
+                    .count()
+            };
+            assert!(count(&wrapped) > count(&before), "{focus}: {wrapped:?}");
+        }
+    }
+
+    #[test]
     fn aligned_table_scrolling_and_wrapping_are_local() {
         let input = format!(
             r#"{{"users":[{{"id":1,"name":"Ada"}},{{"id":200,"name":"{}END"}}],"other":"{}"}}"#,
@@ -1104,11 +1147,13 @@ mod terminal_commands {
         assert!(wrapped[22].contains("Table aligned"), "{wrapped:?}");
         let reverted = rendered_rows(&session_with_width(&input, "l\x0c\t\tq", None, 35), 35, 24);
         assert!(!reverted[22].contains("Table aligned"), "{reverted:?}");
-        assert!(
-            reverted[..22].iter().filter(|row| !row.is_empty()).count()
-                > start[..22].iter().filter(|row| !row.is_empty()).count(),
-            "{reverted:?}"
-        );
+        let data_lines = |rows: &[String]| {
+            rows[..22]
+                .iter()
+                .take_while(|row| row.as_str() != "~")
+                .count()
+        };
+        assert!(data_lines(&reverted) > data_lines(&start), "{reverted:?}");
     }
 
     #[test]
@@ -1118,7 +1163,7 @@ mod terminal_commands {
         let output = session(input, "ll\t:set nonumber\n:set relativenumber\n<\x12q");
         let rows = rendered_rows(&output, 16, 8);
         assert!(rows[6].contains("Align"), "{rows:?}");
-        let restored = session(input, "ll\t:.nest.users[0]\n:.\nq");
+        let restored = session(input, "ll\t:.nest.users[0]\n:.\nllq");
         let rows = rendered_rows(&restored, 120, 24);
         assert!(
             rows[..22].join("\n").contains("         200,Lin"),
@@ -1170,7 +1215,16 @@ mod terminal_commands {
             35,
             24,
         );
-        assert_eq!(at_end[..22], saturated[..22], "{at_end:?}\n{saturated:?}");
+        let repeated = rendered_rows(
+            &session_with_width(input, "l\t999999999.999999999.q", None, 35),
+            35,
+            24,
+        );
+        // `;` fits the end in the viewport; counted scrolling can instead
+        // place the very last cell at the left edge. Both must reach the
+        // warning's last cell, and repeated oversized counts stop there.
+        assert_eq!(saturated[..22], repeated[..22], "{saturated:?}\n{repeated:?}");
+        assert!(saturated[2].ends_with('"'), "{saturated:?}");
         assert!(at_end[..22].join("\n").contains("escape"), "{at_end:?}");
         let back = rendered_rows(
             &session_with_width(input, "l\t;999999999,q", None, 35),
@@ -1185,9 +1239,9 @@ mod terminal_commands {
     #[test]
     fn aligned_mouse_targets_data_and_padding_after_shared_scroll() {
         let input = r#"{"users":[{"id":"ABCDEFGHIJKLMNO","name":"Ada"},{"id":"ABCDEFGHIJKLMNOP","name":"Lin"}]}"#;
-        // No number gutter: two columns remain reserved for arrows and spacing.
-        // The second name starts at document column 26, or terminal column 19
-        // after ten shared cells have been scrolled off.
+        // With no number gutter, the second row's wider id leaves one
+        // padding cell after the first row's id. At offset ten that cell is
+        // terminal column 13 (including the arrow, spacer and ellipsis).
         let selected = session_with_width(input, ":set nonumber\nl\t.\x1b[<0;20;3MpP q", None, 35);
         assert!(
             strip_styles(&selected).contains(".users[1].name\r\n"),
@@ -1199,7 +1253,7 @@ mod terminal_commands {
             "{copied:?}"
         );
         let row_padding =
-            session_with_width(input, ":set nonumber\nl\t.\x1b[<0;17;2MpP q", None, 35);
+            session_with_width(input, ":set nonumber\nl\t.\x1b[<0;13;2MpP q", None, 35);
         assert!(
             strip_styles(&row_padding).contains(".users[0]\r\n"),
             "{row_padding:?}"

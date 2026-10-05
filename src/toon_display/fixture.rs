@@ -110,7 +110,7 @@ impl Fixture {
                 let row = self.layout.visible_line(flat, &projection, index).unwrap();
                 FixtureRow {
                     absolute: row.absolute,
-                    line: self.layout.render(flat, row, row.owner),
+                    line: self.layout.render_aligned(flat, row, row.owner, None),
                 }
             })
             .collect()

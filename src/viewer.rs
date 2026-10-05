@@ -349,10 +349,13 @@ impl JsonViewer {
         if line.separator || line.collapsed {
             return None;
         }
-        let table = if self.layout.analysis.node(&self.flatjson, line.owner).table {
-            line.owner
-        } else if self.layout.analysis.table_row(&self.flatjson, line.owner) {
-            self.flatjson[line.owner].parent.unwrap()
+        // A table which is the first child of an unkeyed list object shares
+        // that object's displayed line, but the table itself owns the grid.
+        let node = line.descriptor.node;
+        let table = if self.layout.analysis.node(&self.flatjson, node).table {
+            node
+        } else if self.layout.analysis.table_row(&self.flatjson, node) {
+            self.flatjson[node].parent.unwrap()
         } else {
             return None;
         };

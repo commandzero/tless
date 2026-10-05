@@ -31,7 +31,7 @@ pub fn row(
         let mut line = header(flat, analysis, descriptor, focused, alignment);
         let node = descriptor.node;
         if descriptor.kind == Kind::TableRow {
-            if let Some(metrics) = alignment {
+            if alignment.is_some() {
                 let table = flat[node].parent.unwrap();
                 let start = TableMetrics::field_start(flat, analysis, geometry, table);
                 let indentation = descriptor.depth * 2;
@@ -79,7 +79,11 @@ pub fn row(
                 source: None,
                 source_map: Vec::new(),
             });
-            line.owner = descriptor.owner;
+            line.owner = if alignment.is_some() && analysis.node(flat, node).table {
+                node
+            } else {
+                descriptor.owner
+            };
         }
         annotate(flat, analysis, geometry, &mut line);
         line

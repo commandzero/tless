@@ -257,7 +257,22 @@ impl ScreenWriter {
                 .row(&viewer.flatjson, *absolute)
                 .is_some_and(|line| viewer.effective_collapsed(line.owner))
         });
-        self.last_focus = None;
+        // A wrap toggle reflows ordinary lines, but expanded aligned members
+        // remain unwrapped with the same shared horizontal viewport. Do not
+        // reveal their focused token again merely because geometry changed.
+        if viewer
+            .aligned_table_for_line(viewer.focused_line_index())
+            .is_some()
+            && self.last_focus.is_some_and(|(node, anchor, width, _)| {
+                node == viewer.focused_node
+                    && anchor == viewer.absolute_anchor_line
+                    && width == self.dimensions.width
+            })
+        {
+            self.accept_viewport_focus(viewer);
+        } else {
+            self.last_focus = None;
+        }
     }
 
     /// Switching modes must not restore per-line scroll positions from the
