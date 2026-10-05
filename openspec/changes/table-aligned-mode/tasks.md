@@ -22,8 +22,10 @@
 - [x] 3.3 Verify serialization isolation through the running program: copy an aligned cell and write an aligned table in supported formats, then compare parsed results with the unaligned selections and check redirected stdout; retain regression coverage only for consumer-visible data or output differences.
 - [x] 3.4 Update `src/tless.help`, `src/toon.help`, relevant README controls, `docs/toon-acceptance.md`, and the Unreleased changelog for Tab, persistent indication, synchronized scrolling, and the local wrapping override; verify interactive help in the TUI, execute the documented acceptance steps, and run `scripts/validate-docs.sh`.
 
-## 4. Integration and OpenSpec completion
+## 4. Required post-archive completion gates
 
-- [ ] 4.1 Run `scripts/preflight.sh` and `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test`; verify all applicable checks pass and record native terminal smoke evidence separately from test results.
-- [ ] 4.2 Synchronize both delta specs into the main capabilities, compare every added/modified requirement and scenario against the implemented behavior, and archive this change with the pinned OpenSpec CLI; verify strict native change/spec/archive validation and preserve all planning artifacts in the archive.
-- [ ] 4.3 Before merging the implementation PR, declare `OpenSpec-Change: table-aligned-mode` and the reviewed synchronization field, commit the finished change, fetch the target branch, and run the PR-scoped completion command from `docs/contributing.md`; verify it passes for this change without selecting unrelated active proposals.
+Gates 4.1–4.3 remain required before this PR is ready for review. Independent verification runs before archival; the final full preflight and PR-scoped check run after archival because they validate the archived, completed implementation checklist. Record gate results only after they pass.
+
+- **4.1** Run `scripts/preflight.sh` and `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test`; verify all applicable checks pass and record native terminal smoke evidence separately from test results.
+- **4.2** Synchronize both delta specs into the main capabilities, compare every added/modified requirement and scenario against the implemented behavior, and archive this change with the pinned OpenSpec CLI; verify strict native change/spec/archive validation and preserve all planning artifacts in the archive.
+- **4.3** Before merging the implementation PR, declare `OpenSpec-Change: table-aligned-mode` and the reviewed synchronization field, commit the finished change, fetch the target branch, and run the PR-scoped completion command from `docs/contributing.md`; verify it passes for this change without selecting unrelated active proposals.
