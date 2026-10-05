@@ -12,28 +12,31 @@ The `:` prompt SHALL offer case-sensitive prefix matches from the long-form comm
 
 | Build | Names |
 | --- | --- |
-| Every build | `exit`, `help`, `quit`, `set`, `write`, `write!`, `writetoon`, `writetoon!` |
+| Every build | `exit`, `help`, `quit`, `set`, `write`, `write!`, `write-json`, `write-json!`, `write-jsonl`, `write-jsonl!`, `write-ndjson`, `write-ndjson!`, `write-toon`, `write-toon!`, `write-yaml`, `write-yaml!` |
 | With `colorscheme` | `colorscheme` |
-| With `sexp` | `writesexp`, `writesexp!` |
+| With `sexp` | `write-sexp`, `write-sexp!` |
 
-Completion SHALL NOT introduce additional accepted command syntax or change the meaning of existing aliases or overwrite forms.
+Completion SHALL use the command syntax and meanings defined by interactive-write, including the TOON default and retained short aliases. It SHALL NOT independently change command semantics. Obsolete long names `writetoon`, `writetoon!`, `writesexp`, and `writesexp!` SHALL NOT be offered or accepted.
 
 #### Scenario: Prefix has several matches
 
-- **WHEN** the user requests completion for `wri` in a build without `sexp`
-- **THEN** candidates SHALL be `write`, `write!`, `writetoon`, and `writetoon!` in that order
+- **WHEN** the user requests completion for `write-j`
+- **THEN** candidates SHALL be `write-json`, `write-json!`, `write-jsonl`, and `write-jsonl!` in that order
 
 #### Scenario: Short aliases remain executable but are not suggested
 
 - **WHEN** the user requests completion for `h` or `q`
 - **THEN** candidates SHALL be `help` or `quit`, respectively
 - **AND** submitting the uncompleted `h` or `q` SHALL retain its existing behavior
+- **AND** `w`, `wt`, and their overwrite forms SHALL remain accepted with TOON encoding but SHALL NOT appear as candidates
+- **AND** `wj`, `wy`, `wn`, and their overwrite forms SHALL remain accepted for JSON, YAML, and NDJSON/JSONL respectively but SHALL NOT appear as candidates
 
 #### Scenario: Feature-specific commands
 
 - **WHEN** the user requests completion in a build without `colorscheme` or `sexp`
-- **THEN** completion SHALL work for the base commands and SHALL exclude `colorscheme`, `writesexp`, `writesexp!`, `ws`, and `ws!`
-- **AND** enabling either feature SHALL add only its corresponding names
+- **THEN** completion SHALL work for the base commands and SHALL exclude `colorscheme`, `write-sexp`, `write-sexp!`, `ws`, and `ws!`
+- **AND** enabling either feature SHALL add only its corresponding long names to completion
+- **AND** `ws` and `ws!` SHALL be accepted only with `sexp`
 
 ### Requirement: Completion scope and text preservation
 
@@ -41,9 +44,9 @@ Completion SHALL operate only at the end of the first command token, including w
 
 #### Scenario: Complete a command before an existing argument
 
-- **WHEN** the buffer is `  wri report.toon` with the cursor immediately after `wri` and the user selects `writetoon`
-- **THEN** the buffer SHALL become `  writetoon report.toon`
-- **AND** the cursor SHALL be immediately after `writetoon`
+- **WHEN** the buffer is `  write-t report.toon` with the cursor immediately after `write-t` and the user selects `write-toon`
+- **THEN** the buffer SHALL become `  write-toon report.toon`
+- **AND** the cursor SHALL be immediately after `write-toon`
 
 #### Scenario: Arguments and middle-of-token edits
 
@@ -83,25 +86,25 @@ Tab SHALL insert the first match and successive Tab presses SHALL cycle forward 
 
 #### Scenario: Cycle and restore
 
-- **WHEN** the buffer is `wri` in a build without `sexp` and the user presses Tab repeatedly
-- **THEN** the buffer SHALL visit `write`, `write!`, `writetoon`, `writetoon!`, and `wri`, then repeat
+- **WHEN** the buffer is `write-j` and the user presses Tab repeatedly
+- **THEN** the buffer SHALL visit `write-json`, `write-json!`, `write-jsonl`, `write-jsonl!`, and `write-j`, then repeat
 - **AND** Shift-Tab SHALL traverse those positions in reverse
 
 #### Scenario: Start with backward completion
 
-- **WHEN** the buffer is `wri` in a build without `sexp` and the first completion key is Shift-Tab
-- **THEN** the buffer SHALL become `writetoon!`
-- **AND** successive Shift-Tab presses SHALL visit `writetoon`, `write!`, `write`, and `wri`, then repeat
+- **WHEN** the buffer is `write-j` and the first completion key is Shift-Tab
+- **THEN** the buffer SHALL become `write-jsonl!`
+- **AND** successive Shift-Tab presses SHALL visit `write-jsonl`, `write-json!`, `write-json`, and `write-j`, then repeat
 
 #### Scenario: Escape restores the original input
 
-- **WHEN** the user starts cycling with `wri report.json` and presses Escape after selecting a match
-- **THEN** the buffer SHALL return to `wri report.json` with its original cursor position
+- **WHEN** the user starts cycling with `write-j report.json` and presses Escape after selecting a match
+- **THEN** the buffer SHALL return to `write-j report.json` with its original cursor position
 - **AND** the prompt SHALL remain open without executing a command
 
 #### Scenario: Selection has no side effects
 
-- **WHEN** the user completes `wri output.json` to `write! output.json` and then presses Ctrl-C
+- **WHEN** the user completes `write-j output.json` to `write-json! output.json` and then presses Ctrl-C
 - **THEN** the prompt SHALL close without creating or overwriting a file
 
 #### Scenario: Edit after selecting
