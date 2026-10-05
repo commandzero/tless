@@ -31,7 +31,7 @@ The viewer SHALL render every supported input format with the TOON 3.0 profile: 
 
 ### Requirement: Native TOON layout
 
-Fully expanded standard-compatible data SHALL use TOON object fields, inline or multiline primitive arrays, uniform primitive-only object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string field sets shared by every row. Array order and object entry order SHALL be preserved. When a table would reorder a row's fields, the array SHALL use list form. When the viewport can represent every grapheme and no content is clipped, stripping presentation styling and gutters from fully expanded standard-compatible single-root content, and rejoining soft-wrapped continuations without inserting characters, SHALL leave valid TOON text.
+Fully expanded standard-compatible data SHALL use TOON object fields, inline or multiline primitive arrays, uniform primitive-only object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string field sets shared by every row. Array order and object entry order SHALL be preserved. When a table would reorder a row's fields, the array SHALL use list form. When table alignment is disabled and the viewport can represent every grapheme and no content is clipped, stripping presentation styling and gutters from fully expanded standard-compatible single-root content, and rejoining soft-wrapped continuations without inserting characters, SHALL leave valid TOON text.
 
 #### Scenario: Primitive array default layout
 
@@ -43,7 +43,7 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 #### Scenario: Table and inline array
 
 - **WHEN** the document contains `{"tags":["rust","cli"],"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}`
-- **THEN** its document text SHALL be `tags[2]: rust,cli` followed by `users[2]{id,name}:` and indented rows `1,Ada` and `2,Lin`
+- **THEN** its document text with alignment disabled SHALL be `tags[2]: rust,cli` followed by `users[2]{id,name}:` and indented rows `1,Ada` and `2,Lin`
 - **AND** the viewer SHALL NOT insert JSON closing delimiters or array-index labels
 
 #### Scenario: Empty containers
@@ -59,6 +59,12 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 - **THEN** its fields SHALL have no synthetic root header or enclosing braces
 - **AND** the root SHALL stay expanded while its descendants support collapse
 - **AND** an empty root object SHALL display an empty document with its type available in application status
+
+#### Scenario: Aligned text is presentation only
+
+- **WHEN** table alignment is enabled
+- **THEN** generated padding SHALL be an interactive presentation exception to the native-text contract
+- **AND** disabling alignment SHALL restore ordinary TOON text without changing data or field order
 
 ### Requirement: Syntax styling
 
@@ -104,7 +110,7 @@ Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when co
 
 ### Requirement: Gutters and terminal width
 
-Optional absolute and relative line numbers SHALL remain available outside the document text with existing visibility defaults. Absolute numbers SHALL identify lines in the fully expanded TOON layout, beginning at 1; collapsed descendants SHALL produce gaps. Relative numbers SHALL count visible display-line motions. Automatic primitive-array layouts SHALL be recalculated on terminal-width or gutter-visibility changes while preserving logical selection and collapse states. Explicit multiline choices SHALL survive resize and collapse/reopen. Absolute addresses SHALL follow the current fully expanded layout. With wrapping disabled, long individual values and table rows SHALL use horizontal scrolling without soft wrapping. With wrapping enabled, expanded lines SHALL follow the optional line wrapping requirement. Continuation rows SHALL NOT add absolute addresses or relative motion distance. On lines using horizontal scrolling, `,` and `.` SHALL scroll left and right by ten terminal cells per press, multiplied by any numeric prefix and clamped at the line boundaries. Rendering SHALL escape control characters and respect terminal cell widths.
+Optional absolute and relative line numbers SHALL remain available outside the document text with existing visibility defaults. Absolute numbers SHALL identify lines in the fully expanded TOON layout, beginning at 1; collapsed descendants SHALL produce gaps. Relative numbers SHALL count visible display-line motions. Automatic primitive-array layouts SHALL be recalculated on terminal-width or gutter-visibility changes while preserving logical selection and collapse states. Explicit multiline choices SHALL survive resize and collapse/reopen. Absolute addresses SHALL follow the current fully expanded layout. With wrapping disabled, long individual values and table rows SHALL use horizontal scrolling without soft wrapping. With wrapping enabled, expanded lines SHALL follow the optional line wrapping requirement. Continuation rows SHALL NOT add absolute addresses or relative motion distance. On lines using horizontal scrolling, `,` and `.` SHALL scroll left and right by ten terminal cells per press, multiplied by any numeric prefix and clamped at the line boundaries, or at the shared table boundaries when alignment is enabled. Rendering SHALL escape control characters and respect terminal cell widths.
 
 #### Scenario: Shared-line numbering
 
@@ -115,7 +121,7 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 #### Scenario: Narrow viewport
 
 - **WHEN** the terminal cannot fit the full content or preview
-- **THEN** expanded content SHALL remain reachable by horizontal scrolling when wrapping is disabled and by vertical viewport scrolling when wrapping is enabled
+- **THEN** expanded content SHALL remain reachable by horizontal scrolling when wrapping is disabled and by vertical viewport scrolling when wrapping is enabled for that line; aligned tables SHALL remain reachable by shared horizontal scrolling
 - **AND** collapsed previews SHALL truncate with `…` at a valid character boundary
 - **AND** preview space SHALL be removed before object-count or warning space
 - **AND** warnings that still do not fit SHALL remain reachable by horizontal scrolling on unwrapped lines and vertical viewport scrolling on wrapped lines
@@ -132,7 +138,9 @@ Optional absolute and relative line numbers SHALL remain available outside the d
 
 Ctrl+L in the document view SHALL toggle wrapping for all eligible lines for the current session, initially disabled. Each press SHALL toggle once regardless of a numeric prefix. Command and search prompts SHALL retain their input-editor behavior. The application SHALL report whether wrapping is on or off and document the key in interactive help.
 
-Wrapping SHALL operate after normal TOON layout selection and indentation reduction. It SHALL NOT change primitive-array layout decisions, parsed values, collapse states, export contents, or piped output. Expanded lines, including keys, scalar values, table headers, table rows, and their warning annotations, SHALL wrap greedily at grapheme boundaries using terminal cell widths, without word-boundary preference. Continuations SHALL start at the document area's left edge, after the reserved number and collapse-arrow gutter. Original indentation SHALL appear only as part of the original line text, without adding repeated indentation or key prefixes.
+Wrapping SHALL operate after normal TOON layout selection and indentation reduction. It SHALL NOT change primitive-array layout decisions, parsed values, collapse states, export contents, or piped output. Expanded lines, including keys, scalar values, unaligned table headers, unaligned table rows, and their warning annotations, SHALL wrap greedily at grapheme boundaries using terminal cell widths, without word-boundary preference. Continuations SHALL start at the document area's left edge, after the reserved number and collapse-arrow gutter. Original indentation SHALL appear only as part of the original line text, without adding repeated indentation or key prefixes.
+
+Aligned table headers and rows, including their warning annotations, SHALL remain unwrapped and use table-wide horizontal scrolling regardless of the session wrapping setting. Ctrl+L SHALL NOT disable table alignment or reset its shared offset. Disabling alignment SHALL restore wrap eligibility under the current session setting.
 
 Only the first physical row SHALL show the logical line's number and collapse arrow. Continuation gutters SHALL remain blank even when the first row is above the viewport. Wrapping SHALL NOT add clipping ellipses at ordinary wrap boundaries. Syntax, focus, and search styling SHALL continue over the original spans.
 
@@ -175,6 +183,14 @@ Collapsed container lines, including their previews, counts, and warnings, SHALL
 - **THEN** primitive-array inline versus multiline choices and table structure SHALL remain unchanged
 - **AND** source escape sequences SHALL remain displayed escapes rather than interpreted control characters
 - **AND** copying, exporting, and redirected stdout SHALL contain no soft-wrap newlines or placeholders
+
+#### Scenario: Alignment overrides wrapping locally
+
+- **WHEN** session wrapping is on and the user enables alignment on one table
+- **THEN** that table header and its rows SHALL remain single physical rows with horizontal scrolling
+- **AND** other eligible content SHALL remain wrapped
+- **AND** toggling Ctrl+L SHALL preserve that table's alignment and shared offset
+- **AND** disabling alignment SHALL restore normal presentation under the current wrapping setting
 
 ### Requirement: Theme selection background fills the row
 
@@ -275,3 +291,82 @@ The candidate's median and p95 first-useful-frame times SHALL each be no more th
 - **THEN** both jless-relative limits and the frozen-tless improvement limit SHALL pass before the refactor is considered complete
 - **AND** the report SHALL retain the individual timings, excluded warm-ups, percentile calculation, host/build provenance, input size, frame-detection rule, and peak-memory sampling method
 - **AND** previously recorded timings SHALL NOT substitute for a same-host comparison of the candidate and reference executables
+
+### Requirement: Per-table alignment toggle
+
+Tab in the document view SHALL toggle alignment once for the focused tabular array, including focus on its header, row, or cell, regardless of a numeric prefix. Alignment SHALL start disabled for every table. Tab SHALL NOT align non-tabular values or change prompt-editor behavior. A collapsed table SHALL retain its collapse state when toggled.
+
+#### Scenario: Toggle from header and cells
+
+- **WHEN** the user presses Tab on a table header, row object, or cell
+- **THEN** only that table SHALL toggle alignment and preserve logical focus
+- **AND** pressing Tab again SHALL restore its unaligned presentation
+- **AND** toggling one table SHALL NOT change another table
+
+#### Scenario: Ineligible focus and prompt input
+
+- **WHEN** Tab is pressed on a scalar, primitive array, list-form array, or in a command or search prompt
+- **THEN** it SHALL NOT change table alignment or collapse state
+- **AND** prompt input SHALL retain its existing Tab behavior
+
+#### Scenario: Collapsed table
+
+- **WHEN** the user enables alignment on a collapsed tabular array
+- **THEN** the array SHALL remain collapsed with its ordinary preview
+- **AND** expanding it SHALL display aligned headers and rows
+
+### Requirement: Terminal-cell aligned table columns
+
+An expanded aligned table SHALL left-align each rendered cell with its field header using generated whitespace outside the data tokens. Column widths SHALL include the widest rendered header or value across all table rows, measured in terminal cells. Commas and the counted header SHALL remain visible syntax. Gutters, indentation reduction, and scrolling SHALL preserve column alignment.
+
+#### Scenario: Exact header and value positions
+
+- **WHEN** alignment is enabled for `users[2]{id,name}:` with rows `1,Ada` and `200,Lin`
+- **THEN** excluding gutters its aligned lines SHALL be:
+
+```text
+users[2]{id ,name}:
+         1  ,Ada
+         200,Lin
+```
+
+- **AND** each value SHALL start at the same terminal column as its header
+- **AND** generated row-leading spaces SHALL align the first value with the first header without changing table nesting
+
+#### Scenario: Width includes unseen rows and quoted tokens
+
+- **WHEN** the widest cell is off-screen or contains quoted escapes, a combining sequence, a wide character, or an emoji grapheme
+- **THEN** every visible row SHALL use the complete-table terminal-cell widths of rendered tokens, including quotes and escapes
+- **AND** scrolling to that cell SHALL NOT change existing column widths
+- **AND** padding SHALL NOT be inserted within quoted tokens or split graphemes
+- **AND** warning annotations SHALL remain after the row data and SHALL NOT determine column widths
+
+#### Scenario: Resize and indentation reduction
+
+- **WHEN** the terminal, gutters, or indentation reduction changes for an aligned table
+- **THEN** each cell and its header SHALL remain aligned under the same horizontal transform
+- **AND** clipping SHALL respect grapheme boundaries and reserved application rows even at zero document width
+
+### Requirement: Alignment state and visible indication
+
+Alignment SHALL persist per table during the session across focus changes, resize, gutter changes, collapse/reopen, and path filtering that later restores that table. A persistent status indicator SHALL identify alignment while focus belongs to an aligned table, including a collapsed one. Help SHALL document Tab, shared scrolling, and the local wrapping override. Alignment SHALL NOT change parsed data, copy/export, or piped output.
+
+#### Scenario: Persistent focused-table indication
+
+- **WHEN** focus moves between an aligned table's header, rows, and cells
+- **THEN** status SHALL continue to indicate table alignment without relying on a transient message or color alone
+- **AND** leaving that table SHALL remove its indicator without clearing its alignment setting
+- **AND** narrow terminals SHALL use a shortened visible indicator when status space is available
+
+#### Scenario: Hide and restore
+
+- **WHEN** an aligned table is collapsed, hidden by an ancestor, or excluded and later restored by path filtering
+- **THEN** its alignment setting SHALL survive
+- **AND** its expanded aligned presentation SHALL use widths for the complete restored table
+- **AND** selecting a row or cell alone as a filtered root SHALL NOT turn that value into a table
+
+#### Scenario: Copy and output isolation
+
+- **WHEN** a user copies a selected aligned cell or writes an aligned table in a supported output format
+- **THEN** the result SHALL serialize the parsed selection with no generated alignment padding or indicator
+- **AND** redirected stdout SHALL retain its existing output contract

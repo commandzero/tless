@@ -34,7 +34,7 @@ pub struct VisibleLine {
     pub owner: usize,
     pub separator: bool,
     pub collapsed: bool,
-    descriptor: Row,
+    pub(crate) descriptor: Row,
 }
 
 struct Collapsed {

@@ -1093,7 +1093,6 @@ mod terminal_commands {
                 35,
                 24,
             );
-            assert!(before[0].contains("…dentifier"), "{focus}: {before:?}");
             assert!(before[22].contains(path), "{focus}: {before:?}");
             let wrapped = rendered_rows(
                 &session_with_width(&input, &format!("l\t{focus}.\x0cq"), None, 35),
@@ -1223,7 +1222,11 @@ mod terminal_commands {
         // `;` fits the end in the viewport; counted scrolling can instead
         // place the very last cell at the left edge. Both must reach the
         // warning's last cell, and repeated oversized counts stop there.
-        assert_eq!(saturated[..22], repeated[..22], "{saturated:?}\n{repeated:?}");
+        assert_eq!(
+            saturated[..22],
+            repeated[..22],
+            "{saturated:?}\n{repeated:?}"
+        );
         assert!(saturated[2].ends_with('"'), "{saturated:?}");
         assert!(at_end[..22].join("\n").contains("escape"), "{at_end:?}");
         let back = rendered_rows(
@@ -1241,7 +1244,7 @@ mod terminal_commands {
         let input = r#"{"users":[{"id":"ABCDEFGHIJKLMNO","name":"Ada"},{"id":"ABCDEFGHIJKLMNOP","name":"Lin"}]}"#;
         // With no number gutter, the second row's wider id leaves one
         // padding cell after the first row's id. At offset ten that cell is
-        // terminal column 13 (including the arrow, spacer and ellipsis).
+        // terminal column 18 (including the arrow, spacer and ellipsis).
         let selected = session_with_width(input, ":set nonumber\nl\t.\x1b[<0;20;3MpP q", None, 35);
         assert!(
             strip_styles(&selected).contains(".users[1].name\r\n"),
@@ -1253,7 +1256,7 @@ mod terminal_commands {
             "{copied:?}"
         );
         let row_padding =
-            session_with_width(input, ":set nonumber\nl\t.\x1b[<0;13;2MpP q", None, 35);
+            session_with_width(input, ":set nonumber\nl\t.\x1b[<0;18;2MpP q", None, 35);
         assert!(
             strip_styles(&row_padding).contains(".users[0]\r\n"),
             "{row_padding:?}"
