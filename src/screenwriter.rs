@@ -505,10 +505,14 @@ impl ScreenWriter {
         {
             path_to_node.push_str(" (empty object)");
         }
+        let aligned = viewer
+            .focused_table()
+            .is_some_and(|table| viewer.table_alignment_enabled(table));
         self.print_path_to_node_and_file_name(
             &path_to_node,
             input_filename,
             viewer.dimensions.width as isize,
+            aligned,
         )?;
 
         self.terminal.position_cursor(1, self.dimensions.height)?;
@@ -566,30 +570,40 @@ impl ScreenWriter {
         path_to_node: &str,
         filename: &str,
         width: isize,
+        aligned: bool,
     ) -> std::fmt::Result {
+        let indicator = if aligned && width >= 24 {
+            "Table aligned "
+        } else if aligned && width >= 5 {
+            "Align"
+        } else {
+            ""
+        };
+        let indicator_width = indicator.len() as isize;
+        let path_width = width - indicator_width;
         let path_display_width = UnicodeWidthStr::width(path_to_node) as isize;
         let row = self.dimensions.height.saturating_sub(1).max(1);
-
         let space_available_for_filename =
-            width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
+            path_width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
         let status_style =
             status_path_style(self.theme.style(StyleRole::StatusBar, StyleState::main()));
-
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
 
         self.terminal.position_cursor(1, row)?;
         self.terminal.set_style(&status_style)?;
-        let path_slice = TruncatedStrSlice {
-            s: path_to_node,
-            truncated_view: &TruncatedStrView::init_back(path_to_node, width),
-        };
-        write!(self.terminal, "{path_slice}")?;
+        self.terminal.write_str(indicator)?;
+        if path_width > 0 {
+            let path_slice = TruncatedStrSlice {
+                s: path_to_node,
+                truncated_view: &TruncatedStrView::init_back(path_to_node, path_width),
+            };
+            write!(self.terminal, "{path_slice}")?;
+        }
 
         if truncated_filename.any_contents_visible() {
             let filename_width = truncated_filename.used_space().unwrap();
-
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
             self.terminal.set_style(
@@ -597,12 +611,10 @@ impl ScreenWriter {
                     .theme
                     .style(StyleRole::StatusPathBase, StyleState::main()),
             )?;
-
             let truncated_slice = TruncatedStrSlice {
                 s: filename,
                 truncated_view: &truncated_filename,
             };
-
             write!(self.terminal, "{truncated_slice}")?;
         }
 

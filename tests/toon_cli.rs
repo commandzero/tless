@@ -986,6 +986,251 @@ mod terminal_commands {
     }
 
     #[test]
+    fn alignment_tab_targets_header_row_and_cell_once_and_indicates_focus() {
+        let input = r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"plain":true}"#;
+        for keys in ["l\tq", "ll\tq", "lll\tq", "l3\tq"] {
+            let rows = rendered_rows(&session(input, keys), 120, 24);
+            let text = rows[..22].join("\n");
+            assert!(text.contains("users[2]{id ,name}:"), "{keys:?}: {rows:?}");
+            assert!(text.contains("         1  ,Ada"), "{keys:?}: {rows:?}");
+            assert!(text.contains("         200,Lin"), "{keys:?}: {rows:?}");
+            assert!(rows[22].contains("Table aligned"), "{keys:?}: {rows:?}");
+        }
+        let rows = rendered_rows(&session(input, "l\t\tq"), 120, 24);
+        assert!(rows[..22].join("\n").contains("users[2]{id,name}:"));
+        assert!(!rows[22].contains("Table aligned"), "{rows:?}");
+
+        let collapsed = rendered_rows(&session(input, "l \tq"), 120, 24);
+        assert!(collapsed[0].contains("users[2]"), "{collapsed:?}");
+        assert!(!collapsed[..22].join("\n").contains("         1  ,Ada"));
+        assert!(collapsed[22].contains("Table aligned"), "{collapsed:?}");
+        let restored = rendered_rows(&session(input, "l \tlq"), 120, 24);
+        assert!(restored[..22].join("\n").contains("         200,Lin"));
+    }
+
+    #[test]
+    fn alignment_is_independent_and_ignores_ineligible_and_prompt_focus() {
+        let input = r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"other":[{"id":3,"name":"One"},{"id":4,"name":"Two"}],"scalar":9,"values":[1,2],"list":[{"a":1},{"b":2}]}"#;
+        let first = rendered_rows(&session(input, "l\tJq"), 120, 24);
+        assert!(first[..22].join("\n").contains("         1  ,Ada"));
+        assert!(!first[22].contains("Table aligned"), "{first:?}");
+
+        let both = rendered_rows(&session(input, "l\tJ\tq"), 120, 24);
+        assert!(both[..22].join("\n").contains("         1  ,Ada"));
+        assert!(both[22].contains("Table aligned"), "{both:?}");
+        let only_first = rendered_rows(&session(input, "l\tJ\t\tKq"), 120, 24);
+        assert!(only_first[..22].join("\n").contains("         1  ,Ada"));
+        assert!(only_first[..22].join("\n").contains("other[2]{id,name}:"));
+        assert!(only_first[22].contains("Table aligned"), "{only_first:?}");
+
+        for keys in ["lJJ\tq", "lJJJ\tq", "lJJJJ\tq"] {
+            let rows = rendered_rows(&session(input, keys), 120, 24);
+            assert!(!rows[22].contains("Table aligned"), "{keys:?}: {rows:?}");
+            assert!(rows[..22].join("\n").contains("users[2]{id,name}:"));
+        }
+        let sequence = r#"{"users":[{"id":1},{"id":200}]} {"plain":2}"#;
+        let separator = rendered_rows(&session(sequence, "\tq"), 120, 24);
+        assert!(!separator[22].contains("Table aligned"), "{separator:?}");
+        assert!(separator[..22].join("\n").contains("users[2]{id}:"), "{separator:?}");
+        let output = session(input, "l\t:write-j\t\x03/name\t\nq");
+        let rows = rendered_rows(&output, 120, 24);
+        assert!(rows[22].contains("Table aligned"), "{rows:?}");
+        assert!(output.contains("write-json"), "{output:?}");
+    }
+
+    #[test]
+    fn alignment_preserves_complete_column_widths_and_source_spelling() {
+        use unicode_width::UnicodeWidthStr;
+
+        let mut input = String::from(r#"{"users":["#);
+        for index in 0..28 {
+            if index != 0 {
+                input.push(',');
+            }
+            let value = if index == 27 {
+                r#""é界👩‍💻\\n\\\"END""#
+            } else {
+                r#""Ada""#
+            };
+            input.push_str(&format!(r#"{{"id":{index},"name":{value},"flag":true}}"#));
+        }
+        input.push_str("]}");
+        let output = session(&input, "l\tq");
+        let rows = rendered_rows(&output, 120, 24);
+        let header = rows.iter().find(|row| row.contains("users[28]{")).unwrap();
+        let first = rows.iter().find(|row| row.contains(",Ada")).unwrap();
+        let header_col = UnicodeWidthStr::width(header.split("name").next().unwrap());
+        let value_col = UnicodeWidthStr::width(first.split("Ada").next().unwrap());
+        assert_eq!(header_col, value_col, "{rows:?}");
+        let flag_header_col = UnicodeWidthStr::width(header.split("flag").next().unwrap());
+        let flag_value_col = UnicodeWidthStr::width(first.split("true").next().unwrap());
+        assert_eq!(flag_header_col, flag_value_col, "{rows:?}");
+        let last = session(&input, "l\t/END\npp q");
+        let clean = strip_styles(&last);
+        assert!(clean.contains("users[27].name"), "{last:?}");
+        assert!(clean.contains(r#"\\n\\\"END"#), "{last:?}");
+        assert!(last.contains("Press any key to continue."), "{last:?}");
+    }
+
+    #[test]
+    fn aligned_table_scrolling_and_wrapping_are_local() {
+        let input = format!(
+            r#"{{"users":[{{"id":1,"name":"Ada"}},{{"id":200,"name":"{}END"}}],"other":"{}"}}"#,
+            "abcdefghijklmnopqrstuvwxyz".repeat(3),
+            "0123456789".repeat(8),
+        );
+        let start = rendered_rows(&session_with_width(&input, "l\tq", None, 35), 35, 24);
+        assert!(start[..22].join("\n").contains("users[2]{"), "{start:?}");
+        let right = rendered_rows(&session_with_width(&input, "l\t2.q", None, 35), 35, 24);
+        assert!(!right[..22].join("\n").contains("users[2]{"), "{right:?}");
+        assert!(!right[..22].join("\n").contains(",Ada"), "{right:?}");
+        let left = rendered_rows(&session_with_width(&input, "l\t2.,,q", None, 35), 35, 24);
+        assert!(left[..22].join("\n").contains("users[2]{"), "{left:?}");
+        let end = rendered_rows(&session_with_width(&input, "l\t;q", None, 35), 35, 24);
+        assert!(end[..22].join("\n").contains("END"), "{end:?}");
+        let beginning = rendered_rows(&session_with_width(&input, "l\t;;q", None, 35), 35, 24);
+        assert!(beginning[..22].join("\n").contains("users[2]{"), "{beginning:?}");
+        let wrapped = rendered_rows(&session_with_width(&input, "l\x0c\t.q", None, 35), 35, 24);
+        assert!(!wrapped[..22].join("\n").contains("users[2]{"), "{wrapped:?}");
+        assert!(wrapped[22].contains("Table aligned"), "{wrapped:?}");
+        let reverted = rendered_rows(&session_with_width(&input, "l\x0c\t\tq", None, 35), 35, 24);
+        assert!(!reverted[22].contains("Table aligned"), "{reverted:?}");
+        assert!(
+            reverted[..22].iter().filter(|row| !row.is_empty()).count() > start[..22].iter().filter(|row| !row.is_empty()).count(),
+            "{reverted:?}"
+        );
+    }
+
+    #[test]
+    fn aligned_table_survives_filtering_collapse_gutters_and_resize() {
+        let input = r#"{"nest":{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]},"last":0}"#;
+        let output = session(input, "ll\t:set nonumber\n:set relativenumber\n<\x12q");
+        let rows = rendered_rows(&output, 16, 8);
+        assert!(rows[6].contains("Align"), "{rows:?}");
+        let restored = session(input, "ll\t:.nest.users[0]\n:.\nq");
+        let rows = rendered_rows(&restored, 120, 24);
+        assert!(rows[..22].join("\n").contains("         200,Lin"), "{rows:?}");
+        assert!(rows[22].contains("Table aligned"), "{rows:?}");
+        let filtered = rendered_rows(&session(input, "ll\t:.nest.users[0]\nq"), 120, 24);
+        assert!(!filtered[..22].join("\n").contains("users[2]{"), "{filtered:?}");
+        assert!(!filtered[22].contains("Table aligned"), "{filtered:?}");
+    }
+
+    #[test]
+    fn aligned_search_reveals_clipped_cell_and_shared_field_key_without_losing_identity() {
+        let id = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let input = format!(
+            r#"{{"users":[{{"id":"{id}","name":"Ada"}},{{"id":"{id}","name":"Lin"}}]}}"#
+        );
+        for (pattern, expected_path, expected_value) in [
+            ("Lin", ".users[1].name", "\"Lin\""),
+            ("name", ".users[0].name", "\"Ada\""),
+        ] {
+            let output = session_with_width(
+                &input,
+                &format!("l\t/{pattern}\npP pp q"),
+                None,
+                35,
+            );
+            assert!(
+                strip_styles(&output).contains(&format!("{expected_path}\r\n")),
+                "{pattern}: {output:?}"
+            );
+            assert!(
+                output.contains(&format!("{expected_value}\r\n\r\nPress any key to continue.")),
+                "{pattern}: {output:?}"
+            );
+            let rows = rendered_rows(&output, 35, 24);
+            assert!(rows[..22].join("\n").contains(pattern), "{pattern}: {rows:?}");
+        }
+    }
+
+    #[test]
+    fn aligned_scroll_bounds_include_row_warnings_and_saturate_counts() {
+        let input = r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"\u0001"}]}"#;
+        let at_end = rendered_rows(&session_with_width(input, "l\t;q", None, 35), 35, 24);
+        let saturated =
+            rendered_rows(&session_with_width(input, "l\t999999999.q", None, 35), 35, 24);
+        assert_eq!(at_end[..22], saturated[..22], "{at_end:?}\n{saturated:?}");
+        assert!(at_end[..22].join("\n").contains("escape"), "{at_end:?}");
+        let back = rendered_rows(
+            &session_with_width(input, "l\t;999999999,q", None, 35),
+            35,
+            24,
+        );
+        assert!(back[..22].join("\n").contains("users[2]{"), "{back:?}");
+        let reset = rendered_rows(&session_with_width(input, "l\t;;q", None, 35), 35, 24);
+        assert!(reset[..22].join("\n").contains("users[2]{"), "{reset:?}");
+    }
+
+    #[test]
+    fn aligned_mouse_targets_data_and_padding_after_shared_scroll() {
+        let input = r#"{"users":[{"id":"ABCDEFGHIJKLMNO","name":"Ada"},{"id":"ABCDEFGHIJKLMNOP","name":"Lin"}]}"#;
+        // No number gutter: two columns remain reserved for arrows and spacing.
+        // The second name starts at document column 26, or terminal column 19
+        // after ten shared cells have been scrolled off.
+        let selected = session_with_width(
+            input,
+            ":set nonumber\nl\t.\x1b[<0;20;3MpP q",
+            None,
+            35,
+        );
+        assert!(strip_styles(&selected).contains(".users[1].name\r\n"), "{selected:?}");
+        let copied = session_with_width(
+            input,
+            ":set nonumber\nl\t.\x1b[<0;20;3Mpp q",
+            None,
+            35,
+        );
+        assert!(copied.contains("\"Lin\"\r\n\r\nPress any key to continue."), "{copied:?}");
+        let row_padding = session_with_width(
+            input,
+            ":set nonumber\nl\t.\x1b[<0;17;2MpP q",
+            None,
+            35,
+        );
+        assert!(strip_styles(&row_padding).contains(".users[0]\r\n"), "{row_padding:?}");
+        let header_padding = session_with_width(
+            input,
+            ":set nonumber\nl\t.\x1b[<0;10;1MpP q",
+            None,
+            35,
+        );
+        assert!(strip_styles(&header_padding).contains(".users\r\n"), "{header_padding:?}");
+    }
+
+    #[test]
+    fn aligned_copy_write_and_redirected_output_ignore_presentation_padding() {
+        let input = r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]}"#;
+        let cell = session(input, "lll\tjpP q");
+        assert!(strip_styles(&cell).contains(".users[1].id\r\n"), "{cell:?}");
+        let value = session(input, "lll\tjJpp q");
+        assert!(value.contains("\"Lin\"\r\n\r\nPress any key to continue."), "{value:?}");
+        let toon = std::env::temp_dir().join(format!("tless-aligned-{}.toon", std::process::id()));
+        let json = std::env::temp_dir().join(format!("tless-aligned-{}.json", std::process::id()));
+        session(
+            input,
+            &format!("l:.users\n:write {}\n:write-json {}\nq", toon.display(), json.display()),
+        );
+        let baseline_toon = std::fs::read(&toon).unwrap();
+        let baseline_json = std::fs::read(&json).unwrap();
+        session(
+            input,
+            &format!("l\t:.users\n:write! {}\n:write-json! {}\nq", toon.display(), json.display()),
+        );
+        assert_eq!(std::fs::read(&toon).unwrap(), baseline_toon);
+        assert_eq!(std::fs::read(&json).unwrap(), baseline_json);
+        let json_data: serde_json::Value = serde_json::from_slice(&baseline_json).unwrap();
+        assert_eq!(json_data[1]["name"], "Lin");
+        std::fs::remove_file(toon).unwrap();
+        std::fs::remove_file(json).unwrap();
+        let redirected = run(&["-i", "json"], input.as_bytes());
+        assert!(redirected.status.success());
+        assert!(!String::from_utf8_lossy(&redirected.stdout).contains("Table aligned"));
+        assert_eq!(redirected.stdout, b"users[2]{id,name}:\n  1,Ada\n  200,Lin");
+    }
+
+    #[test]
     fn wrapping_is_opt_in_and_numeric_prefix_toggles_once() {
         let input = r#"{"long":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz","next":42}"#;
 

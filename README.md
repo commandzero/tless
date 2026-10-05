@@ -128,7 +128,12 @@ Some quick keys:
 - left/right to collapse/expand current entry
 - `e` to expand, `shift+e` to expand all siblings
 - `c` to collapse, `shift+c` to collapse all siblings
-- `ctrl+l` to toggle line wrapping
+- `Tab` on a table header, row, or cell to toggle that table's aligned columns;
+  status shows `Table aligned` (`Align` on narrow screens) while focused there
+- `,`/`.` (10 cells per numeric prefix) to scroll an aligned table together;
+  `;` to jump to its shared end/start, including long warnings
+- `ctrl+l` wraps other expanded lines but leaves aligned tables unwrapped and
+  horizontally scrollable; disabling alignment restores the current wrap policy
 - `/` to search
 - `f1` or type `:help` for the help screen
 

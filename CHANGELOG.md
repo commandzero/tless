@@ -16,6 +16,7 @@ Earlier upstream history is preserved below.
 ### Added
 
 - Write YAML with `:write-yaml`/`:wy` and compact, LF-delimited JSON with `:write-ndjson`/`:write-jsonl`/`:wn`; every spelling has a `!` overwrite form. (#31)
+- Align each TOON table's columns with Tab and scroll its header and rows together; a persistent status label identifies the focused aligned table while other lines keep their wrapping setting. (#32)
 
 ## [0.1.4] - 2026-10-04
 

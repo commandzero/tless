@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T02:08:32Z }
+generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T03:48:34Z }
 ---
 
 # TOON document view
@@ -25,6 +25,26 @@ users[2]{id,name}:
   1,Ada
   2,Lin
 ```
+
+Press Tab on a table header, row, or cell to toggle alignment for that table
+alone. The first press changes the same example (with `id` values `1` and
+`200`) to the following text, excluding optional gutters:
+
+```text
+users[2]{id ,name}:
+         1  ,Ada
+         200,Lin
+```
+
+The columns are left-aligned in terminal cells, including the widest rendered
+value anywhere in the table, even off-screen. Quoting and escaped characters
+count toward width; warnings follow the data but do not widen its columns.
+Padding is outside the data tokens. Alignment is an interactive presentation
+exception to the ordinary TOON text contract, not an exported format: pressing
+Tab again restores ordinary TOON text without modifying parsed data, copied
+values, written files, or redirected output. A table remains aligned when
+collapsed and after it is restored by a path filter; filtering down to an
+individual row or cell does not display a table grid.
 
 Empty object fields use `key:` and empty arrays use `key[0]:`. Arrays of empty
 objects use a counted list with a bare `-` for each object. Root objects have
@@ -206,6 +226,18 @@ by a numeric prefix. Resizing, gutter changes, and indentation changes reflow
 the visible rows while keeping the selected value. Collapsed previews give up
 width before count and warning annotations; their warnings remain reachable
 through horizontal scrolling. Warnings on expanded wrapped lines scroll vertically.
+
+An aligned table's expanded header and all its rows remain on single physical
+lines even when Ctrl+L enables wrapping for other expanded lines. From any
+table member, `,` and `.` scroll its entire grid left or right by 10 terminal
+cells times the numeric prefix; `;` jumps to the end of its longest complete
+line (including warnings) and back to the start. Scrolling stops at the shared
+table bounds, and rows newly entering view share the same offset. Search for a
+clipped cell or header key reveals it by moving the whole grid. Clicking a
+value selects its original row field; clicking generated padding selects the
+row or table header instead. The status bar shows `Table aligned` while focus
+belongs to that table (or `Align` at narrow widths), even when it is collapsed.
+Leaving the table hides the label without clearing its alignment setting.
 
 Line/Data modes, `--mode`, `-m`, interactive `m`, and matching-closing-delimiter
 actions have been removed. Use structural parent/child motions for containers.

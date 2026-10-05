@@ -336,6 +336,12 @@ impl App {
                             let lines = self.parse_input_buffer_as_number();
                             Some(Action::MoveDown(lines))
                         }
+                        Key::Char('\t') => {
+                            if let Some(table) = self.viewer.toggle_table_alignment() {
+                                self.screen_writer.reset_table_alignment(&self.viewer, table);
+                            }
+                            None
+                        }
                         Key::Ctrl('l') => {
                             self.viewer.toggle_wrapping();
                             self.screen_writer.reset_horizontal_offsets(&self.viewer);

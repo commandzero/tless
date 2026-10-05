@@ -88,13 +88,21 @@
 
   Space        Toggle the collapsed state of the currently focused node.
 
+  Tab          Toggle alignment for the focused table header, row, or cell.
+                 Each table starts unaligned and retains its setting across
+                 collapse and filtering. The status bar reads "Table aligned"
+                 while focus belongs to it ("Align" on narrow screens).
+                 Tab on other values does nothing; prompt Tab remains input.
+
                                     [1mSCROLLING[0m
 
   ^l        Toggle wrapping for expanded TOON lines for this session (off by
              default). Logical movement stays line-based; scrolling and paging
              use physical rows. Continuation rows have blank gutters. Collapsed
-             previews remain one row with horizontal scrolling. Horizontal
-             scrolling commands do nothing on wrapped expanded lines.
+             previews remain one row with horizontal scrolling. Aligned table
+             headers and rows stay unwrapped and scroll together, even with
+             wrapping enabled; other expanded lines follow the session setting.
+             Horizontal commands do nothing on wrapped expanded lines.
 
   ^e        *  Scroll down one line (or [4mN[0m lines).
   ^y        *  Scroll up   one line (or [4mN[0m lines).
@@ -109,10 +117,13 @@
   zt           Move the focused node to the top of the screen.
   zb           Move the focused node to the bottom of the screen.
 
-  .         *  Scroll a truncated TOON line 10 cells to the right (or 10 × [4mN[0m cells).
-  ,         *  Scroll a truncated TOON line 10 cells to the left  (or 10 × [4mN[0m cells).
-  ;            Scroll a truncated TOON line all the way to the end, or, if
-                 already at the end, back to the start.
+  .         *  Scroll an unwrapped TOON line 10 cells right (or 10 × N cells).
+  ,         *  Scroll an unwrapped TOON line 10 cells left  (or 10 × N cells).
+  ;            Scroll to the end, or if already at the end, back to the start.
+                 On an aligned table, all expanded rows and the header share
+                 one horizontal offset, bounded by the longest complete line
+                 including warnings. Search reveals clipped table cells and
+                 field keys together; clicking padding selects its row/header.
 
   <            Decrease the indentation of every line by one (or [4mN[0m) tabs.
   >            Increase the indentation of every line by one (or [4mN[0m) tabs.
