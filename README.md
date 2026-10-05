@@ -157,6 +157,53 @@ tless --input-format yaml -o yaml file.yaml > normalized.yaml
 tless --input-format toon --output-format=json file.toon > converted.json
 ```
 
+## Interactive file writes
+
+At the `:` prompt, give every write command one explicit filename. The command
+selects the encoding regardless of the input format, CLI output selector, or
+filename extension. These commands write all **active roots** (including
+subtrees selected with `--path` or an interactive path filter), not just the
+focused value or the annotated screen:
+
+| Commands | Output |
+| --- | --- |
+| `:write`, `:w`, `:write-toon`, `:wt` | Standard TOON (the default) |
+| `:write-json`, `:wj` | Pretty JSON |
+| `:write-yaml`, `:wy` | YAML document stream |
+| `:write-ndjson`, `:write-jsonl`, `:wn` | Compact JSON, one root per LF-terminated line |
+| `:write-sexp`, `:ws` | S-expressions, **only** in builds with the optional `sexp` feature |
+
+Each spelling also has a `!` overwrite form (`:write!`, `:w!`,
+`:write-toon!`, `:wt!`, `:write-json!`, `:wj!`, `:write-yaml!`, `:wy!`,
+`:write-ndjson!`, `:write-jsonl!`, `:wn!`, and, with `sexp`,
+`:write-sexp!` and `:ws!`). For example, `:write report.toon` creates a
+new TOON file and `:wj! report.json` replaces an existing JSON file.
+Without `!`, an existing destination is left untouched. Every active root is
+encoded before the destination is opened, so encoding errors never create or
+truncate a file. File I/O failures after opening can leave partial output;
+`!` is not an atomic replacement guarantee.
+
+Filenames are literal: `:write report` creates `report`, not `report.toon`;
+`:write-json report.toon` writes JSON to `report.toon`. Suffixes such as
+`.toon`, `.json`, `.yaml`, `.ndjson`, `.jsonl`, and `.sexp` are conventions,
+not format selectors. TOON requires exactly one active root and has no final
+newline. JSON writes two-space pretty-printed values, one final LF per root,
+in root order without an array wrapper. YAML puts `---` before each root
+and ends each document with LF. NDJSON/JSONL writes one compact JSON value
+and LF per active root: an array root stays one array record, not one record
+per element. Reset a filter with `:.` to write all original roots.
+
+**Breaking migration:** `:write`/`:w` previously wrote JSON; use
+`:write-json report.json` or `:wj report.json` for JSON, and
+`:write report.toon` for TOON. The old `:writetoon`/`:writetoon!`
+names are removed; use `:write-toon`/`:write-toon!` (or `:wt`/`:wt!`).
+With `sexp`, `:writesexp`/`:writesexp!` are removed; use
+`:write-sexp`/`:write-sexp!` (or `:ws`/`:ws!`). Default builds do not
+include s-expression output. CLI `-i`/`--input-format` and
+`-o`/`--output-format` still accept only `toon`, `json`, and `yaml`;
+interactive NDJSON/JSONL and s-expression write names do not add CLI formats.
+See [document-view export details](docs/toon-view.md#copy-and-export).
+
 ## Path filtering
 
 Use `--path '.hits.0.name'`, `--path '.hits[0].name'`, or the strict JSON pointer

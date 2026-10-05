@@ -6,15 +6,38 @@ TOON 3.0
 
   yt                  Copy the complete focused value as canonical TOON.
   pt                  Print the complete focused value as canonical TOON.
-  :wt file            Write the document as canonical TOON to a new file.
-  :writetoon file      Same as :wt.
-  :wt! file           Create or replace a file after encoding succeeds.
-  :writetoon! file     Same as :wt!.
+  :write file          Write the active root as standard TOON to a new file.
+  :w file              Short form of :write.
+  :write-toon file     Explicit TOON; :wt is the short form.
+  :write-json file     Pretty JSON; :wj is the short form.
+  :write-yaml file     YAML document stream; :wy is the short form.
+  :write-ndjson file   Compact JSON lines; :write-jsonl and :wn are equivalent.
+  :write-sexp file     S-expression output; :ws is the short form (only with sexp).
 
-  TOON output requires string keys, finite JSON numbers, and at most
-  256 nested containers. Decimal precision may be lost; duplicate keys keep the last value.
-  Whole-document output requires one root; yt and pt can select one subtree.
-  Existing JSON write/copy/print commands keep their existing output format.
+  Add ! to any available command token to create or replace a file
+  (:write!, :w!, :write-toon!, :wt!, :write-json!, :wj!,
+  :write-yaml!, :wy!, :write-ndjson!, :write-jsonl!, :wn!,
+  and, with sexp, :write-sexp! and :ws!). Without ! existing files are
+  not overwritten. The required filename is literal: :write report
+  creates "report", not "report.toon"; extensions never select formats.
+  Every active root is encoded before opening the file. Encoding errors
+  leave it unchanged, but I/O errors after opening can leave partial bytes;
+  ! does not guarantee atomic replacement.
+
+  Whole-document writes use all active roots, including filtered subtrees,
+  never just the focused value or screen annotations; :. resets the filter.
+  TOON output requires exactly one root, string keys, finite JSON numbers,
+  and at most 256 nested containers. Decimal precision may be lost;
+  duplicate keys keep the last value. yt and pt can select one subtree.
+  JSON emits two-space pretty values with final LF per root and no array
+  wrapper. YAML starts each document with --- and ends it with LF.
+  NDJSON/JSONL emits one compact JSON value and LF per root; arrays stay
+  single array records. Optional sexp is unavailable in default builds.
+
+  Migration: :write/:w now use TOON; use :write-json/:wj for former JSON
+  writes. Removed :writetoon and :writesexp names are replaced by
+  :write-toon and feature-gated :write-sexp; :wt and optional :ws remain.
+  CLI input/output selectors still accept only toon, json, yaml.
   Non-terminal output parses and re-encodes TOON input; it does not pass through unchanged.
 
   toon-spec: 3.0. TOON 4.x syntax is not supported.

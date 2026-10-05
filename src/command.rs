@@ -4,6 +4,8 @@
 pub enum WriteFormat {
     Json,
     Toon,
+    Yaml,
+    Ndjson,
     #[cfg(feature = "sexp")]
     Sexp,
 }
@@ -71,34 +73,74 @@ const NAMES: &[Name] = &[
     Name {
         long: "write",
         aliases: &["w"],
-        kind: Kind::Write(WriteFormat::Json, false),
+        kind: Kind::Write(WriteFormat::Toon, false),
     },
     Name {
         long: "write!",
         aliases: &["w!"],
+        kind: Kind::Write(WriteFormat::Toon, true),
+    },
+    Name {
+        long: "write-json",
+        aliases: &["wj"],
+        kind: Kind::Write(WriteFormat::Json, false),
+    },
+    Name {
+        long: "write-json!",
+        aliases: &["wj!"],
         kind: Kind::Write(WriteFormat::Json, true),
+    },
+    Name {
+        long: "write-jsonl",
+        aliases: &[],
+        kind: Kind::Write(WriteFormat::Ndjson, false),
+    },
+    Name {
+        long: "write-jsonl!",
+        aliases: &[],
+        kind: Kind::Write(WriteFormat::Ndjson, true),
+    },
+    Name {
+        long: "write-ndjson",
+        aliases: &["wn"],
+        kind: Kind::Write(WriteFormat::Ndjson, false),
+    },
+    Name {
+        long: "write-ndjson!",
+        aliases: &["wn!"],
+        kind: Kind::Write(WriteFormat::Ndjson, true),
     },
     #[cfg(feature = "sexp")]
     Name {
-        long: "writesexp",
+        long: "write-sexp",
         aliases: &["ws"],
         kind: Kind::Write(WriteFormat::Sexp, false),
     },
     #[cfg(feature = "sexp")]
     Name {
-        long: "writesexp!",
+        long: "write-sexp!",
         aliases: &["ws!"],
         kind: Kind::Write(WriteFormat::Sexp, true),
     },
     Name {
-        long: "writetoon",
+        long: "write-toon",
         aliases: &["wt"],
         kind: Kind::Write(WriteFormat::Toon, false),
     },
     Name {
-        long: "writetoon!",
+        long: "write-toon!",
         aliases: &["wt!"],
         kind: Kind::Write(WriteFormat::Toon, true),
+    },
+    Name {
+        long: "write-yaml",
+        aliases: &["wy"],
+        kind: Kind::Write(WriteFormat::Yaml, false),
+    },
+    Name {
+        long: "write-yaml!",
+        aliases: &["wy!"],
+        kind: Kind::Write(WriteFormat::Yaml, true),
     },
 ];
 
@@ -169,14 +211,16 @@ mod tests {
         for name in ["q", "quit", "quit()", "exit", "exit()"] {
             assert_eq!(Command::parse(name), Command::Quit);
         }
-        let writes = [
-            ("w", "write", WriteFormat::Json),
-            ("wt", "writetoon", WriteFormat::Toon),
+        let writes: &[(&[&str], WriteFormat)] = &[
+            (&["w", "write", "wt", "write-toon"], WriteFormat::Toon),
+            (&["wj", "write-json"], WriteFormat::Json),
+            (&["wy", "write-yaml"], WriteFormat::Yaml),
+            (&["wn", "write-ndjson", "write-jsonl"], WriteFormat::Ndjson),
             #[cfg(feature = "sexp")]
-            ("ws", "writesexp", WriteFormat::Sexp),
+            (&["ws", "write-sexp"], WriteFormat::Sexp),
         ];
-        for (short, long, format) in writes {
-            for name in [short, long] {
+        for &(names, format) in writes {
+            for name in names {
                 for bang in ["", "!"] {
                     assert_eq!(
                         Command::parse(&format!("  {name}{bang}  café.json  ")),
@@ -198,6 +242,14 @@ mod tests {
             "write",
             "write a b",
             "write\ta",
+            "write-json",
+            "write-json a b",
+            "write-yaml a b",
+            "write-csv out",
+            "writetoon out",
+            "writetoon! out",
+            "writesexp out",
+            "writesexp! out",
             "set",
             "set other",
             "set number extra",
@@ -235,15 +287,20 @@ mod tests {
         assert_eq!(matching_names("q"), ["quit"]);
         assert!(matching_names("WR").is_empty());
         for alias in [
-            "w", "w!", "wt", "wt!", "h", "q", "quit()", "exit()", "ws", "ws!",
+            "w", "w!", "wt", "wt!", "wj", "wj!", "wy", "wy!", "wn", "wn!", "h", "q", "quit()",
+            "exit()", "ws", "ws!",
         ] {
             assert!(!names.contains(&alias));
         }
         assert_eq!(
+            matching_names("write-j"),
+            ["write-json", "write-json!", "write-jsonl", "write-jsonl!"]
+        );
+        assert_eq!(
             names.contains(&"colorscheme"),
             cfg!(feature = "colorscheme")
         );
-        assert_eq!(names.contains(&"writesexp"), cfg!(feature = "sexp"));
+        assert_eq!(names.contains(&"write-sexp"), cfg!(feature = "sexp"));
         for name in names {
             let arguments = match name {
                 "set" => " number",
@@ -257,7 +314,7 @@ mod tests {
             );
         }
         #[cfg(not(feature = "sexp"))]
-        for name in ["ws", "ws!", "writesexp", "writesexp!"] {
+        for name in ["ws", "ws!", "write-sexp", "write-sexp!"] {
             assert_eq!(Command::parse(&format!("{name} out")), Command::Unknown);
         }
     }

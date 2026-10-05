@@ -10,7 +10,7 @@ sources:
     resource: ../src/toon.rs
   - id: fixtures
     resource: ../src/toon_fixtures.rs
-generated: { by: codex/gpt-6, at: 2026-09-10T22:25:27Z }
+generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T02:08:32Z }
 ---
 
 # Published TOON codec behavior
@@ -51,8 +51,9 @@ It also limits what data is available to the viewer after TOON input decoding.
 | Arrays of empty objects | Version 0.5.0 emits a zero-field table with blank rows. Its strict decoder rejects that output. This is a known codec limitation, preserved in a regression test. |
 
 Standard TOON conversion does not promise exact decimal preservation or preservation
-of duplicate entries. Use JSON output when those distinctions matter. Display
-warnings and previews never become exported data.
+of duplicate entries. Use `:write-json`/`:wj` (or `-o json` for redirected
+stdout) when those distinctions matter. Display warnings and previews never
+become exported data.
 These examples describe the pinned version; review and test changes before upgrading it.
 
 ## Bounds and failure behavior
@@ -64,10 +65,16 @@ Tless export retains its own limit of 256 containers relative to the selected ro
 The former coefficient/exponent limits and linear scanner-work guarantee are removed.
 The codec runs on a 16 MiB worker stack; this is not a total memory bound.
 
-Export still rejects multiple document roots, non-string YAML keys, and non-finite
-values. Focused export can select a supported value inside an otherwise unsupported
-document. Encoding completes before the output file is opened. Successful encoding
-is not a promise of an exact data round trip. File I/O failures can leave partial output.
+Standard TOON export (`:write`, `:w`, `:write-toon`, or `:wt`)
+still rejects multiple active roots, non-string YAML keys, and non-finite
+values. Focused copy/print can select a supported value inside an otherwise
+unsupported document. Interactive `:write-json`/`:wj`, `:write-yaml`/`:wy`,
+and `:write-ndjson`/`:write-jsonl`/`:wn` use their own native encoders over
+all active roots. Each command also has a `!` overwrite form; an explicit,
+literal filename is required. Encoding completes before an output file is
+opened; encoding failure leaves the destination unchanged. File I/O errors
+after opening can leave partial output, so overwrite is not atomic.
+Successful encoding is not a promise of an exact data round trip.
 
 ## Verification
 

@@ -1002,6 +1002,15 @@ impl App {
                 OutputFormat::Json,
                 self.viewer.active_roots(),
             ),
+            WriteFormat::Yaml => crate::output::serialize_roots(
+                &self.viewer.flatjson,
+                OutputFormat::Yaml,
+                self.viewer.active_roots(),
+            ),
+            WriteFormat::Ndjson => crate::output::serialize_jsonl_roots(
+                &self.viewer.flatjson,
+                self.viewer.active_roots(),
+            ),
             #[cfg(feature = "sexp")]
             WriteFormat::Sexp => self
                 .viewer

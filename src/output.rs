@@ -25,8 +25,8 @@ pub fn serialize_roots(
     roots: &[usize],
 ) -> Result<String, String> {
     match format {
-        OutputFormat::Json => encode_roots(document, roots, false),
-        OutputFormat::Yaml => encode_roots(document, roots, true),
+        OutputFormat::Json => encode_roots(document, roots, Layout::PrettyJson),
+        OutputFormat::Yaml => encode_roots(document, roots, Layout::Yaml),
         OutputFormat::Toon => {
             crate::toon::encode_roots(document, roots, crate::toon::EncodeOptions::default())
                 .map_err(|error| error.to_string())
@@ -34,15 +34,30 @@ pub fn serialize_roots(
     }
 }
 
-fn encode_roots(document: &FlatJson, roots: &[usize], yaml: bool) -> Result<String, String> {
+/// Encode each selected root as one compact JSON record terminated by LF.
+pub fn serialize_jsonl_roots(document: &FlatJson, roots: &[usize]) -> Result<String, String> {
+    encode_roots(document, roots, Layout::CompactJson)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    PrettyJson,
+    CompactJson,
+    Yaml,
+}
+
+fn encode_roots(document: &FlatJson, roots: &[usize], layout: Layout) -> Result<String, String> {
     let mut output = String::new();
     for &root in roots {
         let range = document.subtree_range(root);
         let (start, end) = (*range.start(), *range.end());
-        if yaml {
+        if layout == Layout::Yaml {
             output.push_str("---\n");
         }
-        encode_root(document, start, end, yaml, &mut output)?;
+        encode_root(document, start, end, layout, &mut output)?;
+        if layout == Layout::CompactJson {
+            output.push('\n');
+        }
     }
     Ok(output)
 }
@@ -51,9 +66,11 @@ fn encode_root(
     document: &FlatJson,
     start: usize,
     end: usize,
-    yaml: bool,
+    layout: Layout,
     output: &mut String,
 ) -> Result<(), String> {
+    let yaml = layout == Layout::Yaml;
+    let pretty = layout != Layout::CompactJson;
     let base_depth = document[start].depth;
     // Flat rows include closing delimiters, so this remains iterative and does
     // not allocate a recursive traversal stack.
@@ -67,11 +84,12 @@ fn encode_root(
         } else {
             row
         };
-        let relative_depth = node.depth.saturating_sub(base_depth);
-        for _ in 0..relative_depth {
-            output.push_str("  ");
+        if pretty {
+            let relative_depth = node.depth.saturating_sub(base_depth);
+            for _ in 0..relative_depth {
+                output.push_str("  ");
+            }
         }
-
         if !closing {
             // The selected node is a standalone root: omit only its owning key.
             if !is_root {
@@ -98,14 +116,20 @@ fn encode_root(
                             }
                         }
                     }
-                    output.push_str(": ");
+                    output.push(':');
+                    if pretty {
+                        output.push(' ');
+                    }
                 }
             }
         }
 
         match row.value {
             Value::OpenContainer { .. } => {
-                output.push_str(if row.is_array() { "[\n" } else { "{\n" });
+                output.push(if row.is_array() { '[' } else { '{' });
+                if pretty {
+                    output.push('\n');
+                }
                 continue;
             }
             Value::CloseContainer { .. } => {
@@ -138,7 +162,9 @@ fn encode_root(
         if index != end && !is_root && node.next_sibling.is_some() {
             output.push(',');
         }
-        output.push('\n');
+        if pretty {
+            output.push('\n');
+        }
     }
     Ok(())
 }
@@ -292,5 +318,61 @@ mod tests {
             serialize_roots(&document, OutputFormat::Yaml, &[1]).unwrap(),
             "---\n{}\n"
         );
+    }
+
+    #[test]
+    fn compact_records_preserve_nested_values_duplicate_keys_and_number_spelling() {
+        let document = parse_input(
+            r#"{"selected":{"a":0.123456789012345678901,"a":[{"s":"a\nb\u0000\t\r\u001f"},2]},"ignored":9} [1,{"ok":false}] null [] {}"#
+                .to_owned(),
+            DataFormat::Json,
+        )
+        .unwrap();
+        let roots = crate::path_filter::document_roots(&document);
+        assert_eq!(
+            serialize_jsonl_roots(&document, &[1, roots[1], roots[2], roots[3], roots[4]]).unwrap(),
+            concat!(
+                r#"{"a":0.123456789012345678901,"a":[{"s":"a\nb\u0000\t\r\u001f"},2]}"#,
+                "\n",
+                r#"[1,{"ok":false}]"#,
+                "\nnull\n[]\n{}\n"
+            )
+        );
+        assert_eq!(serialize_jsonl_roots(&document, &[]).unwrap(), "");
+    }
+
+    #[test]
+    fn compact_yaml_values_escape_decoded_controls_and_normalize_numbers() {
+        let document = parse_input(
+            r#"selected: ["a\nb\t\r\u0000\u001f", 1.]"#.to_owned(),
+            DataFormat::Yaml,
+        )
+        .unwrap();
+        assert_eq!(
+            serialize_jsonl_roots(&document, &[1]).unwrap(),
+            "[\"a\\nb\\t\\r\\u0000\\u001f\",1.0]\n"
+        );
+    }
+
+    #[test]
+    fn compact_conversion_rejects_only_invalid_selected_yaml_values() {
+        let document = parse_input(
+            "good: [1, 2]\nnonfinite: .inf\n? [bad]\n: 3\n".to_owned(),
+            DataFormat::Yaml,
+        )
+        .unwrap();
+        let find = |name| {
+            (0..document.0.len())
+                .find(|&index| matches!(document.key_value(index), Some(KeyValue::String(key)) if key == name))
+                .unwrap()
+        };
+        assert_eq!(
+            serialize_jsonl_roots(&document, &[find("good")]).unwrap(),
+            "[1,2]\n"
+        );
+        assert!(serialize_jsonl_roots(&document, &[find("good"), find("nonfinite")]).is_err());
+        let typed_key_document =
+            parse_input("good: [1, 2]\n? [bad]\n: 3\n".to_owned(), DataFormat::Yaml).unwrap();
+        assert!(serialize_jsonl_roots(&typed_key_document, &[0]).is_err());
     }
 }

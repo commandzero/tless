@@ -5,6 +5,18 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** Replace `:writetoon` with `:write-toon` and feature-gated `:writesexp` with `:write-sexp`, including their `!` forms; `:wt` and optional `:ws` remain available.
+
+### Changed
+
+- **Breaking:** `:write` and `:w` now write TOON rather than JSON, including `!` forms; use `:write-json` (or `:wj`) for previous JSON writes. TOON requires one active root.
+
+### Added
+
+- Write YAML with `:write-yaml`/`:wy` and compact, LF-delimited JSON with `:write-ndjson`/`:write-jsonl`/`:wn`; every spelling has a `!` overwrite form.
+
 ## [0.1.4] - 2026-10-04
 
 ### Changed

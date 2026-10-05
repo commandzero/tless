@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-astra, at: 2026-09-26T23:29:01Z }
+generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T02:08:32Z }
 ---
 
 # TOON acceptance checks
@@ -55,8 +55,11 @@ Record the actual host and results in the release PR.
    the published encoder's rounded value, matching `pt`. Numeric precision loss
    is accepted; the former `UnsupportedNumber` expectation is removed.
 3. Open in-app help in default and `--no-default-features` builds. Both builds
-   must list the TOON commands because TOON support is always enabled. Check the
-   documented TOON 3.0 profile and 4.x limitation.
+   must list `:write`/`:w`, `:write-toon`/`:wt`, `:write-json`/`:wj`,
+   `:write-yaml`/`:wy`, and `:write-ndjson`/`:write-jsonl`/`:wn` with `!`
+   variants. Confirm default writes TOON and only `sexp` builds accept
+   `:write-sexp`/`:ws` (including `!`). The old `:writetoon` and
+   `:writesexp` names must not work. Check TOON 3.0 and 4.x limitations.
 4. On Linux, use a disposable session to write to `/dev/full` with `:wt!`.
    Confirm a write error, no success message, and continued navigation.
    The shared writer propagates write and flush errors. Standard `File::flush`
@@ -114,6 +117,17 @@ release checks above remain separate.
 8. Confirm `--mode` and `-m` fail with argument errors, `m` does not switch
    modes, and help has no closing-delimiter controls. Confirm JSON and standard
    TOON exports contain no generated annotations and keep codec behavior.
+9. With disposable destinations, use `:write report` (no inferred suffix),
+   `:write-json report.toon` (JSON despite the suffix),
+   `:write-yaml! report.yaml`, `:write-ndjson report.ndjson`, and
+   `:write-jsonl report.jsonl` on filtered roots. Compare each destination's
+   bytes: JSON has pretty roots plus final LF without an array wrapper,
+   YAML has one `---` and final LF per root, and NDJSON/JSONL agree
+   byte-for-byte with one compact root and LF per line. An array root stays
+   a single array record. Confirm `:write report.toon` rejects multiple active roots
+   and encoding failures leave existing files unchanged and missing files
+   absent; without `!`, existing files are refused. A file-operation error
+   after opening may leave partial output; no atomic replacement is promised.
 
 ## Startup and presentation resource checks
 

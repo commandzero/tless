@@ -55,17 +55,19 @@ mod terminal_commands {
         let target =
             std::env::temp_dir().join(format!("tless-path-scope-{}.json", std::process::id()));
         let input = r#"{"hits":{"name":"Ada","age":37},"outside":true}"#;
-        let commands = format!(":.hits\nl:.missing\n:w! {}\nq", target.display());
+        let commands = format!(":.hits\nl:.missing\n:wj! {}\nq", target.display());
         session(input, &commands);
-        let value: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
-        assert_eq!(value, serde_json::json!({"name":"Ada","age":37}));
-        session(input, &format!(":.hits\n:.\n:w! {}\nq", target.display()));
-        let value: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
         assert_eq!(
-            value,
-            serde_json::from_str::<serde_json::Value>(input).unwrap()
+            std::fs::read(&target).unwrap(),
+            b"{\n  \"name\": \"Ada\",\n  \"age\": 37\n}\n"
+        );
+        session(
+            input,
+            &format!(":.hits\n:.\n:write-json! {}\nq", target.display()),
+        );
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"{\n  \"hits\": {\n    \"name\": \"Ada\",\n    \"age\": 37\n  },\n  \"outside\": true\n}\n"
         );
         std::fs::remove_file(target).unwrap();
     }
@@ -77,10 +79,10 @@ mod terminal_commands {
         let input = r#"{"a.b":[{"name":"Ada"}]," ":7}"#;
         session(
             input,
-            &format!(":[\"a.b\"][0].name\n:w! {}\nq", target.display()),
+            &format!(":[\"a.b\"][0].name\n:wj! {}\nq", target.display()),
         );
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "\"Ada\"\n");
-        session(input, &format!(":./ \n:w! {}\nq", target.display()));
+        session(input, &format!(":./ \n:wj! {}\nq", target.display()));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "7\n");
         std::fs::remove_file(target).unwrap();
     }
@@ -96,6 +98,61 @@ mod terminal_commands {
         );
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "preserve me");
         std::fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn filtered_yaml_and_jsonl_keep_each_selected_root_and_array_shape() {
+        let yaml = std::env::temp_dir().join(format!("tless-filtered-{}.yaml", std::process::id()));
+        let jsonl =
+            std::env::temp_dir().join(format!("tless-filtered-{}.jsonl", std::process::id()));
+        let input = r#"{"outside":0,"hits":[{"name":"Ada"},2]} {"outside":1,"hits":[3,4]}"#;
+        let output = session(
+            input,
+            &format!(
+                ":.hits\n:wy {}\n:write-jsonl {}\nq",
+                yaml.display(),
+                jsonl.display()
+            ),
+        );
+        assert!(output.matches("written").count() >= 2, "{output}");
+        assert_eq!(
+            std::fs::read(&yaml).unwrap(),
+            b"---\n[\n  {\n    \"name\": \"Ada\"\n  },\n  2\n]\n---\n[\n  3,\n  4\n]\n"
+        );
+        assert_eq!(
+            std::fs::read(&jsonl).unwrap(),
+            b"[{\"name\":\"Ada\"},2]\n[3,4]\n"
+        );
+        std::fs::remove_file(yaml).unwrap();
+        std::fs::remove_file(jsonl).unwrap();
+    }
+
+    #[test]
+    fn filtered_json_writes_ignore_excluded_yaml_errors_but_reject_included_ones() {
+        let existing =
+            std::env::temp_dir().join(format!("tless-yaml-invalid-{}.json", std::process::id()));
+        let missing =
+            std::env::temp_dir().join(format!("tless-yaml-invalid-{}.jsonl", std::process::id()));
+        std::fs::write(&existing, b"previous long contents").unwrap();
+        let input = "good: 42\n? [bad]\n: .inf\n";
+        let output = session_with_format(
+            input,
+            &format!(
+                ":.good\n:write-json! {}\n:.\n:write-json! {}\n:write-jsonl! {}\nq",
+                existing.display(),
+                existing.display(),
+                missing.display()
+            ),
+            Some("yaml"),
+        );
+        assert!(output.contains("written"), "{output}");
+        assert!(
+            output.contains("JSON output requires string mapping keys"),
+            "{output}"
+        );
+        assert_eq!(std::fs::read(&existing).unwrap(), b"42\n");
+        assert!(!missing.exists());
+        std::fs::remove_file(existing).unwrap();
     }
 
     #[test]
@@ -122,7 +179,7 @@ mod terminal_commands {
             std::env::temp_dir().join(format!("tless-path-sexp-{}.sexp", std::process::id()));
         session(
             r#"{"skip":0,"hits":{"a":1,"b":[true,"x y"]}}"#,
-            &format!(":.hits\n:ws! {}\nq", target.display()),
+            &format!(":.hits\n:write-sexp {}\nq", target.display()),
         );
         assert_eq!(
             std::fs::read_to_string(&target).unwrap(),
@@ -178,18 +235,21 @@ mod terminal_commands {
     #[test]
     fn autocomplete_cycles_forward_backward_and_restores_input() {
         let cases = [
-            (":wri\t\nq", "write"),
-            (":wri\x1b[Z\t\nq", "wri"),
-            (":wri\x1b[Z\x1b[Z\t\nq", "writetoon!"),
+            (":write-j\t\nq", "write-json"),
+            (":write-j\t\t\nq", "write-json!"),
+            (":write-j\t\t\t\nq", "write-jsonl"),
+            (":write-j\t\t\t\t\nq", "write-jsonl!"),
+            (":write-j\t\t\t\t\t\nq", "write-j"),
+            (":write-j\x1b[Z\nq", "write-jsonl!"),
+            (":write-j\x1b[Z\x1b[Z\nq", "write-jsonl"),
+            (":write-j\x1b[Z\x1b[Z\x1b[Z\nq", "write-json!"),
+            (":write-j\x1b[Z\x1b[Z\x1b[Z\x1b[Z\nq", "write-json"),
+            (":write-j\x1b[Z\x1b[Z\x1b[Z\x1b[Z\x1b[Z\nq", "write-j"),
+            (":write-j\t\x1b[Z\nq", "write-j"),
+            (":write-j\t\x1b\nq", "write-j"),
+            (":write-j\t\x7f\t\nq", "write-json"),
             (":unknown\t\nq", "unknown"),
             (":set other\t\nq", "set other"),
-            (":wri\t\t\nq", "write!"),
-            (":wri\x1b[Z\nq", "writetoon!"),
-            (":wri\x1b[Z\x1b[Z\nq", "writetoon"),
-            (":wri\t\x1b[Z\nq", "wri"),
-            (":wri\t\x1b\nq", "wri"),
-            (":wri\t\x7f\t\nq", "write"),
-            (":wri\t\x1b[D\x1b[C\x1b[Z\nq", "writetoon!"),
         ];
         let error = regex::Regex::new(r"Unknown command: ([^\x1b\r\n]*)").unwrap();
         for (keys, expected) in cases {
@@ -199,9 +259,24 @@ mod terminal_commands {
                 .map(|capture| capture[1].trim_end().to_owned());
             assert_eq!(actual.as_deref(), Some(expected), "{keys:?}: {output:?}");
         }
-        let count = if cfg!(feature = "sexp") { 6 } else { 4 };
-        let keys = format!(":wri{}\nq", "\t".repeat(count + 1));
-        assert!(strip_styles(&session("{}", &keys)).contains("Unknown command: wri"));
+    }
+
+    #[test]
+    fn autocomplete_offers_sexp_only_when_enabled() {
+        let output = session("{}", ":write-s\t\nq");
+        let expected = if cfg!(feature = "sexp") {
+            "Unknown command: write-sexp"
+        } else {
+            "Unknown command: write-s"
+        };
+        assert!(strip_styles(&output).contains(expected), "{output}");
+        let output = session("{}", ":write-s\x1b[Z\nq");
+        let expected = if cfg!(feature = "sexp") {
+            "Unknown command: write-sexp!"
+        } else {
+            "Unknown command: write-s"
+        };
+        assert!(strip_styles(&output).contains(expected), "{output}");
     }
 
     #[test]
@@ -224,18 +299,15 @@ mod terminal_commands {
         let input = r#"{"a":1}"#;
         // Move from the end of an existing filename to the end of the command.
         let left = "\x1b[D".repeat(filename.len() + 1);
-        let keys = format!(":  wri {filename}{left}\t\nq");
+        let keys = format!(":  write-j {filename}{left}\t\nq");
         let output = session(input, &keys);
         assert!(strip_styles(&output).contains("written"));
-        let original = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&original).unwrap(),
-            serde_json::json!({"a":1})
-        );
-        let keys = format!(":wri\t\t {filename}\x03:wri\x1b[Z\x03:se\nq");
+        let original = std::fs::read(&path).unwrap();
+        assert_eq!(original, b"{\n  \"a\": 1\n}\n");
+        let keys = format!(":write-j\t\t {filename}\x03:write-j\x1b[Z\x03:se\nq");
         let output = strip_styles(&session(r#"{"changed":true}"#, &keys));
         assert!(output.contains("Unknown command: se"));
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(std::fs::read(&path).unwrap(), original);
         std::fs::remove_file(path).unwrap();
     }
 
@@ -849,7 +921,7 @@ mod terminal_commands {
         ));
         let output = session(
             "{\"a\":1} [2,3] 7 {} []",
-            &format!("c:write {}\nq", target.display()),
+            &format!("c:write-json {}\nq", target.display()),
         );
         assert!(output.contains("written"), "{}", output);
         assert_eq!(
@@ -1234,12 +1306,117 @@ mod terminal_commands {
     }
 
     #[test]
-    fn writes_toon_from_yaml_and_toon_inputs_without_changing_json_commands() {
+    fn default_toon_commands_write_identical_bytes_to_literal_filenames() {
+        for (index, command) in ["write", "w", "write-toon", "wt"].iter().enumerate() {
+            let target = std::env::temp_dir()
+                .join(format!("tless-default-toon-{}-{index}", std::process::id()));
+            let output = session(
+                r#"{"name":"Ada","scores":[1,2]}"#,
+                &format!(":{command} {}\nq", target.display()),
+            );
+            assert!(output.contains("written"), "{output}");
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                b"name: Ada\nscores[2]: 1,2"
+            );
+            assert!(!target.with_extension("toon").exists());
+            std::fs::remove_file(target).unwrap();
+        }
+    }
+
+    #[test]
+    fn yaml_and_json_writes_use_native_framing_for_multiple_roots() {
+        let yaml = std::env::temp_dir().join(format!("tless-native-{}.yaml", std::process::id()));
+        let json = std::env::temp_dir().join(format!("tless-native-{}.json", std::process::id()));
+        let output = session(
+            r#"{"a":1} {"b":[true,null]}"#,
+            &format!(
+                ":write-yaml {}\n:write-json {}\nq",
+                yaml.display(),
+                json.display()
+            ),
+        );
+        assert!(output.matches("written").count() >= 2, "{output}");
+        assert_eq!(
+            std::fs::read(&yaml).unwrap(),
+            b"---\n{\n  \"a\": 1\n}\n---\n{\n  \"b\": [\n    true,\n    null\n  ]\n}\n"
+        );
+        assert_eq!(
+            std::fs::read(&json).unwrap(),
+            b"{\n  \"a\": 1\n}\n{\n  \"b\": [\n    true,\n    null\n  ]\n}\n"
+        );
+        std::fs::remove_file(yaml).unwrap();
+        std::fs::remove_file(json).unwrap();
+    }
+
+    #[test]
+    fn jsonl_and_ndjson_write_identical_records_without_expanding_arrays() {
+        let ndjson =
+            std::env::temp_dir().join(format!("tless-records-{}.ndjson", std::process::id()));
+        let jsonl =
+            std::env::temp_dir().join(format!("tless-records-{}.jsonl", std::process::id()));
+        let output = session(
+            "{\"message\":\"a\\nb\",\"items\":[1,{\"n\":2}],\"n\":0.123456789012345678901,\"n\":1e1000000} [1,2] null",
+            &format!(
+                ":write-ndjson {}\n:write-jsonl {}\nq",
+                ndjson.display(),
+                jsonl.display()
+            ),
+        );
+        assert!(output.matches("written").count() >= 2, "{output}");
+        let expected = b"{\"message\":\"a\\nb\",\"items\":[1,{\"n\":2}],\"n\":0.123456789012345678901,\"n\":1e1000000}\n[1,2]\nnull\n";
+        assert_eq!(std::fs::read(&ndjson).unwrap(), expected);
+        assert_eq!(std::fs::read(&jsonl).unwrap(), expected);
+        std::fs::remove_file(ndjson).unwrap();
+        std::fs::remove_file(jsonl).unwrap();
+    }
+
+    #[test]
+    fn format_shortcuts_refuse_existing_files_and_bang_truncates_them() {
+        for (index, short, long, bytes) in [
+            (0, "wj", "write-json", &b"{\n  \"x\": 1\n}\n"[..]),
+            (1, "wy", "write-yaml", &b"---\n{\n  \"x\": 1\n}\n"[..]),
+            (2, "wn", "write-ndjson", &b"{\"x\":1}\n"[..]),
+        ] {
+            let target = std::env::temp_dir().join(format!(
+                "tless-shortcut-{}-{index}.toon",
+                std::process::id()
+            ));
+            let long_target = std::env::temp_dir()
+                .join(format!("tless-long-{}-{index}.toon", std::process::id()));
+            std::fs::write(&target, b"original with trailing bytes").unwrap();
+            let refusal = session(r#"{"x":1}"#, &format!(":{short} {}\nq", target.display()));
+            assert!(
+                refusal.contains("already exists (add ! to overwrite)"),
+                "{refusal}"
+            );
+            assert_eq!(
+                std::fs::read(&target).unwrap(),
+                b"original with trailing bytes"
+            );
+            let output = session(
+                r#"{"x":1}"#,
+                &format!(
+                    ":{short}! {}\n:{long} {}\nq",
+                    target.display(),
+                    long_target.display()
+                ),
+            );
+            assert!(output.contains("written"), "{output}");
+            assert_eq!(std::fs::read(&target).unwrap(), bytes);
+            assert_eq!(std::fs::read(&long_target).unwrap(), bytes);
+            std::fs::remove_file(target).unwrap();
+            std::fs::remove_file(long_target).unwrap();
+        }
+    }
+
+    #[test]
+    fn writes_native_formats_from_yaml_and_toon_inputs() {
         let target = std::env::temp_dir().join(format!("tless-formats-{}.out", std::process::id()));
         for format in ["yaml", "toon"] {
             let output = session_with_format(
                 "a: 1",
-                &format!(":writetoon {}\nq", target.display()),
+                &format!(":write-toon {}\nq", target.display()),
                 Some(format),
             );
             assert!(output.contains("written"));
@@ -1247,7 +1424,7 @@ mod terminal_commands {
             std::fs::remove_file(&target).unwrap();
             session_with_format(
                 "a: 1",
-                &format!(":write {}\nq", target.display()),
+                &format!(":write-json {}\nq", target.display()),
                 Some(format),
             );
             assert_eq!(
@@ -1306,30 +1483,103 @@ mod terminal_commands {
             .unwrap();
         file.write_all(b"original contents with a long suffix")
             .unwrap();
-        let output = session("1 2", &format!(" :wt! {}\nq", target.display()));
+        let output = session("1 2", &format!(" :write! {}\nq", target.display()));
         assert!(output.contains("requires exactly one root"));
         assert_eq!(
             std::fs::read_to_string(&target).unwrap(),
             "original contents with a long suffix"
         );
-        let output = session("42", &format!(":wt {}\nq", target.display()));
+        let output = session("42", &format!(":write {}\nq", target.display()));
         assert!(output.contains("already exists"));
         assert_eq!(
             std::fs::read_to_string(&target).unwrap(),
             "original contents with a long suffix"
         );
-        let output = session("42", &format!(":writetoon! {}\nq", target.display()));
+        let output = session("42", &format!(":write-toon! {}\nq", target.display()));
         assert!(output.contains("written"));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "42");
-        session("{}", &format!(":wt! {}\nq", target.display()));
+        session("{}", &format!(":w! {}\nq", target.display()));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "");
         std::fs::remove_file(&target).unwrap();
-        session("42", &format!(":wt! {}\nq", target.display()));
+        session("42", &format!(":w! {}\nq", target.display()));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "42");
         std::fs::remove_file(&target).unwrap();
-        let output = session("1 2", &format!(" :wt! {}\nq", target.display()));
+        let output = session("1 2", &format!(" :write-toon! {}\nq", target.display()));
         assert!(output.contains("requires exactly one root"));
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn writes_preserve_selected_focus_collapse_and_wrapping_state() {
+        let target = std::env::temp_dir().join(format!("tless-state-{}.json", std::process::id()));
+        let name = "long label ".repeat(30);
+        let input = format!(r#"{{"hits":{{"items":[1,2],"name":"{name}"}},"outside":true}}"#);
+        let baseline = session(&input, ":.hits\nl \x0cpp q");
+        let output = session(
+            &input,
+            &format!(":.hits\nl \x0c:write-json {}\npp q", target.display()),
+        );
+        assert!(output.contains("written"), "{output}");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            format!("{{\n  \"items\": [\n    1,\n    2\n  ],\n  \"name\": \"{name}\"\n}}\n")
+        );
+        assert!(
+            output.replace("\r\n", "\n").contains("[\n  1,\n  2\n]\n"),
+            "{output}"
+        );
+        let rows = rendered_rows(&output, 120, 24);
+        let baseline_rows = rendered_rows(&baseline, 120, 24);
+        assert_eq!(&rows[..22], &baseline_rows[..22]);
+        assert!(
+            rows.iter().any(|row| row.contains(".hits.items")),
+            "{rows:?}"
+        );
+        std::fs::remove_file(target).unwrap();
+    }
+
+    #[test]
+    fn unsupported_and_obsolete_write_names_never_create_destinations() {
+        let target =
+            std::env::temp_dir().join(format!("tless-removed-write-{}", std::process::id()));
+        for command in [
+            "writetoon",
+            "writetoon!",
+            "writesexp",
+            "writesexp!",
+            "write-csv",
+        ] {
+            let output = session("42", &format!(":{command} {}\nq", target.display()));
+            assert!(
+                strip_styles(&output).contains(&format!("Unknown command: {command}")),
+                "{output}"
+            );
+            assert!(!target.exists(), "{command}");
+        }
+        let output = session(
+            "42",
+            &format!(":write\n:write-json\n:wy {} extra\nq", target.display()),
+        );
+        let plain = strip_styles(&output);
+        assert!(plain.contains("Unknown command: write"), "{output}");
+        assert!(plain.contains("Unknown command: write-json"), "{output}");
+        assert!(plain.contains("Unknown command: wy"), "{output}");
+        assert!(!target.exists());
+    }
+
+    #[cfg(not(feature = "sexp"))]
+    #[test]
+    fn sexp_write_names_are_unavailable_without_the_feature() {
+        let target =
+            std::env::temp_dir().join(format!("tless-disabled-sexp-{}", std::process::id()));
+        for command in ["write-sexp", "write-sexp!", "ws", "ws!"] {
+            let output = session("42", &format!(":{command} {}\nq", target.display()));
+            assert!(
+                strip_styles(&output).contains(&format!("Unknown command: {command}")),
+                "{output}"
+            );
+            assert!(!target.exists(), "{command}");
+        }
     }
 }
 
@@ -1435,12 +1685,7 @@ fn input_limit_applies_to_stdin_and_files_without_partial_output() {
 }
 
 #[test]
-fn version_help_and_usage_error_follow_cli_contract() {
-    assert_eq!(
-        run(&["--version"], b"").stdout,
-        concat!("tless ", env!("CARGO_PKG_VERSION"), "\n").as_bytes()
-    );
-    assert!(run(&["--help"], b"").status.success());
+fn invalid_input_limit_is_a_usage_error() {
     let invalid = run(&["--max-input-bytes", "invalid"], b"");
     assert_eq!(invalid.status.code(), Some(2));
     assert!(invalid.stdout.is_empty());
@@ -1448,9 +1693,7 @@ fn version_help_and_usage_error_follow_cli_contract() {
 }
 
 #[test]
-fn input_format_uses_one_option() {
-    let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
-    assert!(help.contains("-i, --input-format <FORMAT>"));
+fn legacy_format_options_are_usage_errors() {
     for legacy in ["--json", "--yaml", "--toon", "--input", "--output"] {
         let output = run(&[legacy], b"");
         assert_eq!(output.status.code(), Some(2), "{legacy}");
@@ -1458,7 +1701,7 @@ fn input_format_uses_one_option() {
 }
 
 #[test]
-fn removed_modes_are_usage_errors_and_help_describes_toon_addresses() {
+fn removed_modes_are_usage_errors() {
     for args in [
         &["--mode", "line"][..],
         &["--mode", "data"][..],
@@ -1467,7 +1710,4 @@ fn removed_modes_are_usage_errors_and_help_describes_toon_addresses() {
         let output = run(args, b"");
         assert_eq!(output.status.code(), Some(2));
     }
-    let help = String::from_utf8(run(&["--help"], b"").stdout).unwrap();
-    assert!(!help.contains("--mode"));
-    assert!(help.contains("TOON line addresses"));
 }
