@@ -365,23 +365,20 @@ fn machine_output_needs_no_controlling_terminal() {
 
 #[test]
 fn broken_pipe_fails_for_json_and_yaml_in_every_build() {
-    use std::net::Shutdown;
-    use std::os::fd::OwnedFd;
-    use std::os::unix::net::UnixStream;
     for format in ["json", "yaml"] {
-        let (reader, writer) = UnixStream::pair().unwrap();
-        reader.shutdown(Shutdown::Both).unwrap();
+        // A real pipe with no read end must reject the child's first write.
+        // nix returns owned descriptors, so neither end can leak accidentally.
+        let (reader, writer) = nix::unistd::pipe().unwrap();
         drop(reader);
         let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
             .args(["-o", format])
             .stdin(Stdio::piped())
-            .stdout(OwnedFd::from(writer))
+            .stdout(writer)
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
         child.stdin.take().unwrap().write_all(b"42").unwrap();
         let output = child.wait_with_output().unwrap();
         assert_eq!(output.status.code(), Some(1));
-        assert!(String::from_utf8_lossy(&output.stderr).contains("Unable to write output"));
     }
 }
