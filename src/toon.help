@@ -4,6 +4,20 @@ TOON 3.0
   Open .toon files or use --input-format toon for standard input. TOON is shown using the
   document view. Searches use normalized JSON text.
 
+  Tab                 Toggle only the focused table's aligned columns, from
+                      its header, row, or cell. "Table aligned" in status
+                      ("Align" when narrow) persists until focus leaves it;
+                      collapsing does not clear the setting. Prompt Tab keeps
+                      its input behavior.
+  , / .               Scroll an aligned table's header and rows together,
+                      ten cells per count; ; jumps to the shared end/start,
+                      including warnings. Search reveals clipped cells/keys.
+                      Clicking padding selects the row or table header.
+  Ctrl+L              Toggle session wrapping. Aligned expanded tables stay
+                      unwrapped and use shared horizontal scrolling; other
+                      eligible lines wrap. Disabling alignment restores the
+                      current wrapping policy.
+
   yt                  Copy the complete focused value as canonical TOON.
   pt                  Print the complete focused value as canonical TOON.
   :write file          Write the active root as standard TOON to a new file.

@@ -34,7 +34,7 @@ pub struct VisibleLine {
     pub owner: usize,
     pub separator: bool,
     pub collapsed: bool,
-    descriptor: Row,
+    pub(crate) descriptor: Row,
 }
 
 struct Collapsed {
@@ -236,7 +236,13 @@ impl Layout {
         })
     }
 
-    pub fn render(&self, flat: &FlatJson, visible: VisibleLine, focused: usize) -> DisplayLine {
+    pub fn render(
+        &self,
+        flat: &FlatJson,
+        visible: VisibleLine,
+        focused: usize,
+        alignment: Option<&super::alignment::TableMetrics>,
+    ) -> DisplayLine {
         super::format::row(
             flat,
             &self.analysis,
@@ -244,6 +250,7 @@ impl Layout {
             visible.descriptor,
             visible.collapsed.then_some(visible.owner),
             focused,
+            alignment,
         )
     }
 

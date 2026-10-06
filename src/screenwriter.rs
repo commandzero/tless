@@ -40,9 +40,23 @@ pub struct ScreenWriter {
     last_focus: Option<(usize, usize, u16, usize)>,
     layout_generation: usize,
     horizontal_offsets: HashMap<Index, usize>,
+    table_offsets: HashMap<Index, usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScrollOwner {
+    Line(usize),
+    Table(Index),
 }
 
 const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
+
+fn scroll_owner(viewer: &JsonViewer, logical: usize) -> ScrollOwner {
+    viewer.aligned_table_for_line(logical).map_or_else(
+        || ScrollOwner::Line(viewer.visible_line(logical).unwrap().absolute),
+        ScrollOwner::Table,
+    )
+}
 
 fn status_path_style(mut style: crate::terminal::Style) -> crate::terminal::Style {
     if style.inverted {
@@ -107,6 +121,7 @@ impl ScreenWriter {
             last_focus: None,
             layout_generation: 0,
             horizontal_offsets: HashMap::new(),
+            table_offsets: HashMap::new(),
         }
     }
 
@@ -138,13 +153,32 @@ impl ScreenWriter {
     fn sync_layout(&mut self, viewer: &JsonViewer) {
         if self.layout_generation != viewer.layout_generation {
             self.horizontal_offsets.clear();
-            self.last_focus = None;
             self.layout_generation = viewer.layout_generation;
         }
+        // Parsed identity outlives projection changes. A hidden header has no
+        // usable geometry, including when an ancestor is collapsed.
+        let reduction = usize::from(self.indentation_reduction) * 2;
+        self.table_offsets.retain(|table, offset| {
+            if !viewer.table_alignment_enabled(*table) {
+                return false;
+            }
+            if viewer.aligned_table_header_visible(*table) {
+                let width = Self::reduced_table_width(viewer, *table, reduction);
+                *offset = (*offset).min(width.saturating_sub(1));
+            }
+            true
+        });
     }
 
     pub fn print_viewer(&mut self, viewer: &mut JsonViewer, search_state: &SearchState) {
         self.sync_layout(viewer);
+        let aligned = viewer.aligned_table_for_line(viewer.focused_line_index());
+        if let Some(table) = aligned {
+            // Zero is a saved shared offset too. A freshly enabled table still
+            // reveals its selected span because reset_table_alignment cleared
+            // last_focus, not because the map happens to lack an entry.
+            self.table_offsets.entry(table).or_default();
+        }
         let focus = (
             viewer.focused_node,
             viewer.absolute_anchor_line,
@@ -154,8 +188,18 @@ impl ScreenWriter {
         if self.last_focus != Some(focus) {
             if search_state.active_search_state().is_some() {
                 self.scroll_line_to_search_match(viewer, search_state.current_match_range());
+            } else if aligned.is_some() && self.last_focus.is_some() {
+                // Vertical movement and projection-only changes preserve the
+                // shared offset. A narrower terminal may require a right-edge
+                // reveal, but must not reset a manually left-clipped header.
+                if self
+                    .last_focus
+                    .is_some_and(|(_, _, width, _)| width != self.dimensions.width)
+                {
+                    self.reveal_focused_span(viewer, false);
+                }
             } else {
-                self.reveal_focused_span(viewer);
+                self.reveal_focused_span(viewer, true);
             }
             self.last_focus = Some(focus);
         }
@@ -230,6 +274,43 @@ impl ScreenWriter {
                 .row(&viewer.flatjson, *absolute)
                 .is_some_and(|line| viewer.effective_collapsed(line.owner))
         });
+        // A wrap toggle reflows ordinary lines, but expanded aligned members
+        // remain unwrapped with the same shared horizontal viewport. Do not
+        // reveal their focused token again merely because geometry changed.
+        if viewer
+            .aligned_table_for_line(viewer.focused_line_index())
+            .is_some()
+            && self.last_focus.is_some_and(|(node, anchor, width, _)| {
+                node == viewer.focused_node
+                    && anchor == viewer.absolute_anchor_line
+                    && width == self.dimensions.width
+            })
+        {
+            self.accept_viewport_focus(viewer);
+        } else {
+            self.last_focus = None;
+        }
+    }
+
+    /// Switching modes must not restore per-line scroll positions from the
+    /// other representation, including rows currently hidden by collapse.
+    pub fn reset_table_alignment(&mut self, viewer: &JsonViewer, table: Index) {
+        self.table_offsets.remove(&table);
+        self.horizontal_offsets.retain(|absolute, _| {
+            let Some(row) = viewer.layout.row(&viewer.flatjson, *absolute) else {
+                return false;
+            };
+            // A shared header can navigate as its parent list object.
+            // Clear offsets by the displayed node's table membership instead.
+            let mut node = Some(row.node);
+            while let Some(index) = node {
+                if index == table {
+                    return false;
+                }
+                node = viewer.flatjson[index].parent.as_option();
+            }
+            true
+        });
         self.last_focus = None;
     }
 
@@ -241,15 +322,52 @@ impl ScreenWriter {
         }
     }
 
+    fn reduced_table_width(viewer: &JsonViewer, table: Index, reduction: usize) -> usize {
+        viewer
+            .aligned_table_width(table)
+            .saturating_sub(reduction.min(viewer.table_indentation(table)))
+    }
+
+    fn table_content_width(&self, viewer: &JsonViewer, table: Index) -> usize {
+        Self::reduced_table_width(viewer, table, usize::from(self.indentation_reduction) * 2)
+    }
+
+    fn content_width(&self, viewer: &JsonViewer, logical: usize, owner: ScrollOwner) -> usize {
+        match owner {
+            ScrollOwner::Line(_) => self
+                .line_viewport(viewer, logical)
+                .content_width(viewer.rendered_line(logical)),
+            ScrollOwner::Table(table) => self.table_content_width(viewer, table),
+        }
+    }
+
+    fn offset_mut(&mut self, owner: ScrollOwner) -> &mut usize {
+        match owner {
+            ScrollOwner::Line(absolute) => self.horizontal_offsets.entry(absolute).or_default(),
+            ScrollOwner::Table(table) => self.table_offsets.entry(table).or_default(),
+        }
+    }
+
     fn line_viewport(&self, viewer: &JsonViewer, logical: usize) -> lp::LineViewport {
-        lp::LineViewport::new(
-            viewer.rendered_line(logical),
-            self.horizontal_offsets
-                .get(&viewer.visible_line(logical).unwrap().absolute)
-                .copied()
-                .unwrap_or(0),
-            usize::from(self.indentation_reduction) * 2,
-        )
+        let line = viewer.rendered_line(logical);
+        let reduction = usize::from(self.indentation_reduction) * 2;
+        match scroll_owner(viewer, logical) {
+            ScrollOwner::Line(absolute) => lp::LineViewport::new(
+                line,
+                self.horizontal_offsets.get(&absolute).copied().unwrap_or(0),
+                reduction,
+            ),
+            ScrollOwner::Table(table) => lp::LineViewport::table(
+                line,
+                self.table_offsets
+                    .get(&table)
+                    .copied()
+                    .unwrap_or(0)
+                    .min(self.table_content_width(viewer, table).saturating_sub(1)),
+                reduction,
+                viewer.table_indentation(table),
+            ),
+        }
     }
 
     pub fn mouse_action(&self, viewer: &JsonViewer, row: u16, column: u16) -> Action {
@@ -287,7 +405,7 @@ impl ScreenWriter {
             }
         } else {
             let viewport = self.line_viewport(viewer, index);
-            let column = viewport.source_column(column.saturating_sub(number_width + 2));
+            let column = column.saturating_sub(number_width + 2);
             let line = viewer.rendered_line(index);
             let fitted = if viewport.horizontal_offset == 0 {
                 lp::fit_annotations(
@@ -298,7 +416,11 @@ impl ScreenWriter {
             } else {
                 std::borrow::Cow::Borrowed(line)
             };
-            let (node, source) = lp::hit_test(&fitted, column);
+            let (node, source) = viewport.hit_test(
+                &fitted,
+                column,
+                usize::from(self.dimensions.width).saturating_sub(number_width + 2),
+            );
             if source.is_none() && viewer.is_document_body(index) {
                 Action::JumpTo {
                     line: viewer.visible_line(index).unwrap().absolute,
@@ -505,10 +627,14 @@ impl ScreenWriter {
         {
             path_to_node.push_str(" (empty object)");
         }
+        let aligned = viewer
+            .focused_table()
+            .is_some_and(|table| viewer.table_alignment_enabled(table));
         self.print_path_to_node_and_file_name(
             &path_to_node,
             input_filename,
             viewer.dimensions.width as isize,
+            aligned,
         )?;
 
         self.terminal.position_cursor(1, self.dimensions.height)?;
@@ -566,30 +692,40 @@ impl ScreenWriter {
         path_to_node: &str,
         filename: &str,
         width: isize,
+        aligned: bool,
     ) -> std::fmt::Result {
+        let indicator = if aligned && width >= 24 {
+            "Table aligned "
+        } else if aligned && width >= 5 {
+            "Align"
+        } else {
+            ""
+        };
+        let indicator_width = indicator.len() as isize;
+        let path_width = width - indicator_width;
         let path_display_width = UnicodeWidthStr::width(path_to_node) as isize;
         let row = self.dimensions.height.saturating_sub(1).max(1);
-
         let space_available_for_filename =
-            width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
+            path_width - path_display_width - SPACE_BETWEEN_PATH_AND_FILENAME;
 
         let status_style =
             status_path_style(self.theme.style(StyleRole::StatusBar, StyleState::main()));
-
         let truncated_filename =
             TruncatedStrView::init_start(filename, space_available_for_filename);
 
         self.terminal.position_cursor(1, row)?;
         self.terminal.set_style(&status_style)?;
-        let path_slice = TruncatedStrSlice {
-            s: path_to_node,
-            truncated_view: &TruncatedStrView::init_back(path_to_node, width),
-        };
-        write!(self.terminal, "{path_slice}")?;
+        self.terminal.write_str(indicator)?;
+        if path_width > 0 {
+            let path_slice = TruncatedStrSlice {
+                s: path_to_node,
+                truncated_view: &TruncatedStrView::init_back(path_to_node, path_width),
+            };
+            write!(self.terminal, "{path_slice}")?;
+        }
 
         if truncated_filename.any_contents_visible() {
             let filename_width = truncated_filename.used_space().unwrap();
-
             self.terminal
                 .position_cursor(self.dimensions.width - (filename_width as u16) + 1, row)?;
             self.terminal.set_style(
@@ -597,12 +733,10 @@ impl ScreenWriter {
                     .theme
                     .style(StyleRole::StatusPathBase, StyleState::main()),
             )?;
-
             let truncated_slice = TruncatedStrSlice {
                 s: filename,
                 truncated_view: &truncated_filename,
             };
-
             write!(self.terminal, "{truncated_slice}")?;
         }
 
@@ -617,18 +751,23 @@ impl ScreenWriter {
         self.indentation_reduction = self.indentation_reduction.saturating_sub(1)
     }
 
-    fn reveal_focused_span(&mut self, viewer: &mut JsonViewer) {
+    fn reveal_focused_span(&mut self, viewer: &mut JsonViewer, reveal_left: bool) {
         let line = viewer.rendered_line(viewer.focused_line_index());
         if let Some(span) = line
             .spans
             .iter()
             .find(|span| span.node == viewer.focused_node && span.source.is_some())
         {
-            self.reveal_byte_range(viewer, span.range.clone());
+            self.reveal_byte_range(viewer, span.range.clone(), reveal_left);
         }
     }
 
-    fn reveal_byte_range(&mut self, viewer: &mut JsonViewer, range: Range<usize>) {
+    fn reveal_byte_range(
+        &mut self,
+        viewer: &mut JsonViewer,
+        range: Range<usize>,
+        reveal_left: bool,
+    ) {
         if viewer.is_wrapped_line(viewer.focused_line_index()) {
             viewer.reveal_byte_range(range);
             return;
@@ -650,12 +789,13 @@ impl ScreenWriter {
         let document_width =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
         let visible_columns = viewport.visible_columns(line, document_width);
-        let offset = self
-            .horizontal_offsets
-            .entry(viewer.absolute_anchor_line)
-            .or_default();
-        if start < visible_columns.start || end > visible_columns.end {
-            *offset = start;
+        let owner = scroll_owner(viewer, viewer.focused_line_index());
+        let bound = match owner {
+            ScrollOwner::Line(_) => usize::MAX,
+            ScrollOwner::Table(table) => self.table_content_width(viewer, table).saturating_sub(1),
+        };
+        if (reveal_left && start < visible_columns.start) || end > visible_columns.end {
+            *self.offset_mut(owner) = start.min(bound);
         }
     }
 
@@ -671,12 +811,10 @@ impl ScreenWriter {
         if viewer.is_wrapped_line(viewer.focused_line_index()) {
             return;
         }
-        let absolute = viewer.absolute_anchor_line;
         let logical = viewer.focused_line_index();
-        let width = self
-            .line_viewport(viewer, logical)
-            .content_width(viewer.rendered_line(logical));
-        let offset = self.horizontal_offsets.entry(absolute).or_default();
+        let owner = scroll_owner(viewer, logical);
+        let width = self.content_width(viewer, logical, owner);
+        let offset = self.offset_mut(owner);
         *offset = if right {
             offset.saturating_add(count).min(width.saturating_sub(1))
         } else {
@@ -688,15 +826,13 @@ impl ScreenWriter {
         if viewer.is_wrapped_line(viewer.focused_line_index()) {
             return;
         }
-        let absolute = viewer.absolute_anchor_line;
         let logical = viewer.focused_line_index();
-        let width = self
-            .line_viewport(viewer, logical)
-            .content_width(viewer.rendered_line(logical));
+        let owner = scroll_owner(viewer, logical);
+        let width = self.content_width(viewer, logical, owner);
         let available =
             usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
-        let offset = self.horizontal_offsets.entry(absolute).or_default();
         let end = end_scroll_offset(width, available);
+        let offset = self.offset_mut(owner);
         *offset = if *offset < end { end } else { 0 };
     }
 
@@ -709,7 +845,7 @@ impl ScreenWriter {
             .filter(|span| span.node == viewer.focused_node)
             .find_map(|span| span.matching_ranges(&range).into_iter().next());
         if let Some(target) = target {
-            self.reveal_byte_range(viewer, target);
+            self.reveal_byte_range(viewer, target, true);
             // The match may lie deep inside the token; generic node focus must
             // not move the next paint back to that token's beginning.
             self.last_focus = Some((
@@ -730,7 +866,28 @@ fn end_scroll_offset(width: usize, available: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{end_scroll_offset, status_path_style};
+    use super::{ScrollOwner, end_scroll_offset, scroll_owner, status_path_style};
+
+    #[test]
+    fn expanded_table_members_share_an_owner_but_collapsed_preview_does_not() {
+        use crate::flatjson::parse_top_level_json;
+        use crate::viewer::{Action, JsonViewer};
+
+        let mut viewer = JsonViewer::new(
+            parse_top_level_json(r#"[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]"#.into())
+                .unwrap(),
+        );
+        let table = viewer.toggle_table_alignment().unwrap();
+        assert_eq!(scroll_owner(&viewer, 0), ScrollOwner::Table(table));
+        assert_eq!(scroll_owner(&viewer, 1), ScrollOwner::Table(table));
+        assert_eq!(scroll_owner(&viewer, 2), ScrollOwner::Table(table));
+
+        viewer.perform_action(Action::ToggleCollapsed);
+        assert_eq!(scroll_owner(&viewer, 0), ScrollOwner::Line(0));
+        assert!(viewer.table_alignment_enabled(table));
+        viewer.perform_action(Action::ToggleCollapsed);
+        assert_eq!(scroll_owner(&viewer, 1), ScrollOwner::Table(table));
+    }
 
     #[test]
     #[cfg(feature = "colorscheme")]

@@ -1,9 +1,10 @@
 //! Materialization of one logical row from structural metadata.
+use super::alignment::TableMetrics;
 use super::geometry::{Geometry, Kind, Row, key_text, value_text};
 use super::index::{Analysis, children, key};
 use super::{
-    DisplayLine, FlatJson, Preview, SourceMap, Span, TokenRole, Value, bounded_prefix,
-    preview_append, quote_json, quote_key, scalar, string_source_map,
+    DisplayLine, FlatJson, Preview, SourceMap, Span, TokenRole, Value, WarningKind, bounded_prefix,
+    preview_append, quote_json_into, quote_key, scalar, string_source_map,
 };
 
 #[cfg(test)]
@@ -18,6 +19,7 @@ pub fn row(
     descriptor: Row,
     collapsed: Option<usize>,
     focused: usize,
+    alignment: Option<&TableMetrics>,
 ) -> DisplayLine {
     #[cfg(test)]
     FORMATTED_ROWS.with(|count| count.set(count.get() + 1));
@@ -26,14 +28,32 @@ pub fn row(
     } else if descriptor.kind == Kind::Document {
         document_header(analysis, descriptor.node)
     } else {
-        let mut line = header(flat, analysis, descriptor, focused);
+        let mut line = header(flat, analysis, descriptor, focused, alignment);
         let node = descriptor.node;
         if descriptor.kind == Kind::TableRow {
+            if alignment.is_some() {
+                let table = flat[node].parent.unwrap();
+                let start = geometry.table_field_start(flat, analysis, table);
+                let indentation = descriptor.depth * 2;
+                line.text
+                    .extend(std::iter::repeat_n(' ', start.saturating_sub(indentation)));
+            }
             for (column, child) in children(flat, node).enumerate() {
                 if column > 0 {
-                    line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    if alignment.is_some() {
+                        line.text.push(' ');
+                    } else {
+                        line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    }
                 }
-                value(flat, &mut line, child);
+                let start = line.text.len();
+                let number_width = alignment
+                    .filter(|_| matches!(flat[child].value, Value::Number))
+                    .map(|metrics| metrics.widths[column]);
+                value(flat, &mut line, child, number_width);
+                if let Some(metrics) = alignment.filter(|_| number_width.is_none()) {
+                    pad_column(&mut line, metrics, column, start);
+                }
             }
         } else if geometry.inline(flat, node) {
             for (index, child) in children(flat, node).enumerate() {
@@ -47,10 +67,10 @@ pub fn row(
                     },
                     None,
                 );
-                value(flat, &mut line, child);
+                value(flat, &mut line, child, None);
             }
         } else if scalar(flat, node) {
-            value(flat, &mut line, node);
+            value(flat, &mut line, node, None);
         }
         if descriptor.owner != descriptor.node {
             let offset = descriptor.depth.saturating_sub(1) * 2;
@@ -62,7 +82,11 @@ pub fn row(
                 source: None,
                 source_map: Vec::new(),
             });
-            line.owner = descriptor.owner;
+            line.owner = if alignment.is_some() && analysis.node(flat, node).table {
+                node
+            } else {
+                descriptor.owner
+            };
         }
         annotate(flat, analysis, geometry, &mut line);
         line
@@ -89,7 +113,13 @@ fn document_header(analysis: &Analysis, node: usize) -> DisplayLine {
     line
 }
 
-fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize) -> DisplayLine {
+fn header(
+    flat: &FlatJson,
+    analysis: &Analysis,
+    descriptor: Row,
+    focused: usize,
+    alignment: Option<&TableMetrics>,
+) -> DisplayLine {
     let node = descriptor.node;
     let mut line = DisplayLine::new(descriptor.owner, "  ".repeat(descriptor.depth));
     let Kind::Value { list, root } = descriptor.kind else {
@@ -126,10 +156,15 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
             let first = children(flat, node).next().unwrap();
             for (column, field) in children(flat, first).enumerate() {
                 if column > 0 {
-                    line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    if alignment.is_some() {
+                        line.text.push(' ');
+                    } else {
+                        line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    }
                 }
                 // Mouse targeting always uses the first row. One additional
                 // alias is enough for the explicitly focused field's identity.
+                let start = line.text.len();
                 line.token(
                     &key_text(flat, field),
                     field,
@@ -145,6 +180,9 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
                     alias.node = focused;
                     alias.source = flat[focused].key_range.clone();
                     line.spans.push(alias);
+                }
+                if let Some(metrics) = alignment {
+                    pad_column(&mut line, metrics, column, start);
                 }
             }
             line.token("}", node, TokenRole::ContainerDelimiter, None);
@@ -167,19 +205,50 @@ fn header(flat: &FlatJson, analysis: &Analysis, descriptor: Row, focused: usize)
     line
 }
 
-fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize) {
+/// Padding is display-only: the source-bearing token and its aliases have
+/// already been emitted, and the final column has no trailing padding.
+fn pad_column(line: &mut DisplayLine, metrics: &TableMetrics, column: usize, start: usize) {
+    if column + 1 < metrics.widths.len() {
+        let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
+        line.text
+            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+    }
+}
+
+fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize, number_width: Option<usize>) {
     let role = match flat[node].value {
         Value::String => TokenRole::String,
         Value::Number => TokenRole::Number,
         Value::Boolean => TokenRole::Boolean,
         _ => TokenRole::Null,
     };
-    line.token(
-        &value_text(flat, node),
-        node,
-        role,
-        Some(flat[node].range.clone()),
-    );
+    let text = value_text(flat, node);
+    if let Some(width) = number_width {
+        let padding = width - unicode_width::UnicodeWidthStr::width(text.as_ref());
+        line.text.extend(std::iter::repeat_n(' ', padding));
+    }
+    line.token(&text, node, role, Some(flat[node].range.clone()));
+}
+
+/// A single warning spelling contract for the painted row and its lazy extent.
+/// `prefix` distinguishes the separate owner-bound prefix span from the
+/// message/locator span; callers can paint or measure each borrowed fragment.
+pub(super) fn warning_parts(
+    flat: &FlatJson,
+    node: usize,
+    warning: WarningKind,
+    first: bool,
+    field: bool,
+    quoted: &mut String,
+    mut emit: impl FnMut(&str, bool),
+) {
+    emit(if first { "  # WARN " } else { "; " }, true);
+    emit(warning.message(), false);
+    if field {
+        emit(" at field ", false);
+        quote_json_into(&key(flat, node).unwrap_or_default(), quoted);
+        emit(quoted, false);
+    }
 }
 
 fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mut DisplayLine) {
@@ -197,41 +266,41 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
     nodes.sort_unstable();
     nodes.dedup();
     let mut first = true;
+    let mut quoted = String::new();
+    let mut message = String::new();
     for node in nodes {
         let mut warnings: Vec<_> = analysis.warnings(node).collect();
         warnings.sort();
         for warning in warnings {
-            if first {
-                line.token("  # WARN ", line.owner, TokenRole::Warning, None);
-                first = false;
-            } else {
-                line.token("; ", line.owner, TokenRole::Warning, None);
-            }
-            let locator = if analysis.is_root(node) {
-                String::new()
-            } else if analysis.table_cell(flat, node) {
-                format!(
-                    " at field {}",
-                    quote_json(&key(flat, node).unwrap_or_default())
-                )
-            } else if let Some(parent) = flat[node].parent.as_option() {
-                if flat[parent].is_array()
-                    && geometry.position(flat, analysis, node).line
-                        == geometry.position(flat, analysis, line.owner).body_line
-                {
-                    format!(" at [{}]", flat[node].index_in_parent)
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-            line.token(
-                &format!("{}{locator}", warning.message()),
+            message.clear();
+            warning_parts(
+                flat,
                 node,
-                TokenRole::Warning,
-                None,
+                warning,
+                first,
+                !analysis.is_root(node) && analysis.table_cell(flat, node),
+                &mut quoted,
+                |part, prefix| {
+                    if prefix {
+                        line.token(part, line.owner, TokenRole::Warning, None);
+                    } else {
+                        message.push_str(part);
+                    }
+                },
             );
+            first = false;
+            if !analysis.is_root(node) && !analysis.table_cell(flat, node) {
+                if let Some(parent) = flat[node].parent.as_option() {
+                    if flat[parent].is_array()
+                        && geometry.position(flat, analysis, node).line
+                            == geometry.position(flat, analysis, line.owner).body_line
+                    {
+                        use std::fmt::Write;
+                        write!(message, " at [{}]", flat[node].index_in_parent).unwrap();
+                    }
+                }
+            }
+            line.token(&message, node, TokenRole::Warning, None);
         }
     }
 }
@@ -311,7 +380,7 @@ fn collapsed_row(
                 root: false,
             };
         }
-        let mut line = header(flat, analysis, header_descriptor, focused);
+        let mut line = header(flat, analysis, header_descriptor, focused, None);
         line.owner = node;
         line
     };
@@ -356,7 +425,7 @@ fn collapsed_row(
                 },
                 None,
             );
-            value(flat, &mut candidate, child);
+            value(flat, &mut candidate, child, None);
         }
         if unicode_width::UnicodeWidthStr::width(candidate.text.as_str())
             + unicode_width::UnicodeWidthStr::width(warning.as_str())

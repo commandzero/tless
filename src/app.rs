@@ -336,6 +336,13 @@ impl App {
                             let lines = self.parse_input_buffer_as_number();
                             Some(Action::MoveDown(lines))
                         }
+                        Key::Char('\t') => {
+                            if let Some(table) = self.viewer.toggle_table_alignment() {
+                                self.screen_writer
+                                    .reset_table_alignment(&self.viewer, table);
+                            }
+                            None
+                        }
                         Key::Ctrl('l') => {
                             self.viewer.toggle_wrapping();
                             self.screen_writer.reset_horizontal_offsets(&self.viewer);
@@ -571,6 +578,28 @@ impl App {
 
             if let Some(action) = action {
                 self.viewer.perform_action(action);
+                if self.viewer.focused_node != focused_node_before
+                    && self
+                        .viewer
+                        .layout
+                        .node(&self.viewer.flatjson, self.viewer.focused_node)
+                        .table_cell
+                    && matches!(
+                        action,
+                        Action::MoveLeft
+                            | Action::MoveRight
+                            | Action::FocusFirstSibling
+                            | Action::FocusLastSibling
+                            | Action::FocusPrevSibling(_)
+                            | Action::FocusNextSibling(_)
+                            | Action::FocusParentOrPreviousSibling
+                            | Action::FocusNextAtParentLevel
+                    )
+                {
+                    // Only explicit horizontal cell selection requests a
+                    // reveal; vertical cell motion keeps the table viewport.
+                    self.screen_writer.invalidate_focus();
+                }
                 if self.viewer.wrapping_enabled
                     && matches!(
                         action,
@@ -632,11 +661,17 @@ impl App {
             self.screen_writer.dimensions.without_status_bar(),
             self.screen_writer.show_line_numbers || self.screen_writer.show_relative_line_numbers,
         );
-        let reflow = self.screen_writer.sync_wrap_geometry(&mut self.viewer)
+        let wrap_changed = self.screen_writer.sync_wrap_geometry(&mut self.viewer);
+        let reflow = wrap_changed
             || generation != self.viewer.layout_generation
             || previous_dimensions.height != self.viewer.dimensions.height;
         if reflow {
-            self.screen_writer.invalidate_focus();
+            // Projection and height-only changes cannot create a horizontal
+            // reveal need. Width changes are handled by the table viewport's
+            // right-edge reveal; filtering invalidates focus in apply_path.
+            if self.viewer.focused_table().is_none() {
+                self.screen_writer.invalidate_focus();
+            }
             if self.search_state.active_search_state().is_some() {
                 self.reveal_current_match();
             }

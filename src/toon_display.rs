@@ -4,6 +4,7 @@ use crate::flatjson::{FlatJson, KeyValue, Value};
 use std::collections::HashSet;
 use std::ops::Range;
 
+pub(crate) mod alignment;
 #[cfg(test)]
 pub mod fixture;
 mod format;
@@ -156,8 +157,13 @@ impl DisplayLine {
 }
 
 fn quote_json(value: &str) -> String {
-    use std::fmt::Write;
     let mut text = String::with_capacity(value.len() + 2);
+    quote_json_into(value, &mut text);
+    text
+}
+fn quote_json_into(value: &str, text: &mut String) {
+    use std::fmt::Write;
+    text.clear();
     text.push('"');
     for ch in value.chars() {
         match ch {
@@ -173,7 +179,6 @@ fn quote_json(value: &str) -> String {
         }
     }
     text.push('"');
-    text
 }
 fn decode_string(raw: &str) -> String {
     let inner = raw
@@ -213,9 +218,9 @@ fn quote_key(key: &str) -> String {
         quote_json(key)
     }
 }
-fn quote_value(value: &str) -> String {
+fn value_needs_quotes(value: &str) -> bool {
     lazy_static::lazy_static! { static ref NUMERIC: regex::Regex=regex::Regex::new(r"^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$").unwrap(); }
-    if value.is_empty()
+    value.is_empty()
         || value.trim() != value
         || matches!(
             value,
@@ -227,11 +232,6 @@ fn quote_value(value: &str) -> String {
         || value
             .chars()
             .any(|c| c.is_control() || ":\"\\[]{},".contains(c))
-    {
-        quote_json(value)
-    } else {
-        value.to_owned()
-    }
 }
 /// Exact decimal normalization, with the output length checked before allocating.
 fn number(raw: &str) -> (String, Option<WarningKind>) {
@@ -1038,6 +1038,7 @@ mod tests {
             &flat,
             layout.layout.visible_line(&flat, &visible, 0).unwrap(),
             fields[0],
+            None,
         );
         let key_span = header
             .spans
@@ -1255,6 +1256,7 @@ mod tests {
             &flat,
             layout.layout.visible_line(&flat, &projected, 0).unwrap(),
             selected,
+            None,
         );
         let key = header
             .spans
@@ -1450,7 +1452,7 @@ mod tests {
             let projection = layout.project_with_documents(&flat, &HashSet::new());
             let row = layout.visible_line(&flat, &projection, 0).unwrap();
             assert_eq!(row.owner, root);
-            assert_eq!(layout.render(&flat, row, root).text, header);
+            assert_eq!(layout.render(&flat, row, root, None).text, header);
         }
     }
 
@@ -1470,7 +1472,7 @@ mod tests {
         let lines: Vec<_> = (0..projection.len())
             .map(|i| {
                 let row = layout.visible_line(&flat, &projection, i).unwrap();
-                layout.render(&flat, row, row.owner).text
+                layout.render(&flat, row, row.owner, None).text
             })
             .collect();
         assert_eq!(

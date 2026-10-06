@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T02:08:32Z }
+generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
 ---
 
 # TOON acceptance checks
@@ -128,6 +128,63 @@ release checks above remain separate.
    and encoding failures leave existing files unchanged and missing files
    absent; without `!`, existing files are refused. A file-operation error
    after opening may leave partial output; no atomic replacement is promised.
+
+## Aligned-table acceptance
+
+Run in an isolated PTY at 120 and 30 columns, repeating with absolute,
+relative, both, and no number gutters. Record actual frames, terminal-cell
+column starts, selected paths, and horizontal transitions against the
+implementation commit; also resize to 16 columns and change indentation with
+`<`/`>`. Use this JSON as a starting point, with the last row placed below the
+viewport when testing width measurement:
+
+```json
+{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"other":[{"id":7,"name":"X"},{"id":8,"name":"Y"}],"nested":{"rows":[{"id":1,"name":"é界👩‍💻"},{"id":22,"name":"line\nbreak"}]},"plain":"outside"}
+```
+
+1. Press Tab on `users` and check `users[2]{id  name}:`, `           1 Ada`,
+   `         200 Lin` without gutters. Confirm generated separators are spaces,
+   while commas inside quoted keys or values remain visible. Check numeric right
+   edges align and strings start beneath their headers. Repeat with negative
+   and fractional numbers, numeric-looking strings, and a numeric final column;
+   only parsed numbers right-align. Press `3` then Tab: alignment toggles once.
+   Move among header, row, and cell: status keeps `Table aligned`; at a narrow
+   width it shows `Align`. Leave for `plain` and return: alignment persists
+   but its status label appears only while focus belongs to that table.
+2. Enable the second and nested table independently. Compare widths with a
+   widest escaped or wide/combining/emoji cell off-screen. Confirm no padding
+   within quotes or graphemes and no table conversion for lists or primitive
+   arrays. Collapse a table and toggle Tab: its preview stays ordinary and
+   collapsed; reopening restores the grid. Collapse an ancestor, then reopen.
+   Filter to a row or cell using `:` and confirm no inherited grid; reset with
+   `:.` and confirm restored alignment and original paths.
+3. At 30 columns, use `2.`, `,`, and `;` on a header, short row, and cell.
+   Confirm header and every row move together, including newly exposed rows;
+   a long warning remains reachable even from a short row. Confirm end/start
+   bounds, saturated counts, focus and unrelated-line isolation. Search for a
+   clipped value and then a field key: both become visible under the same
+   horizontal transform while keeping their row-field identity. Click a token
+   after scrolling and check `pP` and `pp`; click generated row and header
+   padding and check their row/table owner. Confirm line numbers do not change.
+4. Enable Ctrl+L while aligned: only other expanded lines wrap, with blank
+   continuation gutters. Check the aligned table still scrolls horizontally;
+   Ctrl+L again retains its offset. Turn off alignment while wrapping is on
+   and check that the table follows the current wrapping policy. Resize,
+   toggle gutters and indentation, and confirm column starts, focus, and
+   bounds remain valid without painting over the status or command row.
+   Before enabling alignment, manually scroll the counted header of a table
+   that is the first field of a list object. Toggle alignment on and off;
+   confirm its ordinary shared header does not restore the old offset and that
+   the selected data and surrounding lines stay unchanged.
+5. Copy an aligned cell with `yt` (and inspect `pt`), then `:write` the table
+   as TOON and `:write-json` it as JSON using a disposable filtered table
+   root. Compare parsed content against unaligned output; no grid padding,
+   status label, or warning comment is serialized. Compare redirected stdout
+   with alignment disabled; opening an aligned terminal session must not
+   modify the command-line output contract. Check document Tab does nothing
+   on a scalar, primitive array, or list; command Tab still completes, and
+   search-prompt Tab retains its previous input behavior. Verify both in-app
+   help screens describe the controls and the local wrapping override.
 
 ## Startup and presentation resource checks
 

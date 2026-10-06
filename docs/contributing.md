@@ -52,6 +52,10 @@ The root crate has no library target, so it has no library doctests.
 
 Tests use disposable files and isolated pseudoterminals. If a test fails because
 it lacks terminal access, rerun it with access. Do not skip it.
+Use `std::io::pipe()` for subprocess fixtures. Raw POSIX pipes have inheritable
+descriptors; a concurrent spawn can keep a closed read end alive and hide a
+broken-pipe error. Exercise deliberate pipe closure with an overlapping child
+kept alive until the write completes.
 PTY tests pace synthetic input and bound application-response waits separately
 from typing time. Keep prompt, redraw, and exit waits bounded; do not impose a
 fixed budget on an entire script whose length includes literal temporary paths.

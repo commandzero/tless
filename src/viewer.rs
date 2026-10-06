@@ -1,9 +1,10 @@
 use crate::flatjson::{FlatJson, Index, OptionIndex};
+use crate::toon_display::alignment::TableMetrics;
 use crate::toon_display::layout::{Layout, Projection, VisibleLine};
 use crate::toon_display::{DisplayLine, normalize_node};
 use crate::types::TTYDimensions;
 use crate::wrapped_view::{PhysicalRow, rows};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 #[cfg(test)]
 use unicode_width::UnicodeWidthStr;
@@ -41,6 +42,8 @@ pub struct JsonViewer {
     pub layout_generation: usize,
     pub physical_generation: usize,
     focus_byte_range: Option<Range<usize>>,
+    /// Only enabled table identities retain column metrics, never formatted rows.
+    aligned_tables: HashMap<Index, TableMetrics>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -106,6 +109,7 @@ impl JsonViewer {
             layout_generation: 0,
             physical_generation: 0,
             focus_byte_range: None,
+            aligned_tables: HashMap::new(),
         };
         viewer.refresh_document_metadata();
         viewer.desired_depth = viewer
@@ -300,6 +304,93 @@ impl JsonViewer {
         self.document_roots = self.active_roots.clone();
     }
 
+    /// Resolve only tables which still belong to the active projection.
+    pub fn focused_table(&self) -> Option<Index> {
+        if self.is_document_header(self.focused_line_index()) {
+            return None;
+        }
+        let node = normalize_node(&self.flatjson, self.focused_node);
+        let analysis = &self.layout.analysis;
+        let table = if analysis.node(&self.flatjson, node).table {
+            node
+        } else if analysis.table_row(&self.flatjson, node) {
+            self.flatjson[node].parent.unwrap()
+        } else if analysis.table_cell(&self.flatjson, node) {
+            let row = self.flatjson[node].parent.unwrap();
+            self.flatjson[row].parent.unwrap()
+        } else {
+            return None;
+        };
+        (self.active_root_for(node) == self.active_root_for(table)
+            && self.active_root_for(table).is_some())
+        .then_some(table)
+    }
+
+    pub fn table_alignment_enabled(&self, table: Index) -> bool {
+        self.aligned_tables.contains_key(&table)
+    }
+
+    pub fn toggle_table_alignment(&mut self) -> Option<Index> {
+        let table = self.focused_table()?;
+        if self.aligned_tables.remove(&table).is_none() {
+            self.aligned_tables.insert(
+                table,
+                TableMetrics::measure(&self.flatjson, &self.layout.analysis, table),
+            );
+        }
+        self.reset_frame_geometry();
+        self.ensure_visible();
+        Some(table)
+    }
+
+    /// A collapsed preview or generated sequence header never owns a grid.
+    pub fn aligned_table_for_line(&self, logical: usize) -> Option<Index> {
+        let line = self.visible_line(logical)?;
+        if line.separator || line.collapsed {
+            return None;
+        }
+        // A table which is the first child of an unkeyed list object shares
+        // that object's displayed line, but the table itself owns the grid.
+        let node = line.descriptor.node;
+        let table = if self.layout.analysis.node(&self.flatjson, node).table {
+            node
+        } else if self.layout.analysis.table_row(&self.flatjson, node) {
+            self.flatjson[node].parent.unwrap()
+        } else {
+            return None;
+        };
+        self.table_alignment_enabled(table).then_some(table)
+    }
+
+    /// The expanded header must actually be in the active projection before
+    /// its geometry can be used to clamp a saved horizontal offset.
+    pub fn aligned_table_header_visible(&self, table: Index) -> bool {
+        if self.active_root_for(table).is_none() {
+            return false;
+        }
+        let absolute = self.layout.node(&self.flatjson, table).body_line;
+        self.visible
+            .visible_index(absolute)
+            .is_some_and(|logical| self.aligned_table_for_line(logical) == Some(table))
+    }
+
+    /// Unreduced terminal-cell extent, including the longest actual annotation.
+    pub fn aligned_table_width(&self, table: Index) -> usize {
+        self.aligned_tables.get(&table).map_or(0, |metrics| {
+            metrics.extent(self.layout.geometry.table_field_start(
+                &self.flatjson,
+                &self.layout.analysis,
+                table,
+            ))
+        })
+    }
+
+    pub fn table_indentation(&self, table: Index) -> usize {
+        self.layout
+            .geometry
+            .table_indentation(&self.flatjson, &self.layout.analysis, table)
+    }
+
     fn wrap_eligible(&self, logical_line: usize) -> bool {
         let Some(visible) = self.visible_line(logical_line) else {
             return false;
@@ -324,11 +415,12 @@ impl JsonViewer {
     }
 
     pub fn render_line(&self, logical: usize) -> DisplayLine {
-        self.layout.render(
-            &self.flatjson,
-            self.visible_line(logical).unwrap(),
-            self.focused_node,
-        )
+        let visible = self.visible_line(logical).unwrap();
+        let alignment = self
+            .aligned_table_for_line(logical)
+            .and_then(|table| self.aligned_tables.get(&table));
+        self.layout
+            .render(&self.flatjson, visible, self.focused_node, alignment)
     }
 
     pub fn rendered_line(&self, logical: usize) -> &DisplayLine {
@@ -481,7 +573,9 @@ impl JsonViewer {
     }
 
     pub fn is_wrapped_line(&self, logical_line: usize) -> bool {
-        self.wrapping_enabled && self.wrap_eligible(logical_line)
+        self.wrapping_enabled
+            && self.aligned_table_for_line(logical_line).is_none()
+            && self.wrap_eligible(logical_line)
     }
 
     /// Update the document geometry used to split rows. Returns whether it
@@ -3304,5 +3398,364 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 4]
         );
+    }
+    #[test]
+    fn table_alignment_tracks_parsed_identity_across_focus_filters_and_collapse() {
+        let mut v = viewer(
+            r#"{"a":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"b":[{"x":1},{"x":2}],"other":3}"#,
+        );
+        let a = v.flatjson[0].first_child().unwrap();
+        let b = v.flatjson[a].next_sibling.unwrap();
+        let other = v.flatjson[b].next_sibling.unwrap();
+        let row = v.flatjson[a].first_child().unwrap();
+        let cell = v.flatjson[row].first_child().unwrap();
+        for node in [a, row, cell] {
+            v.perform_action(Action::FocusNode { node, source: None });
+            assert_eq!(v.focused_table(), Some(a));
+        }
+        let anchor = v.absolute_anchor_line;
+        assert_eq!(v.toggle_table_alignment(), Some(a));
+        assert!(v.table_alignment_enabled(a));
+        assert!(!v.table_alignment_enabled(b));
+        assert_eq!(v.focused_node, cell);
+        assert_eq!(v.absolute_anchor_line, anchor);
+        v.perform_action(Action::FocusNode {
+            node: other,
+            source: None,
+        });
+        assert_eq!(v.focused_table(), None);
+        assert_eq!(v.toggle_table_alignment(), None);
+        v.perform_action(Action::FocusNode {
+            node: b,
+            source: None,
+        });
+        assert_eq!(v.toggle_table_alignment(), Some(b));
+        assert!(v.table_alignment_enabled(a));
+        v.perform_action(Action::FocusNode {
+            node: a,
+            source: None,
+        });
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.flatjson[a].is_collapsed());
+        assert_eq!(v.focused_table(), Some(a));
+        assert_eq!(v.aligned_table_for_line(v.focused_line_index()), None);
+        assert_eq!(v.toggle_table_alignment(), Some(a));
+        assert!(v.flatjson[a].is_collapsed());
+        assert_eq!(v.toggle_table_alignment(), Some(a));
+        v.perform_action(Action::ToggleCollapsed);
+        assert!(v.render_line(v.focused_line_index()).text.contains("id "));
+        v.set_roots(vec![cell]);
+        assert_eq!(v.focused_table(), None);
+        assert!(v.table_alignment_enabled(a));
+        v.set_roots(vec![row]);
+        assert_eq!(v.focused_table(), None);
+        v.set_roots(vec![0]);
+        v.perform_action(Action::FocusNode {
+            node: cell,
+            source: None,
+        });
+        assert_eq!(v.focused_table(), Some(a));
+        assert!(v.table_alignment_enabled(a));
+        let mut sequence = viewer(r#"[{"x":1}] {"tail":0}"#);
+        assert_eq!(sequence.focused_table(), None);
+        assert_eq!(sequence.toggle_table_alignment(), None);
+        sequence.perform_action(Action::MoveDown(1));
+        assert_eq!(sequence.focused_table(), Some(0));
+    }
+
+    #[test]
+    fn aligned_tokens_keep_terminal_columns_and_padding_outside_source_spans() {
+        let mut v = viewer(r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}]}"#);
+        let table = v.flatjson[0].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        assert_eq!(v.toggle_table_alignment(), Some(table));
+        let lines: Vec<_> = (0..v.visible.len()).map(|i| v.render_line(i)).collect();
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "users[2]{id  name}:",
+                "           1 Ada",
+                "         200 Lin"
+            ]
+        );
+        assert_eq!(v.table_indentation(table), 0);
+        assert_eq!(v.aligned_table_width(table), 19);
+        let header = &lines[0];
+        let first_row = &lines[1];
+        let id = first_row
+            .spans
+            .iter()
+            .find(|span| span.role == crate::toon_display::TokenRole::Number)
+            .unwrap();
+        let name = first_row
+            .spans
+            .iter()
+            .find(|span| span.role == crate::toon_display::TokenRole::String)
+            .unwrap();
+        assert_eq!(&first_row.text[id.range.end..name.range.start], " ");
+        assert_eq!(
+            crate::lineprinter::hit_test(first_row, 10),
+            (first_row.owner, None)
+        );
+        assert_eq!(
+            crate::lineprinter::hit_test(first_row, 9),
+            (first_row.owner, None)
+        );
+        assert_eq!(
+            crate::lineprinter::hit_test(header, 11),
+            (header.owner, None)
+        );
+        assert_eq!(
+            crate::lineprinter::hit_test(first_row, 12),
+            (first_row.owner, None)
+        );
+        assert_eq!(crate::lineprinter::hit_test(first_row, 13).0, name.node);
+        let source = id.source.clone().unwrap();
+        assert_eq!(id.matching_ranges(&source), vec![id.range.clone()]);
+        assert_eq!(crate::lineprinter::hit_test(first_row, 11).0, id.node);
+    }
+
+    #[test]
+    fn aligned_numbers_use_right_edges_while_numeric_strings_stay_left_aligned() {
+        use crate::toon_display::TokenRole;
+        let mut v = viewer(
+            r#"{"users":[{"amount":1,"label":"7","n":2},{"amount":-12.5,"label":"009","n":300},{"amount":2.75,"label":"Ada","n":null},{"amount":0,"label":"Lin","n":"123456789"}]}"#,
+        );
+        let table = v.flatjson[0].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        v.toggle_table_alignment().unwrap();
+        let lines: Vec<_> = (0..v.visible.len()).map(|i| v.render_line(i)).collect();
+        let spans = |line: &DisplayLine, role| {
+            line.spans
+                .iter()
+                .filter(|span| span.role == role)
+                .map(|span| span.range.clone())
+                .collect::<Vec<_>>()
+        };
+        let first_numbers = spans(&lines[1], TokenRole::Number);
+        let second_numbers = spans(&lines[2], TokenRole::Number);
+        let third_numbers = spans(&lines[3], TokenRole::Number);
+        assert_eq!(first_numbers[0].end, second_numbers[0].end);
+        assert_eq!(first_numbers[0].end, third_numbers[0].end);
+        assert_eq!(first_numbers[1].end, second_numbers[1].end);
+        let header_fields = spans(&lines[0], TokenRole::FieldDefinition);
+        let first_strings = spans(&lines[1], TokenRole::String);
+        let second_strings = spans(&lines[2], TokenRole::String);
+        let last_strings = spans(&lines[4], TokenRole::String);
+        assert_eq!(first_strings[0].start, header_fields[1].start);
+        assert_eq!(second_strings[0].start, header_fields[1].start);
+        assert_eq!(&lines[1].text[first_strings[0].clone()], "\"7\"");
+        assert_eq!(&lines[2].text[second_strings[0].clone()], "\"009\"");
+        assert_eq!(last_strings[1].start, header_fields[2].start);
+        assert_eq!(first_numbers[1].end, last_strings[1].end);
+        assert_eq!(
+            spans(&lines[3], TokenRole::Null)[0].start,
+            header_fields[2].start
+        );
+        assert_eq!(
+            v.aligned_table_width(table),
+            lines
+                .iter()
+                .map(|line| UnicodeWidthStr::width(line.text.as_str()))
+                .max()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn aligned_final_numbers_include_leading_padding_in_warning_bounds() {
+        use crate::toon_display::TokenRole;
+        let mut v = JsonViewer::new(
+            parse_top_level_yaml("rows:\n  - n: .inf\n  - n: abcdefghijklmnopqrstuvwxyz\n".into())
+                .unwrap(),
+        );
+        let table = v.flatjson[0].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        v.toggle_table_alignment().unwrap();
+        let lines: Vec<_> = (0..v.visible.len()).map(|i| v.render_line(i)).collect();
+        let number = lines[1]
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::Number)
+            .unwrap();
+        let string = lines[2]
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::String)
+            .unwrap();
+        assert_eq!(number.range.end, string.range.end);
+        assert_eq!(
+            v.aligned_table_width(table),
+            lines
+                .iter()
+                .map(|line| UnicodeWidthStr::width(line.text.as_str()))
+                .max()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn aligned_unicode_warnings_and_lazy_offscreen_measurements_survive_reflow() {
+        const COUNT: usize = 512;
+        let mut values = vec![r#"{"id":1,"text":"e\u0301"}"#; COUNT];
+        values[COUNT - 1] = r#"{"id":999,"text":"界🦊,\\\u0001"}"#;
+        let input = format!(r#"{{"box":{{"rows":[{}]}}}}"#, values.join(","));
+        let mut v = viewer(&input);
+        v.set_viewport(
+            TTYDimensions {
+                width: 28,
+                height: 4,
+            },
+            true,
+        );
+        let box_node = v.flatjson[0].first_child().unwrap();
+        let table = v.flatjson[box_node].first_child().unwrap();
+        let last = v.flatjson[v.flatjson[table].pair_index().unwrap()]
+            .last_child()
+            .unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        let before = Layout::formatted_rows();
+        assert_eq!(v.toggle_table_alignment(), Some(table));
+        assert!(Layout::formatted_rows() - before <= 12);
+        assert!(v.frame.len() <= 5);
+        let first = v.render_line(v.focused_line_index() + 1);
+        let last_line = v.layout.node(&v.flatjson, last).line;
+        let last_line = v.visible.visible_index(last_line).unwrap();
+        let widest = v.render_line(last_line);
+        assert!(widest.text.contains("界🦊,"));
+        let token_column = |line: &DisplayLine, role| {
+            let span = line.spans.iter().find(|span| span.role == role).unwrap();
+            UnicodeWidthStr::width(&line.text[..span.range.end])
+        };
+        use crate::toon_display::TokenRole;
+        assert_eq!(
+            token_column(&widest, TokenRole::Number),
+            token_column(&first, TokenRole::Number)
+        );
+        let text_column = |line: &DisplayLine| {
+            let span = line
+                .spans
+                .iter()
+                .find(|span| span.role == TokenRole::String)
+                .unwrap();
+            UnicodeWidthStr::width(&line.text[..span.range.start])
+        };
+        assert_eq!(text_column(&first), text_column(&widest));
+        assert_eq!(
+            v.aligned_table_width(table),
+            UnicodeWidthStr::width(widest.text.as_str())
+        );
+        assert!(widest.text.contains("# WARN Non-standard string escape"));
+        let width = v.aligned_table_width(table);
+        v.set_wrap_geometry(14, v.table_indentation(table));
+        let before = Layout::formatted_rows();
+        for _ in 0..3 {
+            v.set_wrap_geometry(14, v.table_indentation(table));
+            assert_eq!(v.aligned_table_width(table), width);
+            assert!(v.frame.len() <= 5);
+        }
+        assert_eq!(Layout::formatted_rows() - before, 0);
+        v.toggle_wrapping();
+        assert!(!v.is_wrapped_line(v.focused_line_index()));
+        assert!(!v.is_wrapped_line(last_line));
+        v.perform_action(Action::FocusNode {
+            node: box_node,
+            source: None,
+        });
+        assert!(v.is_wrapped_line(v.focused_line_index()));
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        v.toggle_table_alignment();
+        assert!(v.is_wrapped_line(v.focused_line_index()));
+        assert_eq!(v.focused_node, table);
+        assert!(
+            v.render_line(v.focused_line_index())
+                .text
+                .contains("{id,text}")
+        );
+    }
+    #[test]
+    fn nested_grid_retains_columns_across_gutters_and_indentation_reduction() {
+        use crate::toon_display::TokenRole;
+        let mut v = viewer(
+            r#"{"outer":[{"rows":[{"id":1,"text":"e\u0301"},{"id":200,"text":"界🦊"}],"flag":true}]}"#,
+        );
+        let outer = v.flatjson[0].first_child().unwrap();
+        let object = v.flatjson[outer].first_child().unwrap();
+        let table = v.flatjson[object].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        v.toggle_table_alignment();
+        for numbers in [true, false, true] {
+            v.set_viewport(
+                TTYDimensions {
+                    width: 24,
+                    height: 8,
+                },
+                numbers,
+            );
+            let logical = v.focused_line_index();
+            let header = v.render_line(logical);
+            let row = v.render_line(logical + 1);
+            let long = v.render_line(logical + 2);
+            let indentation = v.table_indentation(table);
+            let column = |line: &DisplayLine, role: TokenRole, ordinal| {
+                let span = line
+                    .spans
+                    .iter()
+                    .filter(|span| span.role == role)
+                    .nth(ordinal)
+                    .unwrap();
+                let edge = if role == TokenRole::Number {
+                    span.range.end
+                } else {
+                    span.range.start
+                };
+                UnicodeWidthStr::width(&line.text[..edge]) - indentation
+            };
+            assert_eq!(
+                column(&long, TokenRole::Number, 0),
+                column(&row, TokenRole::Number, 0)
+            );
+            assert_eq!(
+                column(&header, TokenRole::FieldDefinition, 1),
+                column(&row, TokenRole::String, 0)
+            );
+            assert_eq!(
+                column(&row, TokenRole::String, 0),
+                column(&long, TokenRole::String, 0)
+            );
+            assert_eq!(v.aligned_table_for_line(logical), Some(table));
+            assert_eq!(v.aligned_table_for_line(logical + 1), Some(table));
+            assert_eq!(
+                v.aligned_table_width(table),
+                [header, row, long]
+                    .iter()
+                    .map(|line| UnicodeWidthStr::width(line.text.as_str()))
+                    .max()
+                    .unwrap()
+            );
+            v.set_wrap_geometry(10, indentation);
+            assert!(!v.is_wrapped_line(logical));
+        }
     }
 }

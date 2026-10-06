@@ -1,7 +1,7 @@
 //! Width-dependent logical addresses, separate from semantic analysis and text.
 use super::index::{Analysis, child_count, children, key, numeric, string};
 use super::line_index::LineIndex;
-use super::{quote_key, quote_value, scalar};
+use super::{quote_json, quote_key, scalar, value_needs_quotes};
 use crate::flatjson::{FlatJson, Value};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -59,7 +59,14 @@ pub fn key_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
 }
 pub fn value_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
     match flat[node].value {
-        Value::String => Cow::Owned(quote_value(&string(flat, node))),
+        Value::String => {
+            let value = string(flat, node);
+            if value_needs_quotes(&value) {
+                Cow::Owned(quote_json(&value))
+            } else {
+                value
+            }
+        }
         Value::Number => numeric(&flat.1[flat[node].range.clone()]).0,
         Value::Boolean | Value::Null => Cow::Borrowed(&flat.1[flat[node].range.clone()]),
         _ => Cow::Borrowed(""),
@@ -203,6 +210,41 @@ impl Geometry {
                 }
             },
         })
+    }
+
+    /// A projected table's structural header (not an ancestor's preview).
+    pub fn table_header(&self, flat: &FlatJson, analysis: &Analysis, table: usize) -> Row {
+        let position = self.position(flat, analysis, table);
+        let descriptor = self.row(flat, analysis, position.body_line).unwrap();
+        assert_eq!(descriptor.node, table, "table header must be in projection");
+        descriptor
+    }
+
+    /// Leading spaces actually painted before the table header, accounting
+    /// for the dash replacing two spaces on the first field of a list object.
+    pub fn table_indentation(&self, flat: &FlatJson, analysis: &Analysis, table: usize) -> usize {
+        let header = self.table_header(flat, analysis, table);
+        (header.depth - usize::from(header.owner != header.node)) * 2
+    }
+
+    pub fn table_field_start(&self, flat: &FlatJson, analysis: &Analysis, table: usize) -> usize {
+        let descriptor = self.table_header(flat, analysis, table);
+        let Kind::Value { list, root } = descriptor.kind else {
+            unreachable!("table header is a value row")
+        };
+        descriptor.depth * 2
+            + if list { 2 } else { 0 }
+            + if !root && flat[table].key_range.is_some() {
+                UnicodeWidthStr::width(key_text(flat, table).as_ref())
+            } else {
+                0
+            }
+            + analysis
+                .node(flat, table)
+                .child_count
+                .checked_ilog10()
+                .unwrap_or(0) as usize
+            + 4 // decimal digit, '[' and ']', and '{'
     }
 
     pub fn position(&self, flat: &FlatJson, analysis: &Analysis, node: usize) -> Position {
