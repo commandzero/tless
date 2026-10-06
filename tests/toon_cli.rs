@@ -813,11 +813,8 @@ mod terminal_commands {
                     width,
                     24,
                 );
-                let reference = rendered_rows(
-                    &session_with_width(json, "q", None, width),
-                    width,
-                    24,
-                );
+                let reference =
+                    rendered_rows(&session_with_width(json, "q", None, width), width, 24);
                 assert_eq!(&actual[..22], &reference[..22], "{toon}, width {width}");
             }
         }
