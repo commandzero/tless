@@ -14,11 +14,11 @@ Earlier upstream history is preserved below.
 ### Changed
 
 - **Breaking:** `:write` and `:w` now write TOON rather than JSON, including `!` forms; use `:write-json` (or `:wj`) for previous JSON writes. TOON requires one active root. (#31)
-- **Breaking:** TOON input and export now follow TOON 4.1, including nested table field groups and `[]` empty arrays. Strict input rejects duplicate sibling keys; remove duplicates before opening TOON files. See [codec behavior](docs/toon-codec.md).
+- **Breaking:** TOON input and export now follow TOON 4.1, including nested table field groups and `[]` empty arrays. Strict input rejects duplicate sibling keys; remove duplicates before opening TOON files. See [codec behavior](docs/toon-codec.md). (#33)
 
 ### Fixed
 
-- Round-trip arrays of empty objects through TOON export and input.
+- Round-trip arrays of empty objects through TOON export and input. (#33)
 
 ### Added
 
