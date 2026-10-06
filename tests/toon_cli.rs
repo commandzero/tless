@@ -388,7 +388,7 @@ mod terminal_commands {
         ] {
             let output = session_with_width(r#"{"a":1}"#, "lpp q", Some(option), 120);
             assert!(strip_styles(&output).contains("a: 1"));
-            assert!(output.contains("1\r\n\r\nPress any key to continue."));
+            assert!(output.contains("1\r\n"));
         }
     }
 
@@ -795,10 +795,7 @@ mod terminal_commands {
 
     #[test]
     fn brackets_move_to_entries_at_the_parent_level() {
-        for (motion, expected) in [
-            ("[", "\"x\": 20"),
-            ("]", "30\r\n\r\nPress any key to continue."),
-        ] {
+        for (motion, expected) in [("[", "\"x\": 20"), ("]", "30\r\n")] {
             let output = session(
                 r#"{"a":10,"b":{"x":20},"c":30}"#,
                 &format!("ljl{}pp q", motion),
@@ -816,11 +813,7 @@ mod terminal_commands {
             ("1 2 3", "][pp q", "1"),
         ] {
             let output = session(input, commands);
-            assert!(
-                output.contains(&format!("{}\r\n\r\nPress any key to continue.", expected)),
-                "{}",
-                output
-            );
+            assert!(output.contains(&format!("{}\r\n", expected)), "{}", output);
         }
     }
 
@@ -866,16 +859,13 @@ mod terminal_commands {
     fn sequence_navigation_search_and_mouse_keep_value_targets() {
         let input = "{\"name\":\"Ada\",\"details\":{\"needle\":\"MATCH\"}}\n[10,20]\n7\n{}\n[]";
         for (commands, expected) in [
-            ("l]Jpp q", "7\r\n\r\nPress any key to continue."),
+            ("l]Jpp q", "7\r\n"),
             (
                 " pp q",
                 "{\n  \"name\": \"Ada\",\n  \"details\": {\n    \"needle\": \"MATCH\"\n  }\n}",
             ),
-            (
-                " /MATCH\npp q",
-                "\"MATCH\"\r\n\r\nPress any key to continue.",
-            ),
-            ("4Gpp q", "\"MATCH\"\r\n\r\nPress any key to continue."),
+            (" /MATCH\npp q", "\"MATCH\"\r\n"),
+            ("4Gpp q", "\"MATCH\"\r\n"),
         ] {
             let output = session(input, commands);
             assert!(
@@ -891,11 +881,7 @@ mod terminal_commands {
         let commands = ":set nonumber\n\x1b[<0;1;1M\x1b[<0;7;4Mpp q";
         let output = session(input, commands);
         assert!(strip_styles(&output).contains("▸ --- (1 of 5)"));
-        assert!(
-            output.contains("7\r\n\r\nPress any key to continue."),
-            "{}",
-            output
-        );
+        assert!(output.contains("7\r\n"), "{}", output);
     }
 
     #[test]
@@ -915,7 +901,7 @@ mod terminal_commands {
     fn sequence_search_ignores_positions_and_preserves_duplicate_identity() {
         let input = "{\"status\":\"queued\",\"status\":\"done\"} 7";
         let output = session(input, " /done\npp q");
-        assert!(output.contains("\"done\"\r\n\r\nPress any key to continue."));
+        assert!(output.contains("\"done\"\r\n"));
         assert!(strip_styles(&output).contains("occurrence 2 of 2"));
         let output = strip_styles(&session(input, " /1 of 2\nq"));
         assert!(output.contains("Pattern not found: 1 of 2"), "{}", output);
@@ -965,7 +951,7 @@ mod terminal_commands {
         assert!(clean.contains("[2]: alpha,beta"), "{}", clean);
         assert!(clean.contains("  - alpha"), "{}", clean);
         assert!(clean.contains("  - beta"), "{}", clean);
-        assert!(output.contains("\"alpha\"\r\n\r\nPress any key to continue."));
+        assert!(output.contains("\"alpha\"\r\n"));
     }
 
     #[test]
@@ -1076,7 +1062,6 @@ mod terminal_commands {
         let clean = strip_styles(&last);
         assert!(clean.contains("users[27].name"), "{last:?}");
         assert!(clean.contains(r#"\\n\\\"END"#), "{last:?}");
-        assert!(last.contains("Press any key to continue."), "{last:?}");
     }
 
     #[test]
@@ -1361,9 +1346,7 @@ mod terminal_commands {
                 "{pattern}: {output:?}"
             );
             assert!(
-                output.contains(&format!(
-                    "{expected_value}\r\n\r\nPress any key to continue."
-                )),
+                output.contains(&format!("{expected_value}\r\n")),
                 "{pattern}: {output:?}"
             );
             let rows = rendered_rows(&output, 35, 24);
@@ -1420,10 +1403,7 @@ mod terminal_commands {
             "{selected:?}"
         );
         let copied = session_with_width(input, ":set nonumber\nl\t.\x1b[<0;20;3Mpp q", None, 35);
-        assert!(
-            copied.contains("\"Lin\"\r\n\r\nPress any key to continue."),
-            "{copied:?}"
-        );
+        assert!(copied.contains("\"Lin\"\r\n"), "{copied:?}");
         let row_padding =
             session_with_width(input, ":set nonumber\nl\t.\x1b[<0;18;2MpP q", None, 35);
         assert!(
@@ -1444,10 +1424,7 @@ mod terminal_commands {
         let cell = session(input, "lll\tjpP q");
         assert!(strip_styles(&cell).contains(".users[1].id\r\n"), "{cell:?}");
         let value = session(input, "lll\tjJpp q");
-        assert!(
-            value.contains("\"Lin\"\r\n\r\nPress any key to continue."),
-            "{value:?}"
-        );
+        assert!(value.contains("\"Lin\"\r\n"), "{value:?}");
         let toon = std::env::temp_dir().join(format!("tless-aligned-{}.toon", std::process::id()));
         let json = std::env::temp_dir().join(format!("tless-aligned-{}.json", std::process::id()));
         session(
@@ -1594,11 +1571,7 @@ mod terminal_commands {
             rows
         );
         assert!(rows.iter().any(|row| row.contains(".long")), "{:?}", rows);
-        assert!(
-            output.contains(&format!("\"{}\"\r\n\r\nPress any key to continue.", value)),
-            "{}",
-            output
-        );
+        assert!(output.contains(&format!("\"{}\"\r\n", value)), "{}", output);
     }
 
     #[test]
@@ -1613,11 +1586,7 @@ mod terminal_commands {
             "{:?}",
             rows
         );
-        assert!(
-            output.contains("\"A\"\r\n\r\nPress any key to continue."),
-            "{}",
-            output
-        );
+        assert!(output.contains("\"A\"\r\n"), "{}", output);
     }
 
     #[test]
@@ -1682,11 +1651,7 @@ mod terminal_commands {
         // is in its document text, beyond the reserved gutter.
         let click = "\x1b[<0;8;4M";
         let output = session_with_width(&input, &format!("l\x0c\x12{click}pp q"), None, 35);
-        assert!(
-            output.contains(&format!("\"{}\"\r\n\r\nPress any key to continue.", value)),
-            "{}",
-            output
-        );
+        assert!(output.contains(&format!("\"{}\"\r\n", value)), "{}", output);
     }
 
     #[test]
@@ -1717,11 +1682,7 @@ mod terminal_commands {
             r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,
             "l /Lin\npp q",
         );
-        assert!(
-            output.contains("\"Lin\"\r\n\r\nPress any key to continue."),
-            "{}",
-            output
-        );
+        assert!(output.contains("\"Lin\"\r\n"), "{}", output);
         assert!(strip_styles(&output).contains("users[1].name"));
     }
 
@@ -1731,11 +1692,7 @@ mod terminal_commands {
             r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"Lin"}]}"#,
             "lllJj\x12pp q",
         );
-        assert!(
-            output.contains("\"Lin\"\r\n\r\nPress any key to continue."),
-            "{}",
-            output
-        );
+        assert!(output.contains("\"Lin\"\r\n"), "{}", output);
     }
 
     #[test]
@@ -1744,7 +1701,7 @@ mod terminal_commands {
         let clean = strip_styles(&output);
         assert!(clean.contains("# WARN Duplicate key"));
         assert!(clean.contains("occurrence 2 of 2"));
-        assert!(output.contains("\"done\"\r\n\r\nPress any key to continue."));
+        assert!(output.contains("\"done\"\r\n"));
     }
 
     #[test]
@@ -1792,7 +1749,7 @@ mod terminal_commands {
         let output = session("42", &format!(":wt {}\npt q", target.display()));
         assert!(output.contains("Error opening file for writing"));
         assert!(!output.contains(" written"));
-        assert!(output.contains("42\r\n\r\nPress any key to continue."));
+        assert!(output.contains("42\r\n"));
         assert!(!target.exists());
     }
 
@@ -1955,21 +1912,13 @@ mod terminal_commands {
         std::fs::remove_file(&target).unwrap();
 
         let output = session_with_width(&input, "l\x0clpt q", None, 35);
-        assert!(
-            output.contains(&format!("{}\r\n\r\nPress any key to continue.", value)),
-            "{}",
-            output
-        );
+        assert!(output.contains(&format!("{}\r\n", value)), "{}", output);
     }
 
     #[test]
     fn prints_focused_canonical_toon_on_the_persistent_screen() {
         let output = session(r#"{"items":[1,2]}"#, "lpt q");
-        assert!(
-            output.contains("[2]: 1,2\r\n\r\nPress any key to continue."),
-            "{}",
-            output
-        );
+        assert!(output.contains("[2]: 1,2\r\n"), "{}", output);
     }
 
     #[test]
