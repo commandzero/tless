@@ -373,29 +373,47 @@ fn machine_output_needs_no_controlling_terminal() {
 
 #[test]
 fn broken_pipe_fails_for_json_and_yaml_in_every_build() {
+    use std::os::unix::process::CommandExt;
     for format in ["json", "yaml"] {
-        // An overlapping subprocess must not retain this pipe's read end.
-        let (reader, writer) = std::io::pipe().unwrap();
-        let mut sibling = Command::new(env!("CARGO_BIN_EXE_tless"))
-            .args(["-o", "json"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        drop(reader);
-        let mut child = Command::new(env!("CARGO_BIN_EXE_tless"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tless"));
+        command
             .args(["-o", format])
             .stdin(Stdio::piped())
-            .stdout(writer)
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        // Create and close the reader after fork: another test's pending exec
+        // can otherwise temporarily retain even a CLOEXEC read descriptor.
+        // Only async-signal-safe syscalls run in this child-side setup.
+        unsafe {
+            command.pre_exec(|| {
+                let mut fds = [0; 2];
+                if libc::pipe(fds.as_mut_ptr()) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::close(fds[0]) == -1 {
+                    let error = std::io::Error::last_os_error();
+                    libc::close(fds[1]);
+                    return Err(error);
+                }
+                if libc::dup2(fds[1], libc::STDOUT_FILENO) == -1 {
+                    let error = std::io::Error::last_os_error();
+                    libc::close(fds[1]);
+                    return Err(error);
+                }
+                if libc::close(fds[1]) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let mut child = command.spawn().unwrap();
         child.stdin.take().unwrap().write_all(b"42").unwrap();
         let output = child.wait_with_output().unwrap();
-        // Keep the sibling alive until the first write, then release its input.
-        drop(sibling.stdin.take());
-        sibling.wait().unwrap();
-        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{format}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

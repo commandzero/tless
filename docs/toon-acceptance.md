@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T19:17:08Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T20:47:04Z }
 ---
 
 # TOON acceptance checks
@@ -42,6 +42,10 @@ with terminal access; do not count them as passing or skipped tests.
 Pipeline argument-error cases supply no stdin payload: validation can exit before
 reading input. Resolution-error cases supply documents and assert status 1 rather
 than the status 2 used for invalid arguments.
+
+Closed-pipe fixtures create the pipe and close its reader in the child after
+fork, before exec. A parent-side close can race another pending fork that
+temporarily retains even a CLOEXEC reader, allowing a valid successful write.
 
 ## Manual release checks
 
