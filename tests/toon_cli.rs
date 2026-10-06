@@ -521,6 +521,8 @@ mod terminal_commands {
         let mut waiting_for_prompt = None;
         let mut entering_command = false;
         let mut waiting_for_redraw = None;
+        let mut pending_print = false;
+        let mut waiting_for_print = None;
         let mut scanned_cursor_requests = 0;
         loop {
             let mut buffer = [0; 16384];
@@ -559,9 +561,25 @@ mod terminal_commands {
                     waiting_for_redraw = None;
                 }
             }
+            if let Some(start) = waiting_for_print {
+                if output[start..]
+                    .windows(b"Press any key to continue.".len())
+                    .any(|bytes| bytes == b"Press any key to continue.")
+                {
+                    use nix::sys::termios::{LocalFlags, tcgetattr};
+                    let mode = tcgetattr(&master).unwrap();
+                    if !mode
+                        .local_flags
+                        .intersects(LocalFlags::ECHO | LocalFlags::ICANON)
+                    {
+                        waiting_for_print = None;
+                    }
+                }
+            }
             if sent
                 && waiting_for_prompt.is_none()
                 && waiting_for_redraw.is_none()
+                && waiting_for_print.is_none()
                 && Instant::now() >= next_key_at
             {
                 if let Some(key) = keys.next() {
@@ -578,6 +596,17 @@ mod terminal_commands {
                         );
                         next_key_at = Instant::now() + Duration::from_millis(100);
                         continue;
+                    }
+                    if !entering_command {
+                        if pending_print {
+                            if matches!(key, b'p' | b't' | b'v' | b's' | b'k' | b'P' | b'b' | b'q')
+                            {
+                                waiting_for_print = Some(output.len());
+                            }
+                            pending_print = false;
+                        } else {
+                            pending_print = key == b'p';
+                        }
                     }
                     if !entering_command && matches!(key, b':' | b'/' | b'?') {
                         entering_command = true;
