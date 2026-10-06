@@ -20,8 +20,6 @@ pub struct NodeLayout {
     pub collapsible: bool,
     pub entry_count: usize,
     pub inline_array: bool,
-    pub table_row: bool,
-    pub table_cell: bool,
     #[cfg(test)]
     pub descendant_warnings: usize,
     pub occurrence: Option<usize>,
@@ -158,12 +156,13 @@ impl Layout {
             collapsible: if sequence && root {
                 true
             } else {
-                info.child_count != 0 && !info.table_row && !(root && !flat[node].is_array())
+                info.child_count != 0
+                    && !info.table_row
+                    && self.analysis.table_row_owner(flat, node).is_none()
+                    && !(root && !flat[node].is_array() && !info.table)
             },
             entry_count: info.child_count,
             inline_array: pos.inline,
-            table_row: info.table_row,
-            table_cell: info.table_cell,
             #[cfg(test)]
             descendant_warnings: info.hidden_warnings,
             occurrence: occurrence.map(|pair| pair.0),

@@ -8,7 +8,7 @@ Keep every parsed value reachable and identifiable when TOON places multiple log
 
 ### Requirement: Logical focus independent of lines
 
-The viewer SHALL distinguish container focus from child-value focus even when they share a display line. It SHALL support focus on individual inline-array elements, table row objects, and table cells without changing the TOON layout. A cell's path SHALL include its array index and field key. A duplicate occurrence SHALL retain a distinct selection identity even if its textual path equals another occurrence's path.
+The viewer SHALL distinguish container focus from child-value focus even when they share a display line. It SHALL support focus on individual inline-array elements, table row objects, keyed entries, nested field groups, and primitive table leaves without changing TOON layout. Paths SHALL retain every parsed array index, entry key, and nested field key. Nested groups SHALL remain selectable but SHALL NOT collapse independently within a table. Duplicate occurrences SHALL retain distinct identities even when textual paths coincide.
 
 #### Scenario: Table cell identity
 
@@ -44,6 +44,13 @@ When a path filter is active, structural and vertical navigation SHALL operate o
 - **THEN** focus SHALL move to that row's name cell
 - **AND** a parent motion SHALL focus the row object, followed by the array on a second parent motion
 
+#### Scenario: Nested leaf and keyed-entry motion
+
+- **WHEN** a primitive leaf is selected in a nested table group and vertical motion reaches another row or keyed entry
+- **THEN** focus SHALL retain the same depth-first primitive leaf column
+- **AND** parent motion SHALL first select its parsed group, then parsed entry/row ancestors, and finally the owning table
+- **AND** root keyed-table headers SHALL remain selectable, collapsible and alignable, independently of sequence document rows
+
 #### Scenario: Expand an inline array
 
 - **WHEN** an inline array data line is selected and the user presses `l` or Right Arrow
@@ -59,7 +66,7 @@ When a path filter is active, structural and vertical navigation SHALL operate o
 
 #### Scenario: Root focus
 
-- **WHEN** parent motion reaches a nonempty object in a single-root input
+- **WHEN** parent motion reaches a nonempty ordinary object in a single-root input
 - **THEN** root selection SHALL be available through its first display line and application status
 - **AND** the viewer SHALL NOT insert a synthetic root heading
 - **AND** an empty root SHALL remain selectable using one blank viewport row
@@ -100,6 +107,7 @@ With a path filter active, search and repeat-search SHALL enumerate matches only
 - **WHEN** search selects a row's `name` key whose spelling is displayed only in the table header
 - **THEN** the selected row field SHALL remain the match owner
 - **AND** the header spelling SHALL be highlighted and brought into view
+- **AND** nested group and leaf keys SHALL reveal their shared header definitions while retaining the originating parsed occurrence
 
 #### Scenario: Search cannot escape the filter
 
@@ -187,6 +195,7 @@ A click on continuation text SHALL select the original value or cell using its o
 ### Requirement: Shared horizontal viewport for aligned tables
 
 An expanded aligned table SHALL use one horizontal offset for its header and all rows. From its header, row, or cell, `,` and `.` SHALL move that offset by ten terminal cells times the numeric prefix. `;` SHALL toggle the shared end/start position. Bounds SHALL use the complete aligned table, including syntax and annotations, not the focused row. Other lines and collapsed previews SHALL retain ordinary scrolling.
+This shared owner SHALL also apply to keyed entries and nested field groups or leaves, subject to active-root boundaries. Keyed prefixes and nested header syntax SHALL share the table transform.
 
 #### Scenario: Counted shared scrolling
 

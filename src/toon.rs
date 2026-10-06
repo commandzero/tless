@@ -244,12 +244,6 @@ pub fn parse(input: &str) -> Result<FlatJson, ToonDiagnostic> {
 }
 
 fn parse_on_codec_stack(input: &str) -> Result<FlatJson, ToonDiagnostic> {
-    if input.starts_with('\u{feff}') {
-        let mut error = ToonDiagnostic::new(ToonErrorKind::Syntax, "initial BOM is not supported");
-        error.line = Some(1);
-        error.column = Some(1);
-        return Err(error);
-    }
     let input = input.replace("\r\n", "\n");
     let value: serde_json::Value = if input.trim_matches(&[' ', '\n'][..]).is_empty() {
         serde_json::Value::Object(serde_json::Map::new())
@@ -506,7 +500,7 @@ mod tests {
         assert!(super::parse(&format!("{}value: 1", "\n".repeat(100))).is_ok());
     }
     #[test]
-    fn accepts_empty_input_and_crlf_but_rejects_bom() {
+    fn accepts_empty_input_crlf_and_initial_bom() {
         for input in ["", " \n  \n"] {
             assert_eq!(super::parse(input).unwrap().1, "{}");
         }
@@ -514,7 +508,10 @@ mod tests {
             super::parse("name: Ada\r\n\r\n").unwrap().1,
             r#"{ "name": "Ada" }"#
         );
-        assert!(super::parse("\u{feff}name: Ada").is_err());
+        assert_eq!(
+            super::parse("\u{feff}name: Ada").unwrap().1,
+            r#"{ "name": "Ada" }"#
+        );
     }
     #[test]
     fn duplicate_input_keys_are_rejected() {

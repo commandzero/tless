@@ -31,14 +31,25 @@ pub fn row(
         let mut line = header(flat, analysis, descriptor, focused, alignment);
         let node = descriptor.node;
         if descriptor.kind == Kind::TableRow {
-            if alignment.is_some() {
-                let table = flat[node].parent.unwrap();
-                let start = geometry.table_field_start(flat, analysis, table);
-                let indentation = descriptor.depth * 2;
-                line.text
-                    .extend(std::iter::repeat_n(' ', start.saturating_sub(indentation)));
+            let table = flat[node].parent.unwrap();
+            if !flat[table].is_array() {
+                line.token(
+                    &key_text(flat, node),
+                    node,
+                    TokenRole::Key,
+                    flat[node].key_range.clone(),
+                );
+                line.token(": ", node, TokenRole::Punctuation, None);
             }
-            for (column, child) in children(flat, node).enumerate() {
+            if let Some(metrics) = alignment {
+                let start = geometry
+                    .table_field_start(flat, analysis, table)
+                    .max(metrics.entry_prefix);
+                let width = unicode_width::UnicodeWidthStr::width(line.text.as_str());
+                line.text
+                    .extend(std::iter::repeat_n(' ', start.saturating_sub(width)));
+            }
+            for (column, child) in analysis.table_cells(flat, node).enumerate() {
                 if column > 0 {
                     if alignment.is_some() {
                         line.text.push(' ');
@@ -47,9 +58,13 @@ pub fn row(
                     }
                 }
                 let start = line.text.len();
+                if let Some(metrics) = alignment {
+                    line.text
+                        .extend(std::iter::repeat_n(' ', metrics.leaf_offsets[column]));
+                }
                 let number_width = alignment
                     .filter(|_| matches!(flat[child].value, Value::Number))
-                    .map(|metrics| metrics.widths[column]);
+                    .map(|metrics| metrics.widths[column] - metrics.leaf_offsets[column]);
                 value(flat, &mut line, child, number_width);
                 if let Some(metrics) = alignment.filter(|_| number_width.is_none()) {
                     pad_column(&mut line, metrics, column, start);
@@ -130,7 +145,7 @@ fn header(
     }
     let object = matches!(flat[node].value, Value::EmptyObject)
         || flat[node].is_opening_of_container() && !flat[node].is_array();
-    if object && (root || flat[node].key_range.is_none()) {
+    if object && (root || flat[node].key_range.is_none()) && !analysis.node(flat, node).table {
         return line;
     }
     if list {
@@ -144,9 +159,20 @@ fn header(
             flat[node].key_range.clone(),
         );
     }
-    if flat[node].is_array() || matches!(flat[node].value, Value::EmptyArray) {
+    if flat[node].is_array()
+        || matches!(flat[node].value, Value::EmptyArray)
+        || analysis.node(flat, node).table
+    {
+        let count = analysis.node(flat, node).child_count;
+        if count == 0 && !list {
+            if !root {
+                line.token(": ", node, TokenRole::Punctuation, None);
+            }
+            line.token("[]", node, TokenRole::EmptyContainer, None);
+            return line;
+        }
         line.token(
-            &format!("[{}]", analysis.node(flat, node).child_count),
+            &format!("[{}{}]", count, if object { ":" } else { "" }),
             node,
             TokenRole::ArrayIndex,
             None,
@@ -154,43 +180,34 @@ fn header(
         if analysis.node(flat, node).table {
             line.token("{", node, TokenRole::ContainerDelimiter, None);
             let first = children(flat, node).next().unwrap();
-            for (column, field) in children(flat, first).enumerate() {
-                if column > 0 {
-                    if alignment.is_some() {
-                        line.text.push(' ');
-                    } else {
-                        line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
-                    }
-                }
-                // Mouse targeting always uses the first row. One additional
-                // alias is enough for the explicitly focused field's identity.
-                let start = line.text.len();
-                line.token(
-                    &key_text(flat, field),
+            let mut segments = Vec::new();
+            if let Some(metrics) = alignment {
+                let width = unicode_width::UnicodeWidthStr::width(line.text.as_str());
+                line.text.extend(std::iter::repeat_n(
+                    ' ',
+                    metrics.entry_prefix.saturating_sub(width),
+                ));
+            }
+            for field in children(flat, first) {
+                field_definition(
+                    flat,
+                    analysis,
+                    &mut line,
                     field,
-                    TokenRole::FieldDefinition,
-                    flat[field].key_range.clone(),
+                    focused,
+                    alignment,
+                    &mut segments,
                 );
-                if focused != field
-                    && analysis.table_cell(flat, focused)
-                    && flat[focused].index_in_parent == column
-                    && flat[flat[focused].parent.unwrap()].parent.unwrap() == node
-                {
-                    let mut alias = line.spans.last().unwrap().clone();
-                    alias.node = focused;
-                    alias.source = flat[focused].key_range.clone();
-                    line.spans.push(alias);
-                }
-                if let Some(metrics) = alignment {
-                    pad_column(&mut line, metrics, column, start);
-                }
+            }
+            if let Some(metrics) = alignment {
+                pad_header_columns(&mut line, metrics, &segments);
             }
             line.token("}", node, TokenRole::ContainerDelimiter, None);
         }
         line.token(
             ":",
             node,
-            if analysis.node(flat, node).child_count == 0 {
+            if count == 0 {
                 TokenRole::EmptyContainer
             } else {
                 TokenRole::Punctuation
@@ -205,13 +222,118 @@ fn header(
     line
 }
 
+fn field_definition(
+    flat: &FlatJson,
+    analysis: &Analysis,
+    line: &mut DisplayLine,
+    field: usize,
+    focused: usize,
+    alignment: Option<&TableMetrics>,
+    segments: &mut Vec<usize>,
+) {
+    if flat[field].index_in_parent > 0 {
+        if alignment.is_some() {
+            line.text.push(' ');
+        } else {
+            line.token(",", field, TokenRole::PrimitiveTrailingComma, None);
+        }
+    }
+    let mut segment_start = line.text.len();
+    for node in flat.subtree_range(field) {
+        if flat[node].is_closing_of_container() {
+            line.token(
+                "}",
+                flat[node].pair_index().unwrap(),
+                TokenRole::ContainerDelimiter,
+                None,
+            );
+            continue;
+        }
+        if node != field && flat[node].index_in_parent > 0 {
+            if alignment.is_some() {
+                line.text.push(' ');
+            } else {
+                line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+            }
+            segment_start = line.text.len();
+        }
+        line.token(
+            &key_text(flat, node),
+            node,
+            TokenRole::FieldDefinition,
+            flat[node].key_range.clone(),
+        );
+        if focused != node
+            && flat[focused].depth == flat[node].depth
+            && analysis
+                .table_row_owner(flat, focused)
+                .is_some_and(|row| row != focused)
+            && analysis.table_owner(flat, focused) == analysis.table_owner(flat, node)
+            && same_field_path(flat, node, focused)
+        {
+            let mut alias = line.spans.last().unwrap().clone();
+            alias.node = focused;
+            alias.source = flat[focused].key_range.clone();
+            line.spans.push(alias);
+        }
+        if scalar(flat, node) {
+            if alignment.is_some() {
+                segments.push(segment_start);
+            }
+        } else {
+            line.token("{", node, TokenRole::ContainerDelimiter, None);
+        }
+    }
+}
+
+fn same_field_path(flat: &FlatJson, mut first: usize, mut focused: usize) -> bool {
+    loop {
+        if flat[first].index_in_parent != flat[focused].index_in_parent {
+            return false;
+        }
+        let a = flat[first].parent.unwrap();
+        let b = flat[focused].parent.unwrap();
+        if flat[a].depth != flat[b].depth {
+            return false;
+        }
+        if flat[a].parent == flat[b].parent {
+            return true;
+        }
+        first = a;
+        focused = b;
+    }
+}
+
+/// Insert from right to left so source-bearing span offsets remain stable.
+fn pad_header_columns(line: &mut DisplayLine, metrics: &TableMetrics, starts: &[usize]) {
+    for column in (0..starts.len().saturating_sub(1)).rev() {
+        let end = starts[column + 1] - 1;
+        let width = unicode_width::UnicodeWidthStr::width(&line.text[starts[column]..end]);
+        let padding = metrics.widths[column].saturating_sub(width);
+        if padding == 0 {
+            continue;
+        }
+        line.text.insert_str(end, &" ".repeat(padding));
+        for span in &mut line.spans {
+            if span.range.start >= end {
+                span.range.start += padding;
+            }
+            if span.range.end > end {
+                span.range.end += padding;
+            }
+        }
+    }
+}
+
 /// Padding is display-only: the source-bearing token and its aliases have
 /// already been emitted, and the final column has no trailing padding.
 fn pad_column(line: &mut DisplayLine, metrics: &TableMetrics, column: usize, start: usize) {
     if column + 1 < metrics.widths.len() {
         let width = unicode_width::UnicodeWidthStr::width(&line.text[start..]);
-        line.text
-            .extend(std::iter::repeat_n(' ', metrics.widths[column] - width));
+        line.text.extend(std::iter::repeat_n(
+            ' ',
+            metrics.widths[column].saturating_sub(width),
+        ));
     }
 }
 
@@ -263,6 +385,10 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
         .map(|span| span.node)
         .collect();
     nodes.push(line.owner);
+    if analysis.table_row(flat, line.owner) {
+        let end = *flat.subtree_range(line.owner).end();
+        nodes.extend(line.owner + 1..end);
+    }
     nodes.sort_unstable();
     nodes.dedup();
     let mut first = true;
@@ -278,7 +404,10 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
                 node,
                 warning,
                 first,
-                !analysis.is_root(node) && analysis.table_cell(flat, node),
+                !analysis.is_root(node)
+                    && analysis
+                        .table_row_owner(flat, node)
+                        .is_some_and(|row| row != node),
                 &mut quoted,
                 |part, prefix| {
                     if prefix {
@@ -289,7 +418,7 @@ fn annotate(flat: &FlatJson, analysis: &Analysis, geometry: &Geometry, line: &mu
                 },
             );
             first = false;
-            if !analysis.is_root(node) && !analysis.table_cell(flat, node) {
+            if !analysis.is_root(node) && analysis.table_row_owner(flat, node).is_none() {
                 if let Some(parent) = flat[node].parent.as_option() {
                     if flat[parent].is_array()
                         && geometry.position(flat, analysis, node).line
@@ -384,7 +513,7 @@ fn collapsed_row(
         line.owner = node;
         line
     };
-    if !document && !flat[node].is_array() {
+    if !document && !flat[node].is_array() && !analysis.node(flat, node).table {
         line.token(
             &format!(" ({})", analysis.node(flat, node).child_count),
             node,
@@ -548,18 +677,15 @@ pub fn highlight_shared_fields(
     else {
         return;
     };
-    let first_row = flat[first.node].parent.unwrap();
-    let array = flat[first_row].parent.unwrap();
+    let table = analysis.table_owner(flat, first.node).unwrap();
     let columns: Vec<_> = line
         .spans
         .iter()
-        .filter(|span| {
-            span.role == TokenRole::FieldDefinition && flat[span.node].parent.unwrap() == first_row
-        })
+        .filter(|span| span.role == TokenRole::FieldDefinition)
         .collect();
     let mut covered = vec![0u8; line.text.len()];
-    let start = matches.partition_point(|query| query.end <= flat[array].range.start);
-    let end = matches.partition_point(|query| query.start < flat[array].range.end);
+    let start = matches.partition_point(|query| query.end <= flat[table].range.start);
+    let end = matches.partition_point(|query| query.start < flat[table].range.end);
     for (query, flag) in matches[start..end]
         .iter()
         .map(|query| (query, 1))
@@ -576,18 +702,24 @@ pub fn highlight_shared_fields(
             .0
             .partition_point(|row| row.range_represented_by_row().start < query.end);
         for node in start..end {
-            if !analysis.table_cell(flat, node) {
+            let Some(row) = analysis.table_row_owner(flat, node) else {
+                continue;
+            };
+            if row == node || flat[row].parent.as_option() != Some(table) {
                 continue;
             }
-            let row = flat[node].parent.unwrap();
-            if flat[row].parent.unwrap() != array {
+            let Some(source) = flat[node].key_range.as_ref() else {
                 continue;
-            }
-            let source = flat[node].key_range.as_ref().unwrap();
+            };
             if source.start >= query.end || query.start >= source.end {
                 continue;
             }
-            let column = columns[flat[node].index_in_parent];
+            let Some(column) = columns
+                .iter()
+                .find(|span| same_field_path(flat, span.node, node))
+            else {
+                continue;
+            };
             if covered[column.range.clone()]
                 .iter()
                 .all(|mask| mask & flag != 0)

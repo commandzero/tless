@@ -300,16 +300,14 @@ impl ScreenWriter {
             let Some(row) = viewer.layout.row(&viewer.flatjson, *absolute) else {
                 return false;
             };
-            // A shared header can navigate as its parent list object.
-            // Clear offsets by the displayed node's table membership instead.
-            let mut node = Some(row.node);
-            while let Some(index) = node {
-                if index == table {
-                    return false;
-                }
-                node = viewer.flatjson[index].parent.as_option();
-            }
-            true
+            // Headers and rows share a table even when the row contains
+            // nested groups; clear only this table's ordinary offsets.
+            row.node != table
+                && viewer
+                    .layout
+                    .analysis
+                    .table_owner(&viewer.flatjson, row.node)
+                    != Some(table)
         });
         self.last_focus = None;
     }
@@ -753,11 +751,13 @@ impl ScreenWriter {
 
     fn reveal_focused_span(&mut self, viewer: &mut JsonViewer, reveal_left: bool) {
         let line = viewer.rendered_line(viewer.focused_line_index());
-        if let Some(span) = line
-            .spans
-            .iter()
-            .find(|span| span.node == viewer.focused_node && span.source.is_some())
-        {
+        // Preview mappings support search, but container focus should retain
+        // its header rather than scroll automatically to generated contents.
+        if let Some(span) = line.spans.iter().find(|span| {
+            span.node == viewer.focused_node
+                && span.source.is_some()
+                && span.role != crate::toon_display::TokenRole::Preview
+        }) {
             self.reveal_byte_range(viewer, span.range.clone(), reveal_left);
         }
     }
@@ -887,6 +887,58 @@ mod tests {
         assert!(viewer.table_alignment_enabled(table));
         viewer.perform_action(Action::ToggleCollapsed);
         assert_eq!(scroll_owner(&viewer, 1), ScrollOwner::Table(table));
+    }
+
+    #[test]
+    fn nested_and_keyed_tables_share_only_their_own_scroll_owner() {
+        use crate::flatjson::parse_top_level_json;
+        use crate::viewer::{Action, JsonViewer};
+
+        let mut viewer = JsonViewer::new(
+            parse_top_level_json(
+                r#"{"scores":{"alice":{"rank":1,"meta":{"label":"Ada"}},"bob":{"rank":2,"meta":{"label":"Lin"}}},"items":[{"id":1,"meta":{"label":"One"}},{"id":2,"meta":{"label":"Two"}}],"outside":"ordinary"}"#.into(),
+            ).unwrap(),
+        );
+        let scores = viewer.flatjson[0].first_child().unwrap();
+        let items = viewer.flatjson[scores].next_sibling.unwrap();
+        let outside = viewer.flatjson[items].next_sibling.unwrap();
+        let alice = viewer.flatjson[scores].first_child().unwrap();
+        let rank = viewer.flatjson[alice].first_child().unwrap();
+        let meta = viewer.flatjson[rank].next_sibling.unwrap();
+        let label = viewer.flatjson[meta].first_child().unwrap();
+        viewer.perform_action(Action::FocusNode {
+            node: label,
+            source: None,
+        });
+        assert_eq!(viewer.toggle_table_alignment(), Some(scores));
+        viewer.perform_action(Action::FocusNode {
+            node: items,
+            source: None,
+        });
+        assert_eq!(viewer.toggle_table_alignment(), Some(items));
+        for table in [scores, items] {
+            let header = viewer.layout.node(&viewer.flatjson, table).body_line;
+            let row = viewer.flatjson[table].first_child().unwrap();
+            let row_line = viewer.layout.node(&viewer.flatjson, row).line;
+            for absolute in [header, row_line] {
+                let logical = viewer.visible.visible_index(absolute).unwrap();
+                assert_eq!(scroll_owner(&viewer, logical), ScrollOwner::Table(table));
+            }
+        }
+        let outside_line = viewer.layout.node(&viewer.flatjson, outside).line;
+        let logical = viewer.visible.visible_index(outside_line).unwrap();
+        assert_eq!(
+            scroll_owner(&viewer, logical),
+            ScrollOwner::Line(outside_line)
+        );
+        viewer.perform_action(Action::FocusNode {
+            node: scores,
+            source: None,
+        });
+        viewer.perform_action(Action::ToggleCollapsed);
+        let collapsed = viewer.layout.node(&viewer.flatjson, scores).body_line;
+        let logical = viewer.visible.visible_index(collapsed).unwrap();
+        assert_eq!(scroll_owner(&viewer, logical), ScrollOwner::Line(collapsed));
     }
 
     #[test]

@@ -111,7 +111,7 @@ impl Geometry {
                     continue;
                 }
                 let root = analysis.root_for(node).unwrap();
-                let depth = Self::depth(flat, root, node);
+                let depth = Self::depth(flat, analysis, root, node);
                 let list = node != root
                     && flat[node]
                         .parent
@@ -151,8 +151,10 @@ impl Geometry {
         *self.root_lines.last().unwrap()
     }
 
-    fn depth(flat: &FlatJson, root: usize, node: usize) -> usize {
-        let implicit_root = flat[root].is_opening_of_container() && !flat[root].is_array();
+    fn depth(flat: &FlatJson, analysis: &Analysis, root: usize, node: usize) -> usize {
+        let implicit_root = flat[root].is_opening_of_container()
+            && !flat[root].is_array()
+            && !analysis.node(flat, root).table;
         flat[node]
             .depth
             .saturating_sub(flat[root].depth + usize::from(implicit_root))
@@ -196,7 +198,7 @@ impl Geometry {
         Some(Row {
             owner,
             node,
-            depth: Self::depth(flat, root, node),
+            depth: Self::depth(flat, analysis, root, node),
             kind: if table_row {
                 Kind::TableRow
             } else {
@@ -245,6 +247,7 @@ impl Geometry {
                 .checked_ilog10()
                 .unwrap_or(0) as usize
             + 4 // decimal digit, '[' and ']', and '{'
+            + usize::from(!flat[table].is_array()) // keyed ':' in brackets
     }
 
     pub fn position(&self, flat: &FlatJson, analysis: &Analysis, node: usize) -> Position {
@@ -262,12 +265,13 @@ impl Geometry {
                 inline: self.inline(flat, node),
             };
         }
-        let shared = match flat[node].parent.as_option() {
-            Some(parent) if analysis.table_cell(flat, node) || self.inline(flat, parent) => {
-                Some(parent)
-            }
-            _ => None,
-        };
+        let shared = analysis
+            .table_row_owner(flat, node)
+            .filter(|&row| row != node)
+            .or_else(|| match flat[node].parent.as_option() {
+                Some(parent) if self.inline(flat, parent) => Some(parent),
+                _ => None,
+            });
         let anchor = shared.unwrap_or(node);
         let line = body + self.lines.rank(anchor) - self.lines.rank(root);
         Position {
@@ -335,7 +339,9 @@ impl Geometry {
         node: usize,
         source: Option<usize>,
     ) -> usize {
-        if analysis.table_cell(flat, node)
+        if analysis
+            .table_row_owner(flat, node)
+            .is_some_and(|row| row != node)
             && source.is_some_and(|offset| {
                 flat[node]
                     .key_range
@@ -343,9 +349,8 @@ impl Geometry {
                     .is_some_and(|range| range.contains(&offset))
             })
         {
-            let row = flat[node].parent.unwrap();
             return self
-                .position(flat, analysis, flat[row].parent.unwrap())
+                .position(flat, analysis, analysis.table_owner(flat, node).unwrap())
                 .body_line;
         }
         if source.is_some() && scalar(flat, node) {
