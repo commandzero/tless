@@ -794,6 +794,51 @@ mod terminal_commands {
     }
 
     #[test]
+    fn toon_41_shapes_keep_json_presentation_and_nested_focus() {
+        for (toon, json) in [
+            (
+                "items[2]{id,nested{x}}:\n  1,2\n  3,4",
+                r#"{"items":[{"id":1,"nested":{"x":2}},{"id":3,"nested":{"x":4}}]}"#,
+            ),
+            (
+                "scores[2:]{score}:\n  alice: 1\n  bob: 2",
+                r#"{"scores":{"alice":{"score":1},"bob":{"score":2}}}"#,
+            ),
+            ("items: []", r#"{"items":[]}"#),
+            ("[2]:\n  -\n  -", "[{},{}]"),
+        ] {
+            for width in [120, 30] {
+                let actual = rendered_rows(
+                    &session_with_width(toon, "q", Some("--input-format=toon"), width),
+                    width,
+                    24,
+                );
+                let reference = rendered_rows(
+                    &session_with_width(json, "q", None, width),
+                    width,
+                    24,
+                );
+                assert_eq!(&actual[..22], &reference[..22], "{toon}, width {width}");
+            }
+        }
+        for (toon, path, value) in [
+            (
+                "items[2]{id,nested{x}}:\n  1,2\n  3,4",
+                ".items[1].nested.x",
+                "4",
+            ),
+            (
+                "scores[2:]{score}:\n  alice: 1\n  bob: 2",
+                ".scores.bob.score",
+                "2",
+            ),
+        ] {
+            let output = session_with_format(toon, &format!(":{path}\npt q"), Some("toon"));
+            assert!(output.contains(&format!("{value}\r\n")), "{output}");
+        }
+    }
+
+    #[test]
     fn brackets_move_to_entries_at_the_parent_level() {
         for (motion, expected) in [("[", "\"x\": 20"), ("]", "30\r\n")] {
             let output = session(

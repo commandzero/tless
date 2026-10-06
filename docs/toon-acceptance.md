@@ -31,6 +31,7 @@ Historical encode fixtures check semantic round trips, not superseded TOON 3.0 s
 | Focused export, unsupported YAML, multiple roots | `focused_export_includes_collapsed_children_and_normalizes_closing_rows`, `unsupported_yaml_does_not_block_a_supported_focused_value`, `export_depth_is_relative_to_the_selected_subtree` |
 | Navigation, search, paths, collapse/expand | `decoded_navigation_search_and_paths_match_json_with_escaped_unicode` |
 | Format options, feature profiles, input limits, parsed pipelines | `tests/toon_cli.rs` |
+| TOON 4.1 nested/keyed tables and empty containers retain JSON-equivalent narrow/wide presentation and nested focus | `tests/toon_cli.rs::terminal_commands::toon_41_shapes_keep_json_presentation_and_nested_focus` |
 | Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
 
