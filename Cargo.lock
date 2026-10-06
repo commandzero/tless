@@ -354,9 +354,9 @@ checksum = "6aa2c4e539b869820a2b82e1aef6ff40aa85e65decdd5185e83fb4b1249cd00f"
 
 [[package]]
 name = "objc2"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a12a8ed07aefc768292f076dc3ac8c48f3781c8f2d5851dd3d98950e8c5a89f"
+checksum = "08849bbd4767dfae9457696856ae1c84fe4e0281bbe4a7abff2d0e06fb7981f8"
 dependencies = [
  "objc2-encode",
 ]
@@ -617,9 +617,9 @@ dependencies = [
 
 [[package]]
 name = "signal-hook"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d"
+checksum = "b29ffa27d3d59a049bb328258de100f8012848d1b08d444e08bbc02ac468435e"
 dependencies = [
  "libc",
  "signal-hook-registry",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "tless"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "clap",
@@ -723,9 +723,9 @@ dependencies = [
 
 [[package]]
 name = "toon-format"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f89570c1a68d73941f728cca32a4345b2ffca36667ad921af336c60309a3e7e"
+checksum = "2b55b4cdcf739ae27860deed060785c8f5f59e8663013223c183fb9fda75282d"
 dependencies = [
  "indexmap",
  "serde",

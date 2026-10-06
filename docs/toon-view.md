@@ -3,14 +3,14 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T18:38:42Z }
 ---
 
 # TOON document view
 
-The interactive viewer renders JSON, YAML, and TOON through the same TOON 3.0
-profile, using 2-space indentation, commas, and no key folding. Rendering works
-in every build. TOON input and standard export are included in every build.
+The interactive viewer renders JSON, YAML, and TOON through the same TOON 3.0-based
+presentation, using 2-space indentation and commas. Rendering works in every build.
+The separate published TOON 4.1 codec handles input and standard export in every build.
 
 Object fields keep their parsed order. Primitive arrays with at most five
 elements share a line when the entire line fits the terminal, including its

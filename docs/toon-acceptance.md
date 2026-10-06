@@ -3,15 +3,15 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T18:38:42Z }
 ---
 
 # TOON acceptance checks
 
 Use [published codec behavior](toon-codec.md) for the conversion contract.
 Use [the document view](toon-view.md) for the separate display contract.
-The former vendored codec's exact-number, duplicate-key rejection, key-order,
-and linear scanner-work guarantees no longer apply.
+The published TOON 4.1 codec governs input and export, separately from the
+TOON 3.0-based document view. Exact-number and key-order preservation are not guaranteed.
 
 ## Automated checks
 
@@ -20,13 +20,13 @@ Run `scripts/preflight.sh` with the pinned development compiler, then
 Both exercise minimal and default builds, with TOON always enabled and optional
 S-expression and colorscheme features.
 The two fixture tests exercise 180 decode cases and 114 encode cases.
-The known large-number round-trip failure has an explicit string-result assertion.
+Historical encode fixtures check semantic round trips, not superseded TOON 3.0 spellings.
 
 | Coverage | Evidence |
 | --- | --- |
-| Published strict decoder and default encoder | `toon::fixtures::pinned_decode_profile`, `pinned_encode_profile` |
-| Last-value-wins duplicate keys and numeric conversion | `duplicate_keys_follow_published_last_value_wins`, `export_duplicate_keys_follow_last_value_wins`, `decimal_decoding_follows_published_numeric_conversion`, `export_numbers_follow_published_numeric_conversion` |
-| Known invalid empty-object array output | `empty_object_arrays_expose_published_codec_limitation` |
+| Published strict decoder and default encoder | `toon::fixtures::pinned_decode_profile`, `retained_v3_encode_semantic_round_trips` |
+| Duplicate-input rejection, last-value-wins export, and numeric conversion | `duplicate_input_keys_are_rejected`, `export_duplicate_keys_follow_last_value_wins`, `decimal_decoding_follows_published_numeric_conversion`, `export_numbers_follow_published_numeric_conversion` |
+| Empty-object array round trips | `empty_object_arrays_round_trip` |
 | Nesting bounds, empty input, CRLF, BOM rejection | `input_depth_follows_published_codec_boundary`, `enforces_container_depth_and_accepts_blank_lines`, `accepts_empty_input_and_crlf_but_rejects_bom` |
 | Focused export, unsupported YAML, multiple roots | `focused_export_includes_collapsed_children_and_normalizes_closing_rows`, `unsupported_yaml_does_not_block_a_supported_focused_value`, `export_depth_is_relative_to_the_selected_subtree` |
 | Navigation, search, paths, collapse/expand | `decoded_navigation_search_and_paths_match_json_with_escaped_unicode` |
@@ -59,7 +59,7 @@ Record the actual host and results in the release PR.
    `:write-yaml`/`:wy`, and `:write-ndjson`/`:write-jsonl`/`:wn` with `!`
    variants. Confirm default writes TOON and only `sexp` builds accept
    `:write-sexp`/`:ws` (including `!`). The old `:writetoon` and
-   `:writesexp` names must not work. Check TOON 3.0 and 4.x limitations.
+   `:writesexp` names must not work. Check TOON 4.1 codec and 3.0-based display wording.
 4. On Linux, use a disposable session to write to `/dev/full` with `:wt!`.
    Confirm a write error, no success message, and continued navigation.
    The shared writer propagates write and flush errors. Standard `File::flush`

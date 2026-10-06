@@ -184,7 +184,6 @@ impl From<toon_format::ToonError> for ToonDiagnostic {
     fn from(error: toon_format::ToonError) -> Self {
         use toon_format::ToonError;
         let (kind, line, column) = match &error {
-            ToonError::LengthMismatch { .. } => (ToonErrorKind::CountMismatch, None, None),
             ToonError::ParseError {
                 message,
                 line,
@@ -199,9 +198,17 @@ impl From<toon_format::ToonError> for ToonDiagnostic {
                     || message.starts_with("Unterminated string")
                 {
                     ToonErrorKind::InvalidEscape
-                } else if message.starts_with("Tabular row") && message.contains("values") {
+                } else if message.starts_with("Expected ")
+                    && (message.contains("tabular row values")
+                        || message.contains("keyed entry cells"))
+                {
                     ToonErrorKind::RowWidthMismatch
-                } else if message.starts_with("Array length mismatch") {
+                } else if message.starts_with("Expected ")
+                    && (message.contains("inline-form values")
+                        || message.contains("tabular rows")
+                        || message.contains("list-form items")
+                        || message.contains("keyed entries"))
+                {
                     ToonErrorKind::CountMismatch
                 } else {
                     ToonErrorKind::Syntax
@@ -261,11 +268,14 @@ mod fixtures;
 #[cfg(test)]
 mod tests {
     #[test]
-    fn empty_object_arrays_expose_published_codec_limitation() {
+    fn empty_object_arrays_round_trip() {
         let doc = crate::flatjson::parse_top_level_json("[{},{}]".to_owned()).unwrap();
         let encoded = super::encode_document(&doc, super::EncodeOptions::default()).unwrap();
-        assert_eq!(encoded, "[2]{}:\n  \n  ");
-        assert!(super::parse(&encoded).is_err());
+        let decoded = super::parse(&encoded).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&decoded.1).unwrap(),
+            serde_json::json!([{}, {}])
+        );
     }
 
     #[test]
@@ -350,6 +360,11 @@ mod tests {
             super::parse("[1]{a,b}:\n  1").unwrap_err().kind,
             super::ToonErrorKind::RowWidthMismatch
         );
+        for input in ["[2]: 1", "[2]{a}:\n  1", "[2]:\n  - 1"] {
+            let error = super::parse(input).unwrap_err();
+            assert_eq!(error.kind, super::ToonErrorKind::CountMismatch);
+            assert!(error.line.is_some());
+        }
         for input in [
             "[18446744073709551615]: x",
             "[2]{a}:\n  1\n\n  2",
@@ -502,10 +517,13 @@ mod tests {
         assert!(super::parse("\u{feff}name: Ada").is_err());
     }
     #[test]
-    fn duplicate_keys_follow_published_last_value_wins() {
-        let actual = super::parse("a: 1\na: 2").unwrap();
-        let expected = crate::flatjson::parse_top_level_json("{\"a\":2}".to_owned()).unwrap();
-        assert_eq!(actual.1, expected.1);
+    fn duplicate_input_keys_are_rejected() {
+        for input in ["a: 1\na: 2", "a:\n  b: 1\n  b: 2"] {
+            let error = super::parse(input).unwrap_err();
+            assert_eq!(error.kind, super::ToonErrorKind::Syntax);
+            assert!(error.line.is_some());
+            assert!(error.message.contains("Duplicate sibling key"));
+        }
     }
 
     #[test]

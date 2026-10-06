@@ -309,12 +309,20 @@ fn toon_export_contract_and_failures() {
     for (input, expected) in [
         ("{}", ""),
         ("{\"a\":1,\"a\":2}", "a: 2"),
-        ("[{},{}]", "[2]{}:\n  \n  "),
         ("{\"tags\":[1,2]}", "tags[2]: 1,2"),
     ] {
         assert_eq!(success(&[], input), expected);
         assert_eq!(success(&["-o", "toon"], input), expected);
     }
+    let empty_objects = success(&[], "[{},{}]");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&success(
+            &["--input-format", "toon", "-o", "json"],
+            &empty_objects,
+        ))
+        .unwrap(),
+        serde_json::json!([{}, {}])
+    );
     assert_eq!(success(&["--input-format", "toon"], ""), "");
     assert_eq!(success(&["--input-format", "toon"], "a: 1\r\n"), "a: 1");
     for (format, input) in [

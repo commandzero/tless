@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 #[test]
-fn pinned_encode_profile() {
+fn retained_v3_encode_semantic_round_trips() {
     let fixtures = [
         (
             "tests/fixtures/encode/arrays-nested.json",
@@ -40,7 +40,6 @@ fn pinned_encode_profile() {
             include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/whitespace.json"),
         ),
     ];
-    let mut failures = Vec::new();
     for (file, json) in fixtures {
         let fixture: Value = serde_json::from_str(json).unwrap();
         for case in fixture["tests"].as_array().unwrap() {
@@ -56,37 +55,18 @@ fn pinned_encode_profile() {
                 continue;
             }
             let doc = crate::flatjson::parse_top_level_json(case["input"].to_string()).unwrap();
-            let actual = super::encode_document(&doc, super::EncodeOptions::default());
-            let expected = case["expected"].as_str().unwrap();
-            if actual.as_ref().map(|s| s.as_str()).ok() != Some(expected) {
-                failures.push(format!(
-                    "{} / {}: {:?}, expected {:?}",
-                    file, case["name"], actual, expected
-                ));
-            }
-            // Published 0.5.0 decodes this out-of-u64 decimal token as a string.
-            // Keep the fixture expectation intact and pin the known limitation.
-            if file == "tests/fixtures/encode/primitives.json"
-                && case["name"] == "encodes large number"
-            {
-                let decoded = super::parse(actual.as_ref().unwrap()).unwrap();
-                let value: Value = serde_json::from_str(&decoded.1).unwrap();
-                assert_eq!(value, serde_json::json!("100000000000000000000"));
-                continue;
-            }
-            if let Ok(encoded) = actual {
-                let decoded = super::parse(&encoded).unwrap();
-                let value: Value = serde_json::from_str(&decoded.1).unwrap();
-                assert!(
-                    equal_values(&value, &case["input"]),
-                    "semantic round trip: {} / {}",
-                    file,
-                    case["name"]
-                );
-            }
+            // Keep the historical inputs, not their superseded TOON 3.0 spellings.
+            let encoded = super::encode_document(&doc, super::EncodeOptions::default()).unwrap();
+            let decoded = super::parse(&encoded).unwrap();
+            let value: Value = serde_json::from_str(&decoded.1).unwrap();
+            assert!(
+                equal_values(&value, &case["input"]),
+                "semantic round trip: {} / {}",
+                file,
+                case["name"]
+            );
         }
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 fn equal_values(a: &Value, b: &Value) -> bool {
