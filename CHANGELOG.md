@@ -5,8 +5,6 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-10-06
-
 ### Removed
 
 - **Breaking:** Replace `:writetoon` with `:write-toon` and feature-gated `:writesexp` with `:write-sexp`, including their `!` forms; `:wt` and optional `:ws` remain available. (#31)
@@ -107,8 +105,7 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/CommandZero/tless/compare/v0.1.4...v0.2.0
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.1.4...HEAD
 [0.1.4]: https://github.com/CommandZero/tless/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/CommandZero/tless/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/CommandZero/tless/compare/v0.1.1...v0.1.2
