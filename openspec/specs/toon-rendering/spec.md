@@ -8,13 +8,21 @@ Provide one syntax-colored TOON document view with predictable collapse annotati
 
 ### Requirement: One rendering contract
 
-The viewer SHALL render every supported input format with the TOON 3.0 profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering, and TOON input and export SHALL be available in every build profile. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
+The viewer SHALL render every supported input format with the TOON 3.0-based display profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering. The separate published TOON 4.1 codec SHALL handle TOON input and export in every build profile; codec syntax SHALL NOT select a different document presentation. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
 
 #### Scenario: Equivalent inputs
 
 - **WHEN** JSON, YAML, and TOON inputs produce equivalent parsed data
 - **THEN** their fully expanded document text SHALL match
 - **AND** input-format selectors SHALL NOT select a different rendering mode
+
+#### Scenario: TOON 4.1 input retains the document view
+
+- **WHEN** TOON 4.1 input uses nested table field groups, keyed tables, `[]` empty arrays, or arrays of empty objects
+- **THEN** its expanded data rows SHALL match equivalent JSON at wide and narrow terminal sizes
+- **AND** nested field groups SHALL render through ordinary object/list layout and keyed tables through ordinary object fields
+- **AND** nested path filtering and focused print SHALL preserve the decoded leaf values
+
 
 #### Scenario: Obsolete mode controls
 
