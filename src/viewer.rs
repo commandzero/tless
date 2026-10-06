@@ -3479,9 +3479,9 @@ mod tests {
                 .map(|line| line.text.as_str())
                 .collect::<Vec<_>>(),
             [
-                "users[2]{id ,name}:",
-                "         1  ,Ada",
-                "         200,Lin"
+                "users[2]{id  name}:",
+                "           1 Ada",
+                "         200 Lin"
             ]
         );
         assert_eq!(v.table_indentation(table), 0);
@@ -3493,27 +3493,117 @@ mod tests {
             .iter()
             .find(|span| span.role == crate::toon_display::TokenRole::Number)
             .unwrap();
-        let comma = first_row
+        let name = first_row
             .spans
             .iter()
-            .find(|span| span.role == crate::toon_display::TokenRole::PrimitiveTrailingComma)
+            .find(|span| span.role == crate::toon_display::TokenRole::String)
             .unwrap();
-        assert_eq!(&first_row.text[id.range.end..comma.range.start], "  ");
+        assert_eq!(&first_row.text[id.range.end..name.range.start], " ");
         assert_eq!(
             crate::lineprinter::hit_test(first_row, 10),
             (first_row.owner, None)
         );
         assert_eq!(
-            crate::lineprinter::hit_test(first_row, 11),
+            crate::lineprinter::hit_test(first_row, 9),
             (first_row.owner, None)
         );
         assert_eq!(
             crate::lineprinter::hit_test(header, 11),
             (header.owner, None)
         );
+        assert_eq!(
+            crate::lineprinter::hit_test(first_row, 12),
+            (first_row.owner, None)
+        );
+        assert_eq!(crate::lineprinter::hit_test(first_row, 13).0, name.node);
         let source = id.source.clone().unwrap();
         assert_eq!(id.matching_ranges(&source), vec![id.range.clone()]);
-        assert_eq!(crate::lineprinter::hit_test(first_row, 9).0, id.node);
+        assert_eq!(crate::lineprinter::hit_test(first_row, 11).0, id.node);
+    }
+
+    #[test]
+    fn aligned_numbers_use_right_edges_while_numeric_strings_stay_left_aligned() {
+        use crate::toon_display::TokenRole;
+        let mut v = viewer(
+            r#"{"users":[{"amount":1,"label":"7","n":2},{"amount":-12.5,"label":"009","n":300},{"amount":2.75,"label":"Ada","n":null},{"amount":0,"label":"Lin","n":"123456789"}]}"#,
+        );
+        let table = v.flatjson[0].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        v.toggle_table_alignment().unwrap();
+        let lines: Vec<_> = (0..v.visible.len()).map(|i| v.render_line(i)).collect();
+        let spans = |line: &DisplayLine, role| {
+            line.spans
+                .iter()
+                .filter(|span| span.role == role)
+                .map(|span| span.range.clone())
+                .collect::<Vec<_>>()
+        };
+        let first_numbers = spans(&lines[1], TokenRole::Number);
+        let second_numbers = spans(&lines[2], TokenRole::Number);
+        let third_numbers = spans(&lines[3], TokenRole::Number);
+        assert_eq!(first_numbers[0].end, second_numbers[0].end);
+        assert_eq!(first_numbers[0].end, third_numbers[0].end);
+        assert_eq!(first_numbers[1].end, second_numbers[1].end);
+        let header_fields = spans(&lines[0], TokenRole::FieldDefinition);
+        let first_strings = spans(&lines[1], TokenRole::String);
+        let second_strings = spans(&lines[2], TokenRole::String);
+        let last_strings = spans(&lines[4], TokenRole::String);
+        assert_eq!(first_strings[0].start, header_fields[1].start);
+        assert_eq!(second_strings[0].start, header_fields[1].start);
+        assert_eq!(&lines[1].text[first_strings[0].clone()], "\"7\"");
+        assert_eq!(&lines[2].text[second_strings[0].clone()], "\"009\"");
+        assert_eq!(last_strings[1].start, header_fields[2].start);
+        assert_eq!(first_numbers[1].end, last_strings[1].end);
+        assert_eq!(
+            spans(&lines[3], TokenRole::Null)[0].start,
+            header_fields[2].start
+        );
+        assert_eq!(
+            v.aligned_table_width(table),
+            lines
+                .iter()
+                .map(|line| UnicodeWidthStr::width(line.text.as_str()))
+                .max()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn aligned_final_numbers_include_leading_padding_in_warning_bounds() {
+        use crate::toon_display::TokenRole;
+        let mut v = JsonViewer::new(
+            parse_top_level_yaml("rows:\n  - n: .inf\n  - n: abcdefghijklmnopqrstuvwxyz\n".into())
+                .unwrap(),
+        );
+        let table = v.flatjson[0].first_child().unwrap();
+        v.perform_action(Action::FocusNode {
+            node: table,
+            source: None,
+        });
+        v.toggle_table_alignment().unwrap();
+        let lines: Vec<_> = (0..v.visible.len()).map(|i| v.render_line(i)).collect();
+        let number = lines[1]
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::Number)
+            .unwrap();
+        let string = lines[2]
+            .spans
+            .iter()
+            .find(|span| span.role == TokenRole::String)
+            .unwrap();
+        assert_eq!(number.range.end, string.range.end);
+        assert_eq!(
+            v.aligned_table_width(table),
+            lines
+                .iter()
+                .map(|line| UnicodeWidthStr::width(line.text.as_str()))
+                .max()
+                .unwrap()
+        );
     }
 
     #[test]
@@ -3547,14 +3637,14 @@ mod tests {
         let last_line = v.layout.node(&v.flatjson, last).line;
         let last_line = v.visible.visible_index(last_line).unwrap();
         let widest = v.render_line(last_line);
-        let header = v.render_line(v.focused_line_index());
+        assert!(widest.text.contains("界🦊,"));
         let token_column = |line: &DisplayLine, role| {
             let span = line.spans.iter().find(|span| span.role == role).unwrap();
-            UnicodeWidthStr::width(&line.text[..span.range.start])
+            UnicodeWidthStr::width(&line.text[..span.range.end])
         };
         use crate::toon_display::TokenRole;
         assert_eq!(
-            token_column(&header, TokenRole::FieldDefinition),
+            token_column(&widest, TokenRole::Number),
             token_column(&first, TokenRole::Number)
         );
         let text_column = |line: &DisplayLine| {
@@ -3635,10 +3725,15 @@ mod tests {
                     .filter(|span| span.role == role)
                     .nth(ordinal)
                     .unwrap();
-                UnicodeWidthStr::width(&line.text[..span.range.start]) - indentation
+                let edge = if role == TokenRole::Number {
+                    span.range.end
+                } else {
+                    span.range.start
+                };
+                UnicodeWidthStr::width(&line.text[..edge]) - indentation
             };
             assert_eq!(
-                column(&header, TokenRole::FieldDefinition, 0),
+                column(&long, TokenRole::Number, 0),
                 column(&row, TokenRole::Number, 0)
             );
             assert_eq!(

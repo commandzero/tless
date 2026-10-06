@@ -16,7 +16,7 @@ The existing viewport-proportional presentation contract forbids retaining forma
 
 **Non-Goals:**
 
-- New table eligibility rules, sorting, editing, fixed-width truncation, numeric right alignment, or sticky headers.
+- New table eligibility rules, sorting, editing, fixed-width truncation, or sticky headers.
 - New CLI flags, persistence, alternate output encodings, codec changes, or global changes to wrapping.
 - Reformatting non-tabular arrays or tables exported to files or redirected stdout.
 
@@ -36,12 +36,12 @@ Include all rows, not just the viewport, so scrolling never changes widths. Meas
 
 ### 3. Preserve the counted header and align to its first field
 
-Keep `name[count]{...}:` syntax. Start the grid at the first field after `{`. Pad each non-final field or value on its right to the column maximum, then emit the comma. Pad row-leading presentation so the first cell begins directly beneath the first header. Do not pad inside quoted strings or append unnecessary trailing spaces after the final value. For example:
+Keep `name[count]{...}:` syntax. Start the grid at the first field after `{`. Right-align parsed numbers by emitting leading padding before their source-bearing tokens, including in the final column. Keep headers, strings (even numeric-looking strings), booleans, and nulls left-aligned; pad each non-final left-aligned token on its right to the column maximum. Emit one display-only space instead of each generated comma separator. Preserve commas inside quoted field names and values. Pad row-leading presentation so the first column begins beneath the first header. Do not pad inside quoted strings or append unnecessary trailing spaces after the final value. Include numeric final-column leading padding when measuring row extents and warnings. For example:
 
 ```text
-users[2]{id ,name}:
-         1  ,Ada
-         200,Lin
+users[2]{id  name}:
+           1 Ada
+         200 Lin
 ```
 
 Use a common table horizontal coordinate system after applying nesting indentation reduction; generated row-leading grid padding is not structural indentation. Applying the existing per-line indentation reduction independently to each padded line could misalign the grid, so derive the reduction from the owning table for all members. Gutters remain outside this coordinate system.
@@ -52,7 +52,7 @@ Rebuild spans as tokens are emitted rather than inserting whitespace into alread
 
 Extend screenwriter offset ownership to distinguish ordinary lines from expanded aligned table members. All consumers select the same table key for an aligned header or row: painting, mouse conversion, `,`, `.`, `;`, selected-span reveal, and search reveal. Keep the shared offset separate from ordinary collapsed-preview offsets. Do not duplicate offset updates across individual rows.
 
-Bounds use the longest complete aligned header or row including annotations. Use saturating counted movement and the existing end/start fitting convention against that extent. Preserve a shared offset while alignment remains enabled, including collapse/reopen and filter exclusion/restoration. Reflow clamps it to current bounds and reveals the selection or match when needed. Enable/disable clears stale table-member line offsets and starts at zero before ordinary selected-span reveal. This avoids restoring incompatible unaligned positions or making short rows prevent access to longer ones.
+Bounds use the longest complete aligned header or row including annotations. Use saturating counted movement and the existing end/start fitting convention against that extent. Preserve a shared offset while alignment remains enabled, including collapse/reopen and filter exclusion/restoration. Reflow clamps it to current bounds. Valid manual offsets take precedence over automatic selected-span reveal during vertical movement, collapse/reopen, leave/return, wrapping toggles, and height-only resize. Width changes reveal a right-clipped selection without pulling a manually left-clipped selection back into view solely because it is left-clipped. Search selection and active-match reflow fully reveal the matched span and may replace a manual offset; explicit horizontal scrolling may clip that match until the next reveal-triggering event. Enable/disable clears stale table-member line offsets and starts at zero before ordinary selected-span or active-match reveal. This avoids restoring incompatible unaligned positions or making short rows prevent access to longer ones.
 
 ### 5. Alignment takes precedence over wrapping only for its table
 
@@ -77,4 +77,4 @@ Native TOON text guarantees explicitly exclude enabled alignment. Copy/export st
 
 ## Migration Plan
 
-No stored-data or CLI migration. Ship as an initially disabled interactive feature. Update help, viewing/acceptance documentation, and the Unreleased changelog with implementation. Verify native PTY behavior and repository preflight, then synchronize the two delta specs and archive this change before merging the associated implementation PR. Rollback removes the new interaction and its state without changing parsers, serialized data, or the existing output contract.
+No stored-data or CLI migration. Ship as an initially disabled interactive feature. Update help, viewing/acceptance documentation, and the Unreleased changelog with implementation. Apply and verify the implementation, including native PTY behavior and independent repository checks, then open the PR with this change active. Run the PR review-and-fix loop and re-verify the reviewed implementation before synchronizing the two delta specs and archiving. Implementation fixes return to review and re-verification. Only the associated change's unfinished completion gate is expected red during review; other failures remain actionable. After archival, run the final full preflight and PR-scoped completion gate on the actual PR head before authorized merge. Rollback removes the new interaction and its state without changing parsers, serialized data, or the existing output contract.

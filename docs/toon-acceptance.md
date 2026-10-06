@@ -3,7 +3,7 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T03:48:34Z }
+generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
 ---
 
 # TOON acceptance checks
@@ -142,9 +142,12 @@ viewport when testing width measurement:
 {"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"other":[{"id":7,"name":"X"},{"id":8,"name":"Y"}],"nested":{"rows":[{"id":1,"name":"é界👩‍💻"},{"id":22,"name":"line\nbreak"}]},"plain":"outside"}
 ```
 
-1. Press Tab on `users` and check `users[2]{id ,name}:`, `         1  ,Ada`,
-   `         200,Lin` without gutters. Check the first value and header start
-   in the same terminal column and that pressing `3` then Tab toggles only once.
+1. Press Tab on `users` and check `users[2]{id  name}:`, `           1 Ada`,
+   `         200 Lin` without gutters. Confirm generated separators are spaces,
+   while commas inside quoted keys or values remain visible. Check numeric right
+   edges align and strings start beneath their headers. Repeat with negative
+   and fractional numbers, numeric-looking strings, and a numeric final column;
+   only parsed numbers right-align. Press `3` then Tab: alignment toggles once.
    Move among header, row, and cell: status keeps `Table aligned`; at a narrow
    width it shows `Align`. Leave for `plain` and return: alignment persists
    but its status label appears only while focus belongs to that table.

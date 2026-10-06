@@ -36,7 +36,7 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 #### Scenario: Aligned text is presentation only
 
 - **WHEN** table alignment is enabled
-- **THEN** generated padding SHALL be an interactive presentation exception to the native-text contract
+- **THEN** generated padding and space-separated columns SHALL be interactive presentation exceptions to the native-text contract
 - **AND** disabling alignment SHALL restore ordinary TOON text without changing data or field order
 
 
@@ -152,7 +152,7 @@ Tab in the document view SHALL toggle alignment once for the focused tabular arr
 
 ### Requirement: Terminal-cell aligned table columns
 
-An expanded aligned table SHALL left-align each rendered cell with its field header using generated whitespace outside the data tokens. Column widths SHALL include the widest rendered header or value across all table rows, measured in terminal cells. Commas and the counted header SHALL remain visible syntax. Gutters, indentation reduction, and scrolling SHALL preserve column alignment.
+An expanded aligned table SHALL align each rendered cell within its field's column using generated whitespace outside the data tokens. Parsed numbers SHALL be right-aligned to the full column width, including the final column. Headers, strings (including numeric-looking strings), booleans, and nulls SHALL remain left-aligned. Column widths SHALL include the widest rendered header or value across all table rows, measured in terminal cells. Generated comma separators between fields and values SHALL be replaced by one space; commas inside data tokens SHALL remain unchanged. The counted header SHALL remain visible syntax. Gutters, indentation reduction, and scrolling SHALL preserve column alignment.
 
 #### Scenario: Exact header and value positions
 
@@ -160,13 +160,20 @@ An expanded aligned table SHALL left-align each rendered cell with its field hea
 - **THEN** excluding gutters its aligned lines SHALL be:
 
 ```text
-users[2]{id ,name}:
-         1  ,Ada
-         200,Lin
+users[2]{id  name}:
+           1 Ada
+         200 Lin
 ```
 
-- **AND** each value SHALL start at the same terminal column as its header
-- **AND** generated row-leading spaces SHALL align the first value with the first header without changing table nesting
+- **AND** non-numeric values SHALL start at the same terminal column as their headers while numbers SHALL end at their column's common right edge
+- **AND** generated row-leading spaces SHALL align the first column with the first header without changing table nesting
+
+#### Scenario: Parsed numbers and numeric-looking strings
+
+- **WHEN** an aligned column contains parsed integers, negative or fractional numbers, and strings such as `"7"` or `"009"`
+- **THEN** only the parsed numbers SHALL be right-aligned and the strings SHALL retain their spelling and left alignment
+- **AND** numeric leading padding SHALL have no source range or cell identity
+- **AND** a numeric final cell and its warnings SHALL remain reachable within the shared horizontal bounds
 
 #### Scenario: Width includes unseen rows and quoted tokens
 

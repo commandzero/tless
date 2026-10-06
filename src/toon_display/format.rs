@@ -40,11 +40,18 @@ pub fn row(
             }
             for (column, child) in children(flat, node).enumerate() {
                 if column > 0 {
-                    line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    if alignment.is_some() {
+                        line.text.push(' ');
+                    } else {
+                        line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    }
                 }
                 let start = line.text.len();
-                value(flat, &mut line, child);
-                if let Some(metrics) = alignment {
+                let number_width = alignment
+                    .filter(|_| matches!(flat[child].value, Value::Number))
+                    .map(|metrics| metrics.widths[column]);
+                value(flat, &mut line, child, number_width);
+                if let Some(metrics) = alignment.filter(|_| number_width.is_none()) {
                     pad_column(&mut line, metrics, column, start);
                 }
             }
@@ -60,10 +67,10 @@ pub fn row(
                     },
                     None,
                 );
-                value(flat, &mut line, child);
+                value(flat, &mut line, child, None);
             }
         } else if scalar(flat, node) {
-            value(flat, &mut line, node);
+            value(flat, &mut line, node, None);
         }
         if descriptor.owner != descriptor.node {
             let offset = descriptor.depth.saturating_sub(1) * 2;
@@ -149,7 +156,11 @@ fn header(
             let first = children(flat, node).next().unwrap();
             for (column, field) in children(flat, first).enumerate() {
                 if column > 0 {
-                    line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    if alignment.is_some() {
+                        line.text.push(' ');
+                    } else {
+                        line.token(",", node, TokenRole::PrimitiveTrailingComma, None);
+                    }
                 }
                 // Mouse targeting always uses the first row. One additional
                 // alias is enough for the explicitly focused field's identity.
@@ -204,19 +215,19 @@ fn pad_column(line: &mut DisplayLine, metrics: &TableMetrics, column: usize, sta
     }
 }
 
-fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize) {
+fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize, number_width: Option<usize>) {
     let role = match flat[node].value {
         Value::String => TokenRole::String,
         Value::Number => TokenRole::Number,
         Value::Boolean => TokenRole::Boolean,
         _ => TokenRole::Null,
     };
-    line.token(
-        &value_text(flat, node),
-        node,
-        role,
-        Some(flat[node].range.clone()),
-    );
+    let text = value_text(flat, node);
+    if let Some(width) = number_width {
+        let padding = width - unicode_width::UnicodeWidthStr::width(text.as_ref());
+        line.text.extend(std::iter::repeat_n(' ', padding));
+    }
+    line.token(&text, node, role, Some(flat[node].range.clone()));
 }
 
 /// A single warning spelling contract for the painted row and its lazy extent.
@@ -414,7 +425,7 @@ fn collapsed_row(
                 },
                 None,
             );
-            value(flat, &mut candidate, child);
+            value(flat, &mut candidate, child, None);
         }
         if unicode_width::UnicodeWidthStr::width(candidate.text.as_str())
             + unicode_width::UnicodeWidthStr::width(warning.as_str())

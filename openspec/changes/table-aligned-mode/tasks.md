@@ -24,7 +24,7 @@
 
 ## 4. Required post-archive completion gates
 
-Gates 4.1–4.3 remain required before this PR is ready for review. Independent verification runs before archival; the final full preflight and PR-scoped check run after archival because they validate the archived, completed implementation checklist. Record gate results only after they pass.
+Gates 4.1–4.3 remain required before this PR is merged, not before it is opened or ready for review. Apply and verify the implementation, open the PR with the change active, run the PR review-and-fix loop, and re-verify the reviewed implementation before synchronizing and archiving. Implementation fixes return to review and re-verification. During review, the associated change's completion gate is expected to be red solely because synchronization or archival is incomplete; establish all other required check results independently and fix every other failure. After archival, run the final full preflight and PR-scoped completion check on the actual PR head. Do not waive the completion gate or record it as passed before it passes.
 
 - **4.1** Run `scripts/preflight.sh` and `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test`; verify all applicable checks pass and record native terminal smoke evidence separately from test results.
 - **4.2** Synchronize both delta specs into the main capabilities, compare every added/modified requirement and scenario against the implemented behavior, and archive this change with the pinned OpenSpec CLI; verify strict native change/spec/archive validation and preserve all planning artifacts in the archive.

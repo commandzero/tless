@@ -7,7 +7,7 @@ TOON tables currently render compact comma-separated values, which makes columns
 ## What Changes
 
 - Tab toggles alignment for the focused tabular array, including focus on its header, row, or cell; other arrays and prompt input retain existing behavior.
-- Pad rendered headers and values using terminal-cell widths so each value starts below its corresponding field header. Include off-screen rows in column widths without retaining their rendered presentation.
+- Pad rendered columns using terminal-cell widths, right-align parsed numbers, and keep headers and non-numeric values left-aligned, including numeric-looking strings. Use spaces instead of generated comma separators and preserve commas within data tokens. Include off-screen rows in column widths without retaining their rendered presentation.
 - While aligned, use one horizontal offset for the table header and all rows. Keep existing counted `,` and `.` movement and make end/start scrolling and search reveal use that same offset.
 - Keep an aligned table unwrapped even if session wrapping is on; leave other content's wrapping unchanged. Turning alignment off restores normal presentation under the current wrapping setting.
 - Show a persistent alignment indicator for the focused table and document Tab in interactive help.

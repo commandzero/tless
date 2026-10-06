@@ -58,7 +58,11 @@ An expanded aligned table SHALL use one horizontal offset for its header and all
 - **WHEN** alignment is enabled or disabled
 - **THEN** the table SHALL start at the left edge and reveal the selected span or active match as needed, without importing stale per-line offsets
 - **AND** while alignment stays enabled its shared offset SHALL survive vertical focus motion, collapse/reopen, and leaving and returning to the table
-- **AND** reflow or filtering SHALL preserve that offset where valid, clamp to changed bounds, and reveal the selection or active match as needed
+- **AND** reflow or filtering SHALL preserve that offset where valid and clamp it to changed bounds
+- **AND** valid manual offsets SHALL take precedence over automatic selected-span reveal during vertical movement, collapse/reopen, leave/return, wrapping toggles, and height-only resize
+- **AND** width changes SHALL reveal a right-clipped selected span but SHALL NOT change a valid manual offset solely to reveal a left-clipped selection
+- **AND** search selection and active-match reflow SHALL fully reveal the matched span, even if doing so changes a manual offset
+- **AND** explicit horizontal scrolling MAY clip an active match until the next reveal-triggering event
 
 ### Requirement: Data identity in padded table presentation
 

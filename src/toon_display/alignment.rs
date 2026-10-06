@@ -25,8 +25,10 @@ impl TableMetrics {
             + 2
             + annotation_width(flat, analysis, table, false, &mut quoted);
         let mut max_row_tail = 0;
+        let mut numeric_annotation: Option<usize> = None;
         for row in children(flat, table) {
             let mut last_width = 0;
+            let mut last_is_number = false;
             for (column, cell) in children(flat, row).enumerate() {
                 let width = if matches!(flat[cell].value, Value::String) {
                     let value = string(flat, cell);
@@ -41,9 +43,17 @@ impl TableMetrics {
                 };
                 widths[column] = widths[column].max(width);
                 last_width = width;
+                last_is_number = matches!(flat[cell].value, Value::Number);
             }
-            max_row_tail = max_row_tail
-                .max(last_width + annotation_width(flat, analysis, row, true, &mut quoted));
+            let annotation = annotation_width(flat, analysis, row, true, &mut quoted);
+            if last_is_number {
+                numeric_annotation = Some(numeric_annotation.unwrap_or(0).max(annotation));
+            } else {
+                max_row_tail = max_row_tail.max(last_width + annotation);
+            }
+        }
+        if let Some(annotation) = numeric_annotation {
+            max_row_tail = max_row_tail.max(widths.last().copied().unwrap() + annotation);
         }
         Self {
             widths,

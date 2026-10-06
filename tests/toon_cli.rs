@@ -995,9 +995,9 @@ mod terminal_commands {
         for keys in ["l\tq", "ll\tq", "lll\tq", "l3\tq"] {
             let rows = rendered_rows(&session(input, keys), 120, 24);
             let text = rows[..22].join("\n");
-            assert!(text.contains("users[2]{id ,name}:"), "{keys:?}: {rows:?}");
-            assert!(text.contains("         1  ,Ada"), "{keys:?}: {rows:?}");
-            assert!(text.contains("         200,Lin"), "{keys:?}: {rows:?}");
+            assert!(text.contains("users[2]{id  name}:"), "{keys:?}: {rows:?}");
+            assert!(text.contains("           1 Ada"), "{keys:?}: {rows:?}");
+            assert!(text.contains("         200 Lin"), "{keys:?}: {rows:?}");
             assert!(rows[22].contains("Table aligned"), "{keys:?}: {rows:?}");
         }
         let rows = rendered_rows(&session(input, "l\t\tq"), 120, 24);
@@ -1006,24 +1006,24 @@ mod terminal_commands {
 
         let collapsed = rendered_rows(&session(input, "l \tq"), 120, 24);
         assert!(collapsed[0].contains("users[2]"), "{collapsed:?}");
-        assert!(!collapsed[..22].join("\n").contains("         1  ,Ada"));
+        assert!(!collapsed[..22].join("\n").contains("           1 Ada"));
         assert!(collapsed[22].contains("Table aligned"), "{collapsed:?}");
         let restored = rendered_rows(&session(input, "l \tlq"), 120, 24);
-        assert!(restored[..22].join("\n").contains("         200,Lin"));
+        assert!(restored[..22].join("\n").contains("         200 Lin"));
     }
 
     #[test]
     fn alignment_is_independent_and_ignores_ineligible_and_prompt_focus() {
         let input = r#"{"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"other":[{"id":3,"name":"One"},{"id":4,"name":"Two"}],"scalar":9,"values":[1,2],"list":[{"a":1},{"b":2}]}"#;
         let first = rendered_rows(&session(input, "l\tJq"), 120, 24);
-        assert!(first[..22].join("\n").contains("         1  ,Ada"));
+        assert!(first[..22].join("\n").contains("           1 Ada"));
         assert!(!first[22].contains("Table aligned"), "{first:?}");
 
         let both = rendered_rows(&session(input, "l\tJ\tq"), 120, 24);
-        assert!(both[..22].join("\n").contains("         1  ,Ada"));
+        assert!(both[..22].join("\n").contains("           1 Ada"));
         assert!(both[22].contains("Table aligned"), "{both:?}");
         let only_first = rendered_rows(&session(input, "l\tJ\t\tKq"), 120, 24);
-        assert!(only_first[..22].join("\n").contains("         1  ,Ada"));
+        assert!(only_first[..22].join("\n").contains("           1 Ada"));
         assert!(only_first[..22].join("\n").contains("other[2]{id,name}:"));
         assert!(only_first[22].contains("Table aligned"), "{only_first:?}");
 
@@ -1065,7 +1065,7 @@ mod terminal_commands {
         let output = session(&input, "l\tq");
         let rows = rendered_rows(&output, 120, 24);
         let header = rows.iter().find(|row| row.contains("users[28]{")).unwrap();
-        let first = rows.iter().find(|row| row.contains(",Ada")).unwrap();
+        let first = rows.iter().find(|row| row.contains("Ada")).unwrap();
         let header_col = UnicodeWidthStr::width(header.split("name").next().unwrap());
         let value_col = UnicodeWidthStr::width(first.split("Ada").next().unwrap());
         assert_eq!(header_col, value_col, "{rows:?}");
@@ -1258,8 +1258,8 @@ mod terminal_commands {
         let keys = "lll\t<<";
         let rows = rendered_rows(&session(input, &format!("{keys}q")), 120, 24);
         let header = rows.iter().find(|row| row.contains("users[2]{")).unwrap();
-        let first = rows.iter().find(|row| row.contains(",Ada")).unwrap();
-        let second = rows.iter().find(|row| row.contains(",Lin")).unwrap();
+        let first = rows.iter().find(|row| row.contains("Ada")).unwrap();
+        let second = rows.iter().find(|row| row.contains("Lin")).unwrap();
         let column = UnicodeWidthStr::width(header.split("name").next().unwrap());
         assert_eq!(
             column,
@@ -1334,7 +1334,7 @@ mod terminal_commands {
         let restored = session(input, "ll\t:.nest.users[0]\n:.\nllq");
         let rows = rendered_rows(&restored, 120, 24);
         assert!(
-            rows[..22].join("\n").contains("         200,Lin"),
+            rows[..22].join("\n").contains("         200 Lin"),
             "{rows:?}"
         );
         assert!(rows[22].contains("Table aligned"), "{rows:?}");

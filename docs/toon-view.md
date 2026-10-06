@@ -3,7 +3,7 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T03:48:34Z }
+generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
 ---
 
 # TOON document view
@@ -31,15 +31,19 @@ alone. The first press changes the same example (with `id` values `1` and
 `200`) to the following text, excluding optional gutters:
 
 ```text
-users[2]{id ,name}:
-         1  ,Ada
-         200,Lin
+users[2]{id  name}:
+           1 Ada
+         200 Lin
 ```
 
-The columns are left-aligned in terminal cells, including the widest rendered
-value anywhere in the table, even off-screen. Quoting and escaped characters
-count toward width; warnings follow the data but do not widen its columns.
-Padding is outside the data tokens. Alignment is an interactive presentation
+Parsed numbers are right-aligned within their columns, including the final column.
+Headers, strings (even numeric-looking strings), booleans, and nulls stay
+left-aligned. Column widths include the widest rendered value anywhere in the
+table, even off-screen. Quoting and escaped characters count toward width;
+warnings follow the data but do not widen its columns.
+Padding and inter-column spaces are outside the data tokens; generated comma
+separators are hidden, while commas inside quoted keys and values are preserved.
+Alignment is an interactive presentation
 exception to the ordinary TOON text contract, not an exported format: pressing
 Tab again restores ordinary TOON text without modifying parsed data, copied
 values, written files, or redirected output. A table remains aligned when
