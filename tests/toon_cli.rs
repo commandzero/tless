@@ -1236,6 +1236,18 @@ mod terminal_commands {
     }
 
     #[test]
+    fn alignment_toggle_clears_ordinary_offsets_on_shared_list_object_headers() {
+        let input = r#"{"outer":[{"rows":[{"identifier":1,"description":"Lin"}],"flag":true}]}"#;
+        let viewport = |keys: &str| {
+            let rows = rendered_rows(&session_with_width(input, keys, None, 35), 35, 24);
+            rows[..4].to_vec()
+        };
+        let ordinary = viewport("lllq");
+        assert_ne!(viewport("lll.q")[1], ordinary[1]);
+        assert_eq!(viewport("lll.\t\tq"), ordinary);
+    }
+
+    #[test]
     fn list_object_table_full_reduction_keeps_columns_and_mouse_identity() {
         use unicode_width::UnicodeWidthStr;
         let input =

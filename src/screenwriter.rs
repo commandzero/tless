@@ -300,7 +300,9 @@ impl ScreenWriter {
             let Some(row) = viewer.layout.row(&viewer.flatjson, *absolute) else {
                 return false;
             };
-            let mut node = Some(row.owner);
+            // A shared header can navigate as its parent list object.
+            // Clear offsets by the displayed node's table membership instead.
+            let mut node = Some(row.node);
             while let Some(index) = node {
                 if index == table {
                     return false;

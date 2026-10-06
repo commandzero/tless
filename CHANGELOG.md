@@ -16,7 +16,7 @@ Earlier upstream history is preserved below.
 ### Added
 
 - Write YAML with `:write-yaml`/`:wy` and compact, LF-delimited JSON with `:write-ndjson`/`:write-jsonl`/`:wn`; every spelling has a `!` overwrite form. (#31)
-- Toggle space-separated TOON table columns with Tab: right-align numbers, keep strings left-aligned, and scroll headers and rows together. A persistent status label identifies the aligned table while other lines retain their wrapping setting. (#32)
+- Toggle space-separated TOON table columns with Tab: right-align numbers, keep strings left-aligned, and scroll headers and rows together. Mode switches discard stale scrolling. A persistent status label identifies the aligned table while other lines retain their wrapping setting. (#32)
 
 ## [0.1.4] - 2026-10-04
 

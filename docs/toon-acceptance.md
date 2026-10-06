@@ -172,6 +172,10 @@ viewport when testing width measurement:
    and check that the table follows the current wrapping policy. Resize,
    toggle gutters and indentation, and confirm column starts, focus, and
    bounds remain valid without painting over the status or command row.
+   Before enabling alignment, manually scroll the counted header of a table
+   that is the first field of a list object. Toggle alignment on and off;
+   confirm its ordinary shared header does not restore the old offset and that
+   the selected data and surrounding lines stay unchanged.
 5. Copy an aligned cell with `yt` (and inspect `pt`), then `:write` the table
    as TOON and `:write-json` it as JSON using a disposable filtered table
    root. Compare parsed content against unaligned output; no grid padding,
