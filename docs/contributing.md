@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T21:03:45Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T21:13:24Z }
 ---
 
 # Contributing
@@ -61,6 +61,9 @@ including the window before close-on-exec takes effect.
 PTY tests pace synthetic input and bound application-response waits separately
 from typing time. Keep prompt, redraw, and exit waits bounded; do not impose a
 fixed budget on an entire script whose length includes literal temporary paths.
+For persistent print commands, wait for the continue prompt and the PTY's
+raw-mode restoration before sending the resume key; early input can be echoed
+into the printed payload while the terminal is temporarily in cooked mode.
 Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing.
 
 For documentation-only edits, run `scripts/validate-docs.sh` locally. It validates
