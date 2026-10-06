@@ -10,7 +10,7 @@ sources:
     resource: ../src/toon.rs
   - id: fixtures
     resource: ../src/toon_fixtures.rs
-generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T18:38:42Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T19:17:08Z }
 ---
 
 # Published TOON codec behavior
@@ -27,8 +27,8 @@ list output. Those codec changes are no longer part of tless.
 
 TOON input uses the published TOON 4.1 strict decoder with 2-space indentation.
 Canonical output uses the published default encoder, with commas and 2 spaces.
-TOON 4.1 has no key folding or path expansion. The wrapper still handles empty documents,
-CRLF, and BOM rejection. Redirected stdout defaults to the same standard encoder. `-o json` and `-o yaml`
+TOON 4.1 has no key folding or path expansion. The wrapper handles empty documents
+and CRLF; the published decoder strips an initial BOM. Redirected stdout defaults to the same standard encoder. `-o json` and `-o yaml`
 select other serializers independently of input format. TOON input is decoded
 and re-encoded even when the selected output is TOON; malformed input fails
 before any stdout payload.
@@ -78,11 +78,14 @@ Successful encoding is not a promise of an exact data round trip.
 
 ## Verification
 
-The unchanged TOON 3.0 source fixtures remain under tests/fixtures/toon-v3.
-All 180 selected historical decode cases and semantic round trips for 114 selected
-encode inputs are exercised. TOON 3.0 encoder spellings are not pinned against the
-TOON 4.1 codec: empty arrays and nested-object tables have changed syntax.
-Object order is not part of semantic round-trip comparison.
+The pinned TOON 4.1 source fixtures remain unchanged under tests/fixtures/toon-v4,
+from specification revision 62f16b369408180f1faf1cba7da1b46d1f336f12.
+The selected strict two-space decode profile covers 333 cases; the comma,
+two-space encode profile covers 156 reference payloads and semantic round trips.
+Non-strict, alternative indentation, and alternative encoder delimiters are
+outside the application profile. Historical TOON 3.0 source fixtures remain
+preserved under tests/fixtures/toon-v3. Object order is not part of semantic
+round-trip comparison.
 
 Application tests cover published duplicate-key and numeric behavior, empty-object
 array output, depth boundaries, and retained file/terminal controls.

@@ -1,6 +1,6 @@
 //! Structural TOON analysis. No rendered lines or source-map graphs are retained.
 use super::line_index::LineIndex;
-use super::{WarningKind, compact_key, decode_string, number, scalar, unsupported_controls};
+use super::{WarningKind, compact_key, decode_string, number, scalar};
 use crate::flatjson::{FlatJson, KeyValue, Value};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -11,7 +11,6 @@ pub struct Node {
     pub hidden_warnings: usize,
     pub table: bool,
     pub table_row: bool,
-    pub table_cell: bool,
     warnings: u8,
 }
 
@@ -80,6 +79,20 @@ pub fn key(flat: &FlatJson, node: usize) -> Option<Cow<'_, str>> {
     }
 }
 
+fn keys_equal(flat: &FlatJson, a: usize, b: usize) -> bool {
+    if a == b {
+        return true;
+    }
+    if flat.key_value(a).is_none() && flat.key_value(b).is_none() {
+        if let (Some(left), Some(right)) = (&flat[a].key_range, &flat[b].key_range) {
+            if flat.1[left.clone()] == flat.1[right.clone()] {
+                return true;
+            }
+        }
+    }
+    key(flat, a) == key(flat, b)
+}
+
 pub fn string(flat: &FlatJson, node: usize) -> Cow<'_, str> {
     match flat.string_value(node) {
         Some(value) => Cow::Borrowed(value),
@@ -124,7 +137,6 @@ fn warning_kinds(bits: u8) -> impl Iterator<Item = WarningKind> {
         WarningKind::NonFiniteNumber,
         WarningKind::NonCanonicalNumber,
         WarningKind::NonStringKey,
-        WarningKind::NonStandardStringEscape,
     ]
     .into_iter()
     .filter(move |kind| bits & (1 << *kind as u8) != 0)
@@ -199,16 +211,10 @@ impl Analysis {
                                 .or_default() += hidden;
                         }
                     }
-                    if flat[open_index].is_array() {
-                        if scalar(flat, flat[open_index].first_child().unwrap()) {
-                            result.arrays.push(open_index);
-                        } else if result.is_table(flat, open_index) {
-                            result.tables.insert(open_index);
-                            result.lines.clear(open_index + 1..i);
-                            for row in children(flat, open_index) {
-                                result.lines.insert(row);
-                            }
-                        }
+                    if flat[open_index].is_array()
+                        && scalar(flat, flat[open_index].first_child().unwrap())
+                    {
+                        result.arrays.push(open_index);
                     }
                     continue;
                 }
@@ -241,10 +247,6 @@ impl Analysis {
                                 .get(fields.seen)
                                 .is_some_and(|entry| entry.0 == decoded);
                         fields.same &= known_clean;
-                        if !known_clean && unsupported_controls(&decoded) {
-                            fields.clean = false;
-                            result.warn(flat, i, root, WarningKind::NonStandardStringEscape);
-                        }
                         if let Some(entry) = fields.values.get_mut(fields.seen) {
                             if !known_clean {
                                 entry.0 = decoded;
@@ -263,21 +265,22 @@ impl Analysis {
                         }
                     }
                 }
-                match row.value {
-                    Value::String => {
-                        if unsupported_controls(&string(flat, i)) {
-                            result.warn(flat, i, root, WarningKind::NonStandardStringEscape);
+                if let Value::Number = row.value {
+                    let raw = &flat.1[row.range.clone()];
+                    if !bounded_integer(raw) && !bounded_fraction(raw) {
+                        // Valid exponent spellings do not need rendering just
+                        // to decide whether this off-screen value warns.
+                        lazy_static::lazy_static! {
+                            static ref EXPONENT: regex::Regex = regex::Regex::new(
+                                r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?[eE][+-]?[0-9]+$"
+                            ).unwrap();
                         }
-                    }
-                    Value::Number => {
-                        let raw = &flat.1[row.range.clone()];
-                        if !bounded_integer(raw) && !bounded_fraction(raw) {
+                        if !EXPONENT.is_match(raw) {
                             if let Some(warning) = number(raw).1 {
                                 result.warn(flat, i, root, warning);
                             }
                         }
                     }
-                    _ => {}
                 }
                 if row.is_opening_of_container() && !row.is_array() {
                     let fields = &mut keys[row.depth];
@@ -285,6 +288,35 @@ impl Analysis {
                     fields.same = fields.previous_clean;
                     fields.clean = true;
                 }
+            }
+        }
+        // Classify only after visiting the whole tree. An outer table owns
+        // nested groups even if one of those objects is independently eligible.
+        for &root in roots {
+            let end = *flat.subtree_range(root).end();
+            let mut i = root;
+            while i <= end {
+                let eligible_position = (i == root || flat[i].key_range.is_some())
+                    && (flat[i].is_array() || child_count(flat, i) >= 2);
+                if !flat[i].is_opening_of_container()
+                    || !eligible_position
+                    || !result.is_table(flat, i)
+                {
+                    i += 1;
+                    continue;
+                }
+                result.tables.insert(i);
+                if i == root && !flat[i].is_array() {
+                    result.lines.insert(i);
+                }
+                let table_end = *flat.subtree_range(i).end();
+                result.lines.clear(i + 1..table_end);
+                for row in children(flat, i) {
+                    result.lines.insert(row);
+                }
+                // A table's descendants are field groups and primitive leaves,
+                // never independent tables. Do not reclassify their schemas.
+                i = table_end + 1;
             }
         }
         result.lines.finish();
@@ -314,24 +346,52 @@ impl Analysis {
             hidden_warnings: self.hidden_warnings.get(&node).copied().unwrap_or(0),
             table: self.tables.contains(&node),
             table_row: self.table_row(flat, node),
-            table_cell: self.table_cell(flat, node),
             warnings: self.warnings.get(&node).copied().unwrap_or(0),
         }
     }
 
+    pub fn table_owner(&self, flat: &FlatJson, node: usize) -> Option<usize> {
+        let mut current = node;
+        let root = self.root_for(node)?;
+        loop {
+            if self.tables.contains(&current) {
+                return Some(current);
+            }
+            current = flat[current].parent.as_option()?;
+            if self.root_for(current) != Some(root) {
+                return None;
+            }
+        }
+    }
+
+    pub fn table_row_owner(&self, flat: &FlatJson, node: usize) -> Option<usize> {
+        let table = self.table_owner(flat, node)?;
+        if node == table {
+            return None;
+        }
+        let mut row = node;
+        while flat[row].parent.as_option() != Some(table) {
+            row = flat[row].parent.as_option()?;
+        }
+        Some(row)
+    }
+
     pub fn table_row(&self, flat: &FlatJson, node: usize) -> bool {
-        flat[node]
-            .parent
-            .as_option()
-            .is_some_and(|parent| self.tables.contains(&parent))
+        self.table_row_owner(flat, node) == Some(node)
     }
 
     pub fn table_cell(&self, flat: &FlatJson, node: usize) -> bool {
-        !flat[node].is_closing_of_container()
-            && flat[node]
-                .parent
-                .as_option()
-                .is_some_and(|parent| self.table_row(flat, parent))
+        scalar(flat, node) && self.table_row_owner(flat, node).is_some()
+    }
+
+    /// Primitive leaves in encounter order; eligible rows contain no arrays.
+    pub fn table_cells<'a>(
+        &self,
+        flat: &'a FlatJson,
+        row: usize,
+    ) -> impl Iterator<Item = usize> + 'a {
+        let end = *flat.subtree_range(row).end();
+        (row + 1..end).filter(move |&node| scalar(flat, node))
     }
 
     pub fn warnings(&self, node: usize) -> impl Iterator<Item = WarningKind> + '_ {
@@ -366,41 +426,80 @@ impl Analysis {
         (node <= end).then_some(ordinal)
     }
 
-    fn is_table(&self, flat: &FlatJson, array: usize) -> bool {
-        let Some(first) = children(flat, array).next() else {
+    fn is_table(&self, flat: &FlatJson, container: usize) -> bool {
+        let Some(first) = children(flat, container).next() else {
             return false;
         };
-        let fields = child_count(flat, first);
-        if fields == 0 || flat[first].is_array() {
-            return false;
-        }
-        if children(flat, first).any(|field| {
-            !scalar(flat, field)
-                || self.warnings.get(&field).is_some_and(|info| {
-                    info & ((1 << WarningKind::DuplicateKey as u8)
-                        | (1 << WarningKind::NonStringKey as u8))
-                        != 0
-                })
-        }) {
-            return false;
-        }
-        let raw_keys = flat.3.keys.is_empty();
-        // The first row was fully validated above; compare only later rows.
-        children(flat, array).skip(1).all(|row| {
-            !flat[row].is_array()
-                && child_count(flat, row) == fields
-                && children(flat, row)
-                    .zip(children(flat, first))
-                    .all(|(a, b)| {
-                        scalar(flat, a)
-                            && (raw_keys
-                                && flat.1[flat[a].key_range.clone().unwrap()]
-                                    == flat.1[flat[b].key_range.clone().unwrap()]
-                                || key(flat, a) == key(flat, b))
-                            && !self.warnings.get(&a).is_some_and(|info| {
-                                info & (1 << WarningKind::NonStringKey as u8) != 0
-                            })
+        if !flat[container].is_array() {
+            if child_count(flat, container) < 2 {
+                return false;
+            }
+            if children(flat, container).any(|entry| {
+                !flat[entry].is_opening_of_container()
+                    || flat[entry].is_array()
+                    || self.warnings.get(&entry).is_some_and(|&bits| {
+                        bits & ((1 << WarningKind::DuplicateKey as u8)
+                            | (1 << WarningKind::NonStringKey as u8))
+                            != 0
                     })
-        })
+            }) {
+                return false;
+            }
+        }
+        if child_count(flat, container) == 1 {
+            self.same_schema(flat, first, first)
+        } else {
+            // Pairwise comparison validates both schemas. Do not walk the
+            // first subtree before an immediate mismatch can reject the table.
+            children(flat, container)
+                .skip(1)
+                .all(|row| self.same_schema(flat, first, row))
+        }
+    }
+
+    fn same_schema(&self, flat: &FlatJson, first: usize, row: usize) -> bool {
+        if flat[first].is_array()
+            || flat[row].is_array()
+            || !flat[first].is_opening_of_container()
+            || !flat[row].is_opening_of_container()
+            || child_count(flat, first) == 0
+            || child_count(flat, first) != child_count(flat, row)
+        {
+            return false;
+        }
+        let mut left = (first + 1..flat[first].pair_index().unwrap())
+            .filter(|&node| !flat[node].is_closing_of_container());
+        let mut right = (row + 1..flat[row].pair_index().unwrap())
+            .filter(|&node| !flat[node].is_closing_of_container());
+        loop {
+            match (left.next(), right.next()) {
+                (None, None) => return true,
+                (Some(a), Some(b)) => {
+                    let ordinary_object = |node| {
+                        flat[node].is_opening_of_container()
+                            && !flat[node].is_array()
+                            && child_count(flat, node) > 0
+                    };
+                    if flat[a].depth - flat[first].depth != flat[b].depth - flat[row].depth
+                        || !keys_equal(flat, a, b)
+                        || self.warnings.get(&a).is_some_and(|&bits| {
+                            bits & ((1 << WarningKind::DuplicateKey as u8)
+                                | (1 << WarningKind::NonStringKey as u8))
+                                != 0
+                        })
+                        || self.warnings.get(&b).is_some_and(|&bits| {
+                            bits & ((1 << WarningKind::DuplicateKey as u8)
+                                | (1 << WarningKind::NonStringKey as u8))
+                                != 0
+                        })
+                        || !(scalar(flat, a) && scalar(flat, b)
+                            || ordinary_object(a) && ordinary_object(b))
+                    {
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+        }
     }
 }

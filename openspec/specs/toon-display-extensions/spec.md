@@ -39,7 +39,7 @@ The viewer SHALL render every duplicate object entry in encounter order and atta
 
 ### Requirement: Non-finite and non-canonical numbers
 
-Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, or `.nan`, followed by `# WARN Non-finite number`. Standard finite numeric values SHALL render without rounding or conversion to strings. When canonical decimal rendering would require more than 4096 characters, or a parsed numeric token cannot be expressed by the standard profile without changing its value, the viewer SHALL retain its parsed numeric spelling and append `# WARN Non-canonical number`. Literal strings that resemble these tokens SHALL be quoted.
+Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, or `.nan`, followed by `# WARN Non-finite number`. Standard finite numeric values SHALL render exactly without rounding or conversion to strings. TOON 4.1 exponent notation outside the ordinary decimal range SHALL remain a standard spelling, without requiring unbounded decimal expansion. Numeric normalization SHALL retain a 4096-character work bound; a parsed token that cannot be normalized within that bound without changing its value SHALL retain its original spelling with `# WARN Non-canonical number`. Literal strings that resemble numeric tokens SHALL be quoted.
 
 #### Scenario: Infinity and a similar string
 
@@ -52,7 +52,7 @@ Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, o
 
 - **WHEN** parsed JSON contains `0.123456789012345678901` and `1e1000000`
 - **THEN** the decimal SHALL retain all significant digits
-- **AND** the exponent SHALL display as `1e1000000  # WARN Non-canonical number`
+- **AND** the exponent SHALL retain an exact standard exponent spelling without a generated warning
 - **AND** rendering SHALL NOT allocate a million-character decimal expansion
 
 ### Requirement: Non-string keys and multiple roots
@@ -72,20 +72,20 @@ A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>
 - **THEN** each SHALL retain its root shape under its sequence document row without extra indentation
 - **AND** each document row SHALL be selectable and collapsible and SHALL identify its existing parsed root without introducing a serialized value
 
-### Requirement: Unsupported control-character escapes
+### Requirement: Standard Unicode control escapes
 
-String values and string keys containing control characters other than LF, CR, and TAB SHALL use terminal-safe JSON-style `\uXXXX` spellings and receive `# WARN Non-standard string escape`. These spellings SHALL be labeled as display extensions because TOON 3.0 does not support Unicode escape sequences. The warning SHALL also apply to such strings inside compact typed keys. Literal backslash-u text SHALL remain string data without this warning. Input parsing and export behavior SHALL remain unchanged.
+String values and string keys containing control characters SHALL use terminal-safe quoted escapes, including TOON 4.1 `\uXXXX` spellings where appropriate. Unicode escapes SHALL NOT be labeled non-standard or counted as warnings. Literal backslash-u text SHALL remain distinct string data. Strings beginning with `#` SHALL be quoted so they cannot become full-line comments. Input parsing and export behavior SHALL remain unchanged.
 
 #### Scenario: Unsafe control and literal escape text
 
 - **WHEN** parsed JSON contains string values `"\u0001"` and `"\\u0001"`
-- **THEN** the control character SHALL display as `"\u0001"  # WARN Non-standard string escape`
+- **THEN** the control character SHALL display as `"\u0001"` without a generated warning
 - **AND** the literal backslash-u value SHALL retain its characters without a generated warning
 - **AND** neither SHALL write a raw control character to the terminal
 
 ### Requirement: Warning placement and collapse
 
-Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages ordered first by parsed-node encounter order. Within each node, messages SHALL follow this kind order: duplicate key, non-finite number, non-canonical number, non-string key, non-standard string escape. Any `Contains N hidden warnings` summary SHALL follow the container's own messages and appear last. Inline-array and table warnings SHALL identify the affected zero-based element or field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or as an extra search match.
+Warnings SHALL be generated annotation spans, separated from preceding content by 2 spaces and rendered subdued. Multiple warnings on a line SHALL use one `# WARN ` prefix and semicolon-separated messages ordered first by parsed-node encounter order. Within each node, messages SHALL follow this kind order: duplicate key, non-finite number, non-canonical number, non-string key. Any `Contains N hidden warnings` summary SHALL follow the container's own messages and appear last. Inline-array and table warnings SHALL identify the affected zero-based element or leaf field. A collapsed container SHALL retain warnings about itself and append `Contains N hidden warnings` for warnings on hidden descendants. A warning SHALL never appear as ordinary source string content or an extra search match.
 
 #### Scenario: Hidden duplicate
 
@@ -101,8 +101,8 @@ Warnings SHALL be generated annotation spans, separated from preceding content b
 
 #### Scenario: Mixed warning kinds on different nodes
 
-- **WHEN** an inline array contains an unsupported-control string, infinity, and a non-canonical number in that order
-- **THEN** its final comment SHALL list `Non-standard string escape at [0]`, `Non-finite number at [1]`, and `Non-canonical number at [2]` in that parsed-node order
+- **WHEN** an inline array contains a control string, infinity, and a genuinely non-canonical number in that order
+- **THEN** the control string SHALL contribute no warning and the comment SHALL list the numeric warnings in parsed-node order
 - **AND** kind priority SHALL NOT move another node's warning ahead of an earlier node
 
 #### Scenario: Source text resembles a warning

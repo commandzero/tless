@@ -1,5 +1,5 @@
 
-TOON 4.1 input and export
+TOON 4.1
 
   Open .toon files or use --input-format toon for standard input. TOON is shown using the
   document view. Searches use normalized JSON text.
@@ -55,4 +55,7 @@ TOON 4.1 input and export
   Non-terminal output parses and re-encodes TOON input; it does not pass through unchanged.
 
   Codec: TOON 4.1; strict input rejects duplicate sibling keys.
-  The document view retains its TOON 3.0-based presentation, not codec syntax.
+  The document view uses TOON 4.1 nested field groups and keyed object tables.
+  Empty root/field arrays use []; Unicode control escapes are standard.
+  Nested groups and leaves keep their original paths. Table Tab alignment
+  operates on primitive leaf columns; keyed entries keep their key prefixes.

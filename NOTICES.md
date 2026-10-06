@@ -7,10 +7,14 @@ The published toon-format 0.6.1 crate is by Shreyas S Bhat and Johann Schopplich
 It is a crates.io dependency; tless contains no vendored codec source.
 Its MIT license is reproduced below and included in binary archives through this file.
 
-The TOON specification and fixtures are from toon-format/spec revision
+The TOON 3.0 specification and historical fixtures are from toon-format/spec revision
 c09f73b267323190f61de5b91563fa579b3b7c5e, copyright Johann Schopplich.
 Their MIT license remains in tests/fixtures/toon-v3/LICENSE.
 The fixtures are development inputs and are not included in binary archives.
+
+The TOON 4.1 specification fixtures are from toon-format/spec revision
+62f16b369408180f1faf1cba7da1b46d1f336f12, copyright Johann Schopplich.
+Their unchanged MIT license remains in tests/fixtures/toon-v4/LICENSE.
 
 Cargo.lock records the complete dependency versions used by this checkout.
 Dependency authors retain their respective copyrights and license terms.
