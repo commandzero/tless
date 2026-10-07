@@ -5,7 +5,7 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-10-06
+## [0.2.0] - 2026-10-07
 
 ### Removed
 
@@ -14,7 +14,7 @@ Earlier upstream history is preserved below.
 ### Changed
 
 - **Breaking:** `:write` and `:w` now write TOON rather than JSON, including `!` forms; use `:write-json` (or `:wj`) for previous JSON writes. TOON requires one active root. (#31)
-- **Breaking:** TOON input and export now follow TOON 4.1, including nested table field groups and `[]` empty arrays. Strict input rejects duplicate sibling keys; remove duplicates before opening TOON files. See [codec behavior](docs/toon-codec.md). (#34)
+- **Breaking:** TOON input and export now support TOON v4.1, including nested table field groups and `[]` empty arrays. Strict input rejects duplicate sibling keys; remove duplicates before opening TOON files. See [codec behavior](docs/toon-codec.md). (#34)
 - **Breaking:** The document view now renders TOON 4.1 nested field groups and keyed object tables, with `[]` for empty root/field arrays. Nested groups and leaves keep original paths, search and selection identities; Tab aligns primitive leaf columns while retaining keyed-entry prefixes. Unicode control escapes are standard and no longer generate non-standard-escape warnings. See [document view](docs/toon-view.md). (#34)
 
 ### Fixed
