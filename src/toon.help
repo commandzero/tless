@@ -1,5 +1,5 @@
 
-TOON 3.0
+TOON 4.1
 
   Open .toon files or use --input-format toon for standard input. TOON is shown using the
   document view. Searches use normalized JSON text.
@@ -42,7 +42,7 @@ TOON 3.0
   never just the focused value or screen annotations; :. resets the filter.
   TOON output requires exactly one root, string keys, finite JSON numbers,
   and at most 256 nested containers. Decimal precision may be lost;
-  duplicate keys keep the last value. yt and pt can select one subtree.
+  exported duplicate keys keep the last value. yt and pt can select one subtree.
   JSON emits two-space pretty values with final LF per root and no array
   wrapper. YAML starts each document with --- and ends it with LF.
   NDJSON/JSONL emits one compact JSON value and LF per root; arrays stay
@@ -54,4 +54,8 @@ TOON 3.0
   CLI input/output selectors still accept only toon, json, yaml.
   Non-terminal output parses and re-encodes TOON input; it does not pass through unchanged.
 
-  toon-spec: 3.0. TOON 4.x syntax is not supported.
+  Codec: TOON 4.1; strict input rejects duplicate sibling keys.
+  The document view uses TOON 4.1 nested field groups and keyed object tables.
+  Empty root/field arrays use []; Unicode control escapes are standard.
+  Nested groups and leaves keep their original paths. Table Tab alignment
+  operates on primitive leaf columns; keyed entries keep their key prefixes.

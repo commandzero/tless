@@ -3,21 +3,33 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T19:17:08Z }
 ---
 
 # TOON document view
 
-The interactive viewer renders JSON, YAML, and TOON through the same TOON 3.0
-profile, using 2-space indentation, commas, and no key folding. Rendering works
-in every build. TOON input and standard export are included in every build.
+The interactive viewer renders JSON, YAML, and TOON through the same TOON 4.1
+document view, using 2-space indentation and commas. Input, display, and standard
+export support TOON 4.1 in every build; presentation annotations and alignment
+remain separate from serialized data.
 
 Object fields keep their parsed order. Primitive arrays with at most five
 elements share a line when the entire line fits the terminal, including its
 indentation, gutters, and annotations. Otherwise each element gets its own
-list line. Arrays
-of objects use a table only when all rows have the same nonempty, unique string
-fields in the same order and all cells are primitive. Other arrays use lists.
+list line. Arrays of objects use a table when every row has the same nonempty,
+unique string fields in the same order, with primitive columns or recursively
+uniform nonempty object columns. Nested columns use field groups such as
+`customer{name,country}` and flatten their primitive leaves into data cells.
+Arrays, empty objects, mixed primitive/object columns, duplicate keys, typed
+keys, or differing field order keep the entire structure in list form.
+
+An object with at least two entries whose values have the same eligible
+object shape uses a keyed table at the root or as an object field:
+`servers[2:]{host,port}:` followed by `alpha: a.example.com,8080` and
+`beta: b.example.com,9090`. Entry order and nested field order remain unchanged.
+Anonymous array elements never use a keyless fields-bearing table header:
+inner arrays use list form and anonymous objects use ordinary object layout.
+Nested-uniform columns use field groups instead. These positional rules follow TOON 4.1.
 
 ```text
 tags[2]: rust,cli
@@ -41,6 +53,9 @@ Headers, strings (even numeric-looking strings), booleans, and nulls stay
 left-aligned. Column widths include the widest rendered value anywhere in the
 table, even off-screen. Quoting and escaped characters count toward width;
 warnings follow the data but do not widen its columns.
+Nested groups retain braces and field names in the header; alignment applies
+to their primitive leaf columns. Keyed table rows retain their entry-key
+prefixes outside the aligned cells, including quoted and non-ASCII keys.
 Padding and inter-column spaces are outside the data tokens; generated comma
 separators are hidden, while commas inside quoted keys and values are preserved.
 Alignment is an interactive presentation
@@ -50,10 +65,12 @@ values, written files, or redirected output. A table remains aligned when
 collapsed and after it is restored by a path filter; filtering down to an
 individual row or cell does not display a table grid.
 
-Empty object fields use `key:` and empty arrays use `key[0]:`. Arrays of empty
-objects use a counted list with a bare `-` for each object. Root objects have
-no synthetic header. An empty root has a blank selectable row and its type in
-status. In a single-root input, root objects remain expanded.
+Empty object fields use `key:`. Empty arrays at the root or as fields use
+`[]` or `key: []`; anonymous inner-array list items retain `- [0]:`.
+Arrays of empty objects use a counted list with a bare `-` for each object.
+Ordinary root objects have no synthetic header and remain expanded in a
+single-root input. A keyed root has its real `[N:]{fields}:` header and can be
+collapsed. An empty object root has a blank selectable row and its type in status.
 
 When parsing yields multiple roots, the viewer adds one selectable document row
 for each root, in encounter order. JSONL, NDJSON, concatenated JSON values, and
@@ -179,11 +196,13 @@ In a sequence, each document row represents its parsed root. From a top-level
 field, `[` selects its document row and `]` selects the next document row. Sibling
 motions from a document row move between rows. Vertical motion includes each
 visible row, while a collapsed document contributes only its own row.
-Moving down from a table cell retains its field on the next expanded table row.
-The status bar shows paths without an `input` prefix, such as `.users[1].name`,
-and shows `.` at the document root. A cell's path includes its row index and key. Its
-parent is the row object, whose parent is the array. Duplicate entries remain
-separate selections, with an occurrence number beside the path.
+Moving down from a table leaf retains its depth-first leaf column on the next
+expanded row or keyed entry. Nested groups remain selectable ancestors sharing
+the data row; their leaves keep separate identities. The status bar shows
+original paths such as `.orders[1].customer.country` or `.servers.beta.port`,
+without an `input` prefix, and `.` at the document root. Parent motion follows
+the parsed nested object tree rather than flattening paths to the table header.
+Duplicate entries remain separate selections with occurrence numbers in status.
 
 Search matches are underlined and use yellow foreground (3), with bright yellow (11) for the active
 match. The default theme never uses reverse video.
@@ -194,8 +213,8 @@ warnings, counts, and previews add no matches.
 
 The `▾` and `▸` arrows occupy a separate gutter. Inline primitive arrays show
 `▸` by default; clicking it or pressing Space expands the array to multiline.
-Tabular array rows have no collapse control and stay visible; only their array
-parent can be collapsed. Collapsing retains a container
+Tabular rows, keyed entries, and their nested field groups have no independent
+collapse control; only the owning table can be collapsed. Collapsing retains a container
 header and shows a subdued preview. Object fields use `; ` separators, such as
 `name: Ada; active: true`. Objects also show their immediate-entry
 count as `(N)`, such as `(7)` for seven entries. Counts, previews, and warnings
@@ -291,26 +310,27 @@ status: done  # WARN Duplicate key
 limit: .inf  # WARN Non-finite number
 literal: ".inf"
 precise: 0.123456789012345678901
-huge: 1e1000000  # WARN Non-canonical number
-control: "\u0001"  # WARN Non-standard string escape
+huge: 1e1000000
+control: "\u0001"
 ? 1: numeric-key-value  # WARN Non-string key
 "1": string-key-value
 ```
 
 Every occurrence of a duplicate decoded key receives a warning. Non-finite
 numbers retain numeric type as `.inf`, `-.inf`, or `.nan`. Finite decimal tokens
-normalize exactly without floating-point conversion. If expansion would exceed
-4096 characters, or a numeric spelling cannot be normalized without changing
-its value, the original parsed token stays visible with a warning.
+normalize exactly without floating-point conversion. TOON 4.1 permits exponent
+notation outside its ordinary decimal range; large finite exponents can remain
+visible without allocating an unbounded expanded decimal. If a token cannot
+be normalized within the documented work bound without changing its value,
+its original spelling remains visible with a non-canonical-number warning.
 
-TOON 3.0 supports escapes for LF, CR, TAB, quotes, and backslashes. Other
-control characters use terminal-safe JSON-style `\uXXXX` spellings with
-`Non-standard string escape` warnings. These spellings are display extensions;
-a literal backslash-u string does not receive a warning. Shared-line warnings
-follow parsed-node encounter order. Within each node,
-warning order is duplicate key, non-finite number, non-canonical number,
-non-string key, then non-standard string escape. A collapsed
-container's hidden-warning count follows its own messages and appears last.
+TOON 4.1 supports `\uXXXX` escapes for BMP scalars, including control characters.
+The viewer uses terminal-safe quoted escapes; these no longer receive
+`Non-standard string escape` warnings. Strings starting with `#` are quoted
+so they remain data, not full-line comments. Shared-line warnings follow
+parsed-node encounter order: duplicate key, non-finite number,
+non-canonical number, then non-string key. A collapsed container's
+hidden-warning count follows its own messages and appears last.
 
 Non-string keys use `? ` followed by compact typed notation. Strings remain
 JSON-style quoted strings; arrays and ordered object pairs preserve key types
@@ -326,7 +346,7 @@ containing `# WARN` are quoted data and do not increase warning counts.
 
 ## Copy and export
 
-Extended display text is not standard TOON 3.0. Its warnings, collapse arrows,
+Extended display text is not a serialized TOON 4.1 document. Its warnings, collapse arrows,
 counts, and previews are presentation annotations, not a new file format.
 Copy and print commands operate on the selected parsed value. Selecting a
 document row targets its parsed root. At the `:` prompt, whole-document writes

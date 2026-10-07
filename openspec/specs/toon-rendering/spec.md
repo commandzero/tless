@@ -8,13 +8,21 @@ Provide one syntax-colored TOON document view with predictable collapse annotati
 
 ### Requirement: One rendering contract
 
-The viewer SHALL render every supported input format with the TOON 3.0 profile: 2-space indentation, comma delimiters, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering, and TOON input and export SHALL be available in every build profile. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
+The viewer SHALL render every supported input format with the TOON 4.1 display profile: 2-space indentation, comma delimiters, nested uniform field groups, keyed object tables, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering. The published TOON 4.1 codec SHALL handle TOON input and export in every build profile; codec syntax SHALL NOT select a different document presentation. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
 
 #### Scenario: Equivalent inputs
 
 - **WHEN** JSON, YAML, and TOON inputs produce equivalent parsed data
 - **THEN** their fully expanded document text SHALL match
 - **AND** input-format selectors SHALL NOT select a different rendering mode
+
+#### Scenario: TOON 4.1 input retains the document view
+
+- **WHEN** TOON 4.1 input uses nested table field groups, keyed tables, `[]` empty arrays, or arrays of empty objects
+- **THEN** its expanded data rows SHALL match equivalent JSON at wide and narrow terminal sizes
+- **AND** eligible nested field groups SHALL render in table headers and keyed object tables SHALL retain entry-key prefixes
+- **AND** nested path filtering and focused print SHALL preserve the decoded leaf values
+
 
 #### Scenario: Obsolete mode controls
 
@@ -31,7 +39,8 @@ The viewer SHALL render every supported input format with the TOON 3.0 profile: 
 
 ### Requirement: Native TOON layout
 
-Fully expanded standard-compatible data SHALL use TOON object fields, inline or multiline primitive arrays, uniform primitive-only object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string field sets shared by every row. Array order and object entry order SHALL be preserved. When a table would reorder a row's fields, the array SHALL use list form. When table alignment is disabled and the viewport can represent every grapheme and no content is clipped, stripping presentation styling and gutters from fully expanded standard-compatible single-root content, and rejoining soft-wrapped continuations without inserting characters, SHALL leave valid TOON text.
+Fully expanded standard-compatible data SHALL use TOON 4.1 object fields, inline or multiline primitive arrays, recursively uniform object tables, keyed object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string fields in identical order across rows, recursively allowing nonempty uniform object columns with primitive leaves. Arrays, empty objects, mixed primitive/object columns, duplicate or typed keys, and differing nested field order SHALL disqualify the entire table. Keyed tables SHALL require at least two eligible object-valued entries and SHALL occur only at roots or object-field positions, never as anonymous array elements or within another table's nested field group. Array order and object entry order SHALL be preserved. When a table would reorder fields, the structure SHALL use ordinary object/list form. With alignment disabled, no clipping, representable graphemes, no display extensions, and soft-wrapped continuations rejoined without inserted characters, fully expanded single-root text stripped of presentation styling and gutters SHALL be valid TOON 4.1.
+Fields-bearing table headers SHALL occur only at roots or object-field positions. A tabular-eligible array nested as an anonymous list item SHALL use list form, per TOON 4.1 section 9.4.
 
 #### Scenario: Primitive array default layout
 
@@ -49,16 +58,24 @@ Fully expanded standard-compatible data SHALL use TOON object fields, inline or 
 #### Scenario: Empty containers
 
 - **WHEN** the document contains an empty object field, an empty array, or an array of empty objects
-- **THEN** it SHALL use respectively `key:`, `key[0]:`, or a counted list with one bare `-` per empty object
+- **THEN** it SHALL use respectively `key:`, `[]` or `key: []`, or a counted list with one bare `-` per empty object
 - **AND** it SHALL NOT emit a zero-field table with blank rows
 - **AND** empty containers SHALL have no collapse arrow, except their sequence document rows support document collapse
+- **AND** an anonymous empty inner-array list item SHALL retain `- [0]:`
 
 #### Scenario: Empty and nonempty root objects
 
-- **WHEN** a single-root input is an object
+- **WHEN** a single-root input is an ordinary object rather than an eligible keyed table
 - **THEN** its fields SHALL have no synthetic root header or enclosing braces
 - **AND** the root SHALL stay expanded while its descendants support collapse
 - **AND** an empty root object SHALL display an empty document with its type available in application status
+
+#### Scenario: Nested uniform and keyed tables
+
+- **WHEN** rows share fields `id` and `customer` whose values share primitive fields `name` and `country`
+- **THEN** the header SHALL use `id,customer{name,country}` and each row SHALL emit depth-first primitive leaf cells
+- **AND** an eligible keyed root SHALL have a real `[N:]{fields}:` header and keyed rows, retaining collapse and alignment controls
+- **AND** field groups and leaves SHALL retain their parsed source identities and full original paths
 
 #### Scenario: Aligned text is presentation only
 
@@ -78,7 +95,7 @@ Keys and table field names SHALL retain their source identities for search and n
 
 ### Requirement: Collapse presentation
 
-Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Inline primitive arrays SHALL show `▸` by default; clicking their arrow or pressing Space SHALL expand them to multiline. Tabular rows SHALL NOT have collapse indicators or support row collapse; only their array parent SHALL be collapsible. Collapsing SHALL retain the container's header and replace multiline contents with a preview in document order. Complete inline primitive arrays with at most five elements that fit the terminal SHALL retain value syntax styling; other previews SHALL be subdued. Collapsed object previews SHALL separate fields with a semicolon followed by a space (`; `). A collapsed object below a document root, or in a single-root input, SHALL show its immediate-entry count as `(N)`, such as `(1)` or `(7)`; duplicate entries SHALL each count. Arrays SHALL retain their TOON count and SHALL NOT receive a second count annotation. Expanded containers SHALL have no contents preview or object-count annotation. Sequence document rows SHALL retain their subdued position in both states and show a contents preview only when collapsed. Sequence document rows SHALL be independently collapsible, including for scalar and empty-container documents. Their collapse controls SHALL use the same gutter arrows. Their contents SHALL retain the indentation they would have as standalone roots. A sequence document preview SHALL remain subdued even for a short primitive array. Document rows SHALL use their sequence position without an additional object-entry count.
+Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when collapsed in a reserved gutter outside TOON indentation. Inline primitive arrays SHALL show `▸` by default; clicking their arrow or pressing Space SHALL expand them to multiline. Tabular rows, keyed entries, and nested field groups SHALL NOT have independent collapse indicators or support row/group collapse; only their owning table SHALL be collapsible. Collapsing SHALL retain the container's header and replace multiline contents with a preview in document order. Complete fitting inline primitive arrays of at most five elements SHALL retain syntax styling; other previews SHALL be subdued. Collapsed object previews SHALL separate fields with `; ` and ordinary objects SHALL show immediate-entry counts as `(N)`, counting duplicate entries individually. Arrays and keyed tables SHALL retain their TOON count without a second count annotation. Expanded containers SHALL have no contents preview or object-count annotation. Sequence document rows SHALL remain independently collapsible, including scalar and empty documents, retaining subdued positions in both states and previews only when collapsed. Their body indentation SHALL match standalone roots; keyed root bodies SHALL remain independently selectable and collapsible. Sequence previews SHALL remain subdued and SHALL NOT add object-entry counts.
 
 #### Scenario: Object and array collapse
 
@@ -92,7 +109,7 @@ Nonempty collapsible containers SHALL show `▾` when expanded and `▸` when co
 - **WHEN** a user collapses an object row in a table
 - **THEN** that row's values SHALL remain visible and unchanged
 - **AND** the row SHALL have no collapse indicator
-- **AND** the array parent SHALL retain its collapse control
+- **AND** the owning array or keyed-object table SHALL retain its collapse control
 
 #### Scenario: Inline array collapse
 
@@ -254,7 +271,7 @@ Whether a line has previously been displayed SHALL NOT affect its TOON layout, w
 
 #### Scenario: Late table disqualifier
 
-- **WHEN** the last object in an otherwise uniform array has different field order, duplicate fields, or a non-scalar field
+- **WHEN** the last object in an otherwise uniform array has different nested field order, duplicate fields, an array, an empty object, or a mixed primitive/object column
 - **THEN** the initial viewport SHALL use the existing list-form decision for that entire array
 - **AND** scrolling to the final object SHALL NOT retroactively change the array from table to list form
 
@@ -294,11 +311,11 @@ The candidate's median and p95 first-useful-frame times SHALL each be no more th
 
 ### Requirement: Per-table alignment toggle
 
-Tab in the document view SHALL toggle alignment once for the focused tabular array, including focus on its header, row, or cell, regardless of a numeric prefix. Alignment SHALL start disabled for every table. Tab SHALL NOT align non-tabular values or change prompt-editor behavior. A collapsed table SHALL retain its collapse state when toggled.
+Tab in the document view SHALL toggle alignment once for the focused tabular array or keyed-object table, including focus on its header, entry/row, nested group or primitive leaf, regardless of a numeric prefix. Alignment SHALL start disabled for every table. Tab SHALL NOT align non-tabular values or change prompt-editor behavior. A collapsed table SHALL retain its collapse state when toggled.
 
 #### Scenario: Toggle from header and cells
 
-- **WHEN** the user presses Tab on a table header, row object, or cell
+- **WHEN** the user presses Tab on a table header, entry/row object, nested group or primitive leaf
 - **THEN** only that table SHALL toggle alignment and preserve logical focus
 - **AND** pressing Tab again SHALL restore its unaligned presentation
 - **AND** toggling one table SHALL NOT change another table
@@ -311,13 +328,14 @@ Tab in the document view SHALL toggle alignment once for the focused tabular arr
 
 #### Scenario: Collapsed table
 
-- **WHEN** the user enables alignment on a collapsed tabular array
-- **THEN** the array SHALL remain collapsed with its ordinary preview
+- **WHEN** the user enables alignment on a collapsed array or keyed-object table
+- **THEN** that table SHALL remain collapsed with its ordinary preview
 - **AND** expanding it SHALL display aligned headers and rows
 
 ### Requirement: Terminal-cell aligned table columns
 
 An expanded aligned table SHALL align each rendered cell within its field's column using generated whitespace outside the data tokens. Parsed numbers SHALL be right-aligned to the full column width, including the final column. Headers, strings (including numeric-looking strings), booleans, and nulls SHALL remain left-aligned. Column widths SHALL include the widest rendered header or value across all table rows, measured in terminal cells. Generated comma separators between fields and values SHALL be replaced by one space; commas inside data tokens SHALL remain unchanged. The counted header SHALL remain visible syntax. Gutters, indentation reduction, and scrolling SHALL preserve column alignment.
+Nested header groups SHALL retain their syntax, while leaf-column widths SHALL include their header prefixes and primitive values. Keyed entry prefixes SHALL remain outside leaf cells; varying quoted or Unicode entry-key widths SHALL NOT disturb common cell columns. Generated padding SHALL have no parsed source identity.
 
 #### Scenario: Exact header and value positions
 
@@ -360,7 +378,7 @@ Alignment SHALL persist per table during the session across focus changes, resiz
 
 #### Scenario: Persistent focused-table indication
 
-- **WHEN** focus moves between an aligned table's header, rows, and cells
+- **WHEN** focus moves between an aligned table's header, entries/rows, nested groups, and primitive leaves
 - **THEN** status SHALL continue to indicate table alignment without relying on a transient message or color alone
 - **AND** leaving that table SHALL remove its indicator without clearing its alignment setting
 - **AND** narrow terminals SHALL use a shortened visible indicator when status space is available

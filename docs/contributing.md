@@ -3,7 +3,7 @@ type: Guide
 title: Contributing
 description: Repository standards, local checks, pull requests, and compatibility commitments.
 status: stable
-generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T03:17:48Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T21:13:24Z }
 ---
 
 # Contributing
@@ -52,13 +52,18 @@ The root crate has no library target, so it has no library doctests.
 
 Tests use disposable files and isolated pseudoterminals. If a test fails because
 it lacks terminal access, rerun it with access. Do not skip it.
-Use `std::io::pipe()` for subprocess fixtures. Raw POSIX pipes have inheritable
-descriptors; a concurrent spawn can keep a closed read end alive and hide a
-broken-pipe error. Exercise deliberate pipe closure with an overlapping child
-kept alive until the write completes.
+Use `std::io::pipe()` for ordinary subprocess I/O fixtures.
+For deliberate broken-pipe failures, create the pipe and close its reader in
+the child's `pre_exec` setup after fork, before exec. Restrict that setup to
+async-signal-safe syscalls, connect the writer to stdout, and close its original
+descriptor. The reader then cannot be retained by another concurrent fork,
+including the window before close-on-exec takes effect.
 PTY tests pace synthetic input and bound application-response waits separately
 from typing time. Keep prompt, redraw, and exit waits bounded; do not impose a
 fixed budget on an entire script whose length includes literal temporary paths.
+For persistent print commands, wait for the continue prompt and the PTY's
+raw-mode restoration before sending the resume key; early input can be echoed
+into the printed payload while the terminal is temporarily in cooked mode.
 Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing.
 
 For documentation-only edits, run `scripts/validate-docs.sh` locally. It validates

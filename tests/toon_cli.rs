@@ -521,6 +521,8 @@ mod terminal_commands {
         let mut waiting_for_prompt = None;
         let mut entering_command = false;
         let mut waiting_for_redraw = None;
+        let mut pending_print = false;
+        let mut waiting_for_print = None;
         let mut scanned_cursor_requests = 0;
         loop {
             let mut buffer = [0; 16384];
@@ -559,9 +561,25 @@ mod terminal_commands {
                     waiting_for_redraw = None;
                 }
             }
+            if let Some(start) = waiting_for_print {
+                if output[start..]
+                    .windows(b"Press any key to continue.".len())
+                    .any(|bytes| bytes == b"Press any key to continue.")
+                {
+                    use nix::sys::termios::{LocalFlags, tcgetattr};
+                    let mode = tcgetattr(&master).unwrap();
+                    if !mode
+                        .local_flags
+                        .intersects(LocalFlags::ECHO | LocalFlags::ICANON)
+                    {
+                        waiting_for_print = None;
+                    }
+                }
+            }
             if sent
                 && waiting_for_prompt.is_none()
                 && waiting_for_redraw.is_none()
+                && waiting_for_print.is_none()
                 && Instant::now() >= next_key_at
             {
                 if let Some(key) = keys.next() {
@@ -578,6 +596,17 @@ mod terminal_commands {
                         );
                         next_key_at = Instant::now() + Duration::from_millis(100);
                         continue;
+                    }
+                    if !entering_command {
+                        if pending_print {
+                            if matches!(key, b'p' | b't' | b'v' | b's' | b'k' | b'P' | b'b' | b'q')
+                            {
+                                waiting_for_print = Some(output.len());
+                            }
+                            pending_print = false;
+                        } else {
+                            pending_print = key == b'p';
+                        }
                     }
                     if !entering_command && matches!(key, b':' | b'/' | b'?') {
                         entering_command = true;
@@ -791,6 +820,129 @@ mod terminal_commands {
                 );
             }
         }
+    }
+
+    #[test]
+    fn toon_41_input_renders_nested_keyed_and_empty_shapes_like_json() {
+        for (toon, json) in [
+            (
+                "items[2]{id,nested{x}}:\n  1,2\n  3,4",
+                r#"{"items":[{"id":1,"nested":{"x":2}},{"id":3,"nested":{"x":4}}]}"#,
+            ),
+            (
+                "scores[2:]{score}:\n  alice: 1\n  bob: 2",
+                r#"{"scores":{"alice":{"score":1},"bob":{"score":2}}}"#,
+            ),
+            ("items: []", r#"{"items":[]}"#),
+            ("[2]:\n  -\n  -", "[{},{}]"),
+        ] {
+            for width in [120, 30] {
+                let actual = rendered_rows(
+                    &session_with_width(toon, "q", Some("--input-format=toon"), width),
+                    width,
+                    24,
+                );
+                let reference =
+                    rendered_rows(&session_with_width(json, "q", None, width), width, 24);
+                assert_eq!(&actual[..22], &reference[..22], "{toon}, width {width}");
+                if width == 120 {
+                    let painted = actual[..22].join("\n");
+                    if toon.starts_with("items[2]{") {
+                        assert!(painted.contains("items[2]{id,nested{x}}:"), "{actual:?}");
+                    } else if toon.starts_with("scores[2:]") {
+                        assert!(painted.contains("scores[2:]{score}:"), "{actual:?}");
+                    } else if toon == "items: []" {
+                        assert!(painted.contains("items: []"), "{actual:?}");
+                    }
+                }
+            }
+        }
+        for (toon, path, value) in [
+            (
+                "items[2]{id,nested{x}}:\n  1,2\n  3,4",
+                ".items[1].nested.x",
+                "4",
+            ),
+            (
+                "scores[2:]{score}:\n  alice: 1\n  bob: 2",
+                ".scores.bob.score",
+                "2",
+            ),
+        ] {
+            let output = session_with_format(toon, &format!(":{path}\npt q"), Some("toon"));
+            assert!(output.contains(&format!("{value}\r\n")), "{output}");
+        }
+    }
+
+    #[test]
+    fn nested_columns_preserve_focus_search_alignment_and_paths() {
+        let input = r#"{"items":[{"id":1,"nested":{"left":"Ada","right":2}},{"id":3,"nested":{"left":"Lin","right":4}}],"outside":true}"#;
+        for width in [120, 35] {
+            let rows = rendered_rows(&session_with_width(input, "l\tq", None, width), width, 24);
+            assert!(rows[..22].join("\n").contains("nested{left"), "{rows:?}");
+            assert!(rows[22].contains("Table aligned"), "{rows:?}");
+            let group = session_with_width(input, "lllJ\tlpP pp q", None, width);
+            assert!(group.contains(".items[0].nested.left\r\n"), "{group:?}");
+            assert!(group.contains("\"Ada\"\r\n"), "{group:?}");
+            let second = session_with_width(input, "lllJljpP pp q", None, width);
+            assert!(second.contains(".items[1].nested.left\r\n"), "{second:?}");
+            assert!(second.contains("\"Lin\"\r\n"), "{second:?}");
+            let search = session_with_width(input, "l\t/left\npP pp q", None, width);
+            assert!(search.contains(".items[0].nested.left\r\n"), "{search:?}");
+            assert!(search.contains("\"Ada\"\r\n"), "{search:?}");
+        }
+        let ordinary = rendered_rows(&session(input, "J\tq"), 120, 24);
+        assert!(!ordinary[22].contains("Table aligned"), "{ordinary:?}");
+    }
+
+    #[test]
+    fn keyed_root_table_header_rows_groups_and_filter_restore() {
+        let input =
+            r#"{"alice":{"score":1,"meta":{"rank":2}},"bob":{"score":3,"meta":{"rank":4}}}"#;
+        for width in [120, 35] {
+            let rows = rendered_rows(&session_with_width(input, "\tq", None, width), width, 24);
+            assert!(rows[..22].join("\n").contains("[2:]{"), "{rows:?}");
+            assert!(rows[22].contains("Table aligned"), "{rows:?}");
+            let nested = session_with_width(input, "llJlpP pp q", None, width);
+            assert!(nested.contains(".alice.meta.rank\r\n"), "{nested:?}");
+            assert!(nested.contains("2\r\n"), "{nested:?}");
+            let next = session_with_width(input, "llJljpP pp q", None, width);
+            assert!(next.contains(".bob.meta.rank\r\n"), "{next:?}");
+            let searched = session_with_width(input, "\t/rank\npP pp q", None, width);
+            assert!(searched.contains(".alice.meta.rank\r\n"), "{searched:?}");
+        }
+        for width in [120, 30] {
+            let collapsed = rendered_rows(&session_with_width(input, " q", None, width), width, 24);
+            assert!(collapsed[0].contains("▸ [2:]"), "{collapsed:?}");
+            assert_eq!(collapsed[1].trim(), "~", "{collapsed:?}");
+        }
+        let restored = rendered_rows(&session(input, "\t:.bob.meta.rank\n:.\nq"), 120, 24);
+        assert!(restored[..22].join("\n").contains("[2:]{"), "{restored:?}");
+        assert!(restored[22].contains("Table aligned"), "{restored:?}");
+        let filtered = rendered_rows(&session(input, "\t:.bob.meta.rank\nq"), 120, 24);
+        assert!(!filtered[22].contains("Table aligned"), "{filtered:?}");
+    }
+
+    #[test]
+    fn keyed_table_focused_print_and_filtered_write_keep_nested_source_values() {
+        let input =
+            r#"{"alice":{"score":1,"meta":{"rank":2}},"bob":{"score":3,"meta":{"rank":4}}}"#;
+        let copied = session(input, "llJlpP pp q");
+        assert!(copied.contains(".alice.meta.rank\r\n"), "{copied:?}");
+        assert!(copied.contains("2\r\n"), "{copied:?}");
+        let target =
+            std::env::temp_dir().join(format!("tless-keyed-nested-{}.json", std::process::id()));
+        session(
+            input,
+            &format!(":.bob.meta.rank\n:write-json! {}\nq", target.display()),
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"4\n");
+        session(input, &format!(":.\n:write-json! {}\nq", target.display()));
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"{\n  \"alice\": {\n    \"score\": 1,\n    \"meta\": {\n      \"rank\": 2\n    }\n  },\n  \"bob\": {\n    \"score\": 3,\n    \"meta\": {\n      \"rank\": 4\n    }\n  }\n}\n"
+        );
+        std::fs::remove_file(target).unwrap();
     }
 
     #[test]
@@ -1284,6 +1436,58 @@ mod terminal_commands {
     }
 
     #[test]
+    fn nested_header_and_row_mouse_hits_keep_their_source_identity() {
+        use unicode_width::UnicodeWidthStr;
+        let input = r#"{"items":[{"id":1,"nested":{"left":"Ada","right":2}},{"id":3,"nested":{"left":"Lin","right":4}}]}"#;
+        let keys = "l\t";
+        let rows = rendered_rows(&session(input, &format!("{keys}q")), 120, 24);
+        let header_row = rows
+            .iter()
+            .position(|row| row.contains("nested{left"))
+            .unwrap();
+        let value_row = rows.iter().position(|row| row.contains("Lin")).unwrap();
+        let header_column = UnicodeWidthStr::width(rows[header_row].split("left").next().unwrap());
+        let value_column = UnicodeWidthStr::width(rows[value_row].split("Lin").next().unwrap());
+        assert_eq!(header_column, value_column, "{rows:?}");
+        for (row, expected) in [
+            (header_row + 1, ".items[0].nested.left"),
+            (value_row + 1, ".items[1].nested.left"),
+        ] {
+            let output = session(
+                input,
+                &format!("{keys}\x1b[<0;{};{row}MpP q", header_column + 1),
+            );
+            assert!(output.contains(&format!("{expected}\r\n")), "{output:?}");
+        }
+    }
+
+    #[test]
+    fn keyed_table_mouse_reaches_nested_header_and_second_entry() {
+        use unicode_width::UnicodeWidthStr;
+        let input = r#"{"alice":{"rank":1,"meta":{"label":"Ada"}},"bob":{"rank":2,"meta":{"label":"Lin"}}}"#;
+        let keys = "\t";
+        let rows = rendered_rows(&session(input, &format!("{keys}q")), 120, 24);
+        let header_row = rows
+            .iter()
+            .position(|row| row.contains("meta{label"))
+            .unwrap();
+        let value_row = rows.iter().position(|row| row.contains("Lin")).unwrap();
+        let header_column = UnicodeWidthStr::width(rows[header_row].split("label").next().unwrap());
+        let value_column = UnicodeWidthStr::width(rows[value_row].split("Lin").next().unwrap());
+        assert_eq!(header_column, value_column, "{rows:?}");
+        for (row, expected) in [
+            (header_row + 1, ".alice.meta.label"),
+            (value_row + 1, ".bob.meta.label"),
+        ] {
+            let output = session(
+                input,
+                &format!("{keys}\x1b[<0;{};{row}MpP q", header_column + 1),
+            );
+            assert!(output.contains(&format!("{expected}\r\n")), "{output:?}");
+        }
+    }
+
+    #[test]
     fn aligned_table_scrolling_and_wrapping_are_local() {
         let input = format!(
             r#"{{"users":[{{"id":1,"name":"Ada"}},{{"id":200,"name":"{}END"}}],"other":"{}"}}"#,
@@ -1371,15 +1575,16 @@ mod terminal_commands {
 
     #[test]
     fn aligned_scroll_bounds_include_row_warnings_and_saturate_counts() {
-        let input = r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"\u0001"}]}"#;
-        let at_end = rendered_rows(&session_with_width(input, "l\t;q", None, 35), 35, 24);
+        let input = "users:\n  - id: 1\n    name: Ada\n  - id: 2\n    name: .inf\n";
+        let format = Some("--input-format=yaml");
+        let at_end = rendered_rows(&session_with_width(input, "l\t;q", format, 35), 35, 24);
         let saturated = rendered_rows(
-            &session_with_width(input, "l\t999999999.q", None, 35),
+            &session_with_width(input, "l\t999999999.q", format, 35),
             35,
             24,
         );
         let repeated = rendered_rows(
-            &session_with_width(input, "l\t999999999.999999999.q", None, 35),
+            &session_with_width(input, "l\t999999999.999999999.q", format, 35),
             35,
             24,
         );
@@ -1392,14 +1597,14 @@ mod terminal_commands {
             "{saturated:?}\n{repeated:?}"
         );
         assert!(saturated[2].ends_with('"'), "{saturated:?}");
-        assert!(at_end[..22].join("\n").contains("escape"), "{at_end:?}");
+        assert!(at_end[..22].join("\n").contains("number"), "{at_end:?}");
         let back = rendered_rows(
-            &session_with_width(input, "l\t;999999999,q", None, 35),
+            &session_with_width(input, "l\t;999999999,q", format, 35),
             35,
             24,
         );
         assert!(back[..22].join("\n").contains("users[2]{"), "{back:?}");
-        let reset = rendered_rows(&session_with_width(input, "l\t;;q", None, 35), 35, 24);
+        let reset = rendered_rows(&session_with_width(input, "l\t;;q", format, 35), 35, 24);
         assert!(reset[..22].join("\n").contains("users[2]{"), "{reset:?}");
     }
 

@@ -3,15 +3,15 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: codex/gpt-6.1-sol, at: 2026-10-05T16:52:22Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T21:03:45Z }
 ---
 
 # TOON acceptance checks
 
 Use [published codec behavior](toon-codec.md) for the conversion contract.
 Use [the document view](toon-view.md) for the separate display contract.
-The former vendored codec's exact-number, duplicate-key rejection, key-order,
-and linear scanner-work guarantees no longer apply.
+The codec and document view support TOON 4.1. The display preserves parsed
+identity and order; standard conversion does not promise exact-number or key-order preservation.
 
 ## Automated checks
 
@@ -19,18 +19,19 @@ Run `scripts/preflight.sh` with the pinned development compiler, then
 `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test` for the minimum compiler.
 Both exercise minimal and default builds, with TOON always enabled and optional
 S-expression and colorscheme features.
-The two fixture tests exercise 180 decode cases and 114 encode cases.
-The known large-number round-trip failure has an explicit string-result assertion.
+The pinned TOON 4.1 profiles exercise 333 strict two-space decode cases and
+156 comma, two-space encode reference payloads with semantic round trips.
 
 | Coverage | Evidence |
 | --- | --- |
 | Published strict decoder and default encoder | `toon::fixtures::pinned_decode_profile`, `pinned_encode_profile` |
-| Last-value-wins duplicate keys and numeric conversion | `duplicate_keys_follow_published_last_value_wins`, `export_duplicate_keys_follow_last_value_wins`, `decimal_decoding_follows_published_numeric_conversion`, `export_numbers_follow_published_numeric_conversion` |
-| Known invalid empty-object array output | `empty_object_arrays_expose_published_codec_limitation` |
-| Nesting bounds, empty input, CRLF, BOM rejection | `input_depth_follows_published_codec_boundary`, `enforces_container_depth_and_accepts_blank_lines`, `accepts_empty_input_and_crlf_but_rejects_bom` |
+| Duplicate-input rejection, last-value-wins export, and numeric conversion | `duplicate_input_keys_are_rejected`, `export_duplicate_keys_follow_last_value_wins`, `decimal_decoding_follows_published_numeric_conversion`, `export_numbers_follow_published_numeric_conversion` |
+| Empty-object array round trips | `empty_object_arrays_round_trip` |
+| Nesting bounds, empty input, CRLF, initial BOM | `input_depth_follows_published_codec_boundary`, `enforces_container_depth_and_accepts_blank_lines`, `accepts_empty_input_crlf_and_initial_bom` |
 | Focused export, unsupported YAML, multiple roots | `focused_export_includes_collapsed_children_and_normalizes_closing_rows`, `unsupported_yaml_does_not_block_a_supported_focused_value`, `export_depth_is_relative_to_the_selected_subtree` |
 | Navigation, search, paths, collapse/expand | `decoded_navigation_search_and_paths_match_json_with_escaped_unicode` |
 | Format options, feature profiles, input limits, parsed pipelines | `tests/toon_cli.rs` |
+| TOON 4.1 nested/keyed/empty presentation parity, nested focus, header search, alignment, mouse, filtering and serialization | `tests/toon_cli.rs::terminal_commands`, including `toon_41_input_renders_nested_keyed_and_empty_shapes_like_json`, `nested_columns_preserve_focus_search_alignment_and_paths`, `keyed_root_table_header_rows_groups_and_filter_restore` |
 | Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
 
@@ -41,6 +42,10 @@ with terminal access; do not count them as passing or skipped tests.
 Pipeline argument-error cases supply no stdin payload: validation can exit before
 reading input. Resolution-error cases supply documents and assert status 1 rather
 than the status 2 used for invalid arguments.
+
+For closed-pipe fixtures, use the child-side setup in the
+[subprocess contribution contract](contributing.md#local-checks) to preserve
+the no-reader precondition while other tests spawn processes concurrently.
 
 ## Manual release checks
 
@@ -59,7 +64,7 @@ Record the actual host and results in the release PR.
    `:write-yaml`/`:wy`, and `:write-ndjson`/`:write-jsonl`/`:wn` with `!`
    variants. Confirm default writes TOON and only `sexp` builds accept
    `:write-sexp`/`:ws` (including `!`). The old `:writetoon` and
-   `:writesexp` names must not work. Check TOON 3.0 and 4.x limitations.
+   `:writesexp` names must not work. Check TOON 4.1 codec and document-view wording.
 4. On Linux, use a disposable session to write to `/dev/full` with `:wt!`.
    Confirm a write error, no success message, and continued navigation.
    The shared writer propagates write and flush errors. Standard `File::flush`
@@ -185,6 +190,16 @@ viewport when testing width measurement:
    on a scalar, primitive array, or list; command Tab still completes, and
    search-prompt Tab retains its previous input behavior. Verify both in-app
    help screens describe the controls and the local wrapping override.
+
+6. Repeat the table checks with nested headers (`orders[2]{id,customer{name,country}}:`)
+   and keyed tables (`servers[2:]{host,port}:`), including a keyed root. Check
+   flattened leaf order, nested/group parent motion, vertical same-column motion,
+   shared header search for group/leaf keys, and original array-index/entry-key paths.
+   Align both forms at 120 and 30 columns; vary entry-key lengths, Unicode,
+   numeric right edges, off-screen widths, warning tails, mouse data/padding,
+   wrapping, filtering/reset and collapse. Nested groups are selectable but
+   never independently collapsible table structures. Test array-element
+   positional restrictions and mismatched nested shapes to confirm list fallback.
 
 ## Startup and presentation resource checks
 

@@ -5,17 +5,17 @@ description: Dependency policy, numeric and duplicate-key behavior, and known co
 status: stable
 sources:
   - id: codec
-    resource: https://crates.io/crates/toon-format/0.5.0
+    resource: https://crates.io/crates/toon-format/0.6.1
   - id: adapter-tests
     resource: ../src/toon.rs
   - id: fixtures
     resource: ../src/toon_fixtures.rs
-generated: { by: openai-codex/gpt-6-sol, at: 2026-10-05T02:08:32Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T19:17:08Z }
 ---
 
 # Published TOON codec behavior
 
-Tless uses the published toon-format 0.5.0 crate from crates.io, pinned by the
+Tless uses the published toon-format 0.6.1 crate from crates.io, pinned by the
 manifest and Cargo.lock. Its optional CLI dependencies are disabled.
 There is no vendored codec or Cargo patch. Rust 1.87 is the minimum compiler.
 
@@ -25,10 +25,10 @@ list output. Those codec changes are no longer part of tless.
 
 ## Input and output contract
 
-TOON input uses the published strict decoder with 2-space indentation
-and path expansion disabled. Canonical output uses the published default encoder,
-with commas, 2 spaces, and no key folding. The wrapper still handles empty documents,
-CRLF, and BOM rejection. Redirected stdout defaults to the same standard encoder. `-o json` and `-o yaml`
+TOON input uses the published TOON 4.1 strict decoder with 2-space indentation.
+Canonical output uses the published default encoder, with commas and 2 spaces.
+TOON 4.1 has no key folding or path expansion. The wrapper handles empty documents
+and CRLF; the published decoder strips an initial BOM. Redirected stdout defaults to the same standard encoder. `-o json` and `-o yaml`
 select other serializers independently of input format. TOON input is decoded
 and re-encoded even when the selected output is TOON; malformed input fails
 before any stdout payload.
@@ -41,14 +41,14 @@ It also limits what data is available to the viewer after TOON input decoding.
 
 | Case | Published behavior used by tless |
 | --- | --- |
-| Duplicate object keys, such as `a: 1` followed by `a: 2` | The last value wins. Exporting duplicate JSON keys to TOON also keeps the last value. |
+| Duplicate object keys, such as `a: 1` followed by `a: 2` | Strict input decoding rejects duplicate sibling keys. Exporting duplicate JSON keys to TOON keeps the last value. |
 | Duplicate table fields, such as `[1]{a,a}:` | Strict decoding rejects the header. |
 | `0.123456789012345678901` | Decoding rounds to `0.12345678901234568`. Export also uses serde_json and the codec's numeric conversion. |
 | `18446744073709551616` | Decoding returns a string because the integer does not fit u64. |
 | `1e1025` | Decoding fails because the floating-point value is infinite. |
-| `1e20` encoded then decoded | Encoding produces `100000000000000000000`; decoding that token returns a string. Numeric round trips are not guaranteed. |
+| `1e20` encoded then decoded | Encoding produces `100000000000000000000`; decoding returns the floating-point number `1e20`. Other out-of-u64 integer tokens can still become strings. |
 | Object rows with different key orders | Table encoding follows the first row's field order. Later rows can lose their original order. |
-| Arrays of empty objects | Version 0.5.0 emits a zero-field table with blank rows. Its strict decoder rejects that output. This is a known codec limitation, preserved in a regression test. |
+| Arrays of empty objects | Encoding uses list rows (`[2]:` followed by two `-` rows), which strict decoding accepts. Empty arrays encode as `[]`. Uniform nested objects can encode as nested table field groups. |
 
 Standard TOON conversion does not promise exact decimal preservation or preservation
 of duplicate entries. Use `:write-json`/`:wj` (or `-o json` for redirected
@@ -78,12 +78,14 @@ Successful encoding is not a promise of an exact data round trip.
 
 ## Verification
 
-The unchanged TOON 3.0 source fixtures remain under tests/fixtures/toon-v3.
-All 180 selected decode cases and 114 selected encode cases are exercised.
-The encoder uses each original expected payload, including the upstream table-order
-case. Object order is not part of semantic round-trip comparison.
-The large-number encode case has an explicit assertion for its known string result
-on decoding; it is not silently excluded or reported as a successful numeric round trip.
+The pinned TOON 4.1 source fixtures remain unchanged under tests/fixtures/toon-v4,
+from specification revision 62f16b369408180f1faf1cba7da1b46d1f336f12.
+The selected strict two-space decode profile covers 333 cases; the comma,
+two-space encode profile covers 156 reference payloads and semantic round trips.
+Non-strict, alternative indentation, and alternative encoder delimiters are
+outside the application profile. Historical TOON 3.0 source fixtures remain
+preserved under tests/fixtures/toon-v3. Object order is not part of semantic
+round-trip comparison.
 
 Application tests cover published duplicate-key and numeric behavior, empty-object
 array output, depth boundaries, and retained file/terminal controls.

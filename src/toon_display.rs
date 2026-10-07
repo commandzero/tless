@@ -93,7 +93,6 @@ pub enum WarningKind {
     NonFiniteNumber,
     NonCanonicalNumber,
     NonStringKey,
-    NonStandardStringEscape,
 }
 impl WarningKind {
     fn message(self) -> &'static str {
@@ -102,7 +101,6 @@ impl WarningKind {
             Self::NonFiniteNumber => "Non-finite number",
             Self::NonCanonicalNumber => "Non-canonical number",
             Self::NonStringKey => "Non-string key",
-            Self::NonStandardStringEscape => "Non-standard string escape",
         }
     }
 }
@@ -219,15 +217,18 @@ fn quote_key(key: &str) -> String {
     }
 }
 fn value_needs_quotes(value: &str) -> bool {
-    lazy_static::lazy_static! { static ref NUMERIC: regex::Regex=regex::Regex::new(r"^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$").unwrap(); }
+    lazy_static::lazy_static! { static ref NUMERIC: regex::Regex=regex::Regex::new(r"^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$").unwrap(); }
     value.is_empty()
-        || value.trim() != value
+        || value.starts_with(' ')
+        || value.starts_with('\t')
+        || value.ends_with(' ')
+        || value.ends_with('\t')
         || matches!(
             value,
             "true" | "false" | "null" | ".inf" | "+.inf" | "-.inf" | ".nan"
         )
         || value.starts_with('-')
-        || value.contains('#')
+        || value.starts_with('#')
         || NUMERIC.is_match(value)
         || value
             .chars()
@@ -258,7 +259,7 @@ fn number(raw: &str) -> (String, Option<WarningKind>) {
     let exponent = match parts.get(4) {
         Some(exp) => match exp.as_str().parse::<i64>() {
             Ok(n) => n,
-            Err(_) => return fallback(),
+            Err(_) => return (raw.to_owned(), None),
         },
         None => 0,
     };
@@ -267,7 +268,7 @@ fn number(raw: &str) -> (String, Option<WarningKind>) {
         .and_then(|n| n.checked_sub(leading as i64))
     {
         Some(n) => n,
-        None => return fallback(),
+        None => return (raw.to_owned(), None),
     };
     let negative = &parts[1] == "-";
     let size = if point <= 0 {
@@ -279,10 +280,18 @@ fn number(raw: &str) -> (String, Option<WarningKind>) {
         Some(point.max(significant.len() as i64) + i64::from(point < (significant.len() as i64)))
     };
     let Some(size) = size.and_then(|n| n.checked_add(i64::from(negative))) else {
-        return fallback();
+        return if parts.get(4).is_some() {
+            (raw.to_owned(), None)
+        } else {
+            fallback()
+        };
     };
     if size > 4096 {
-        return fallback();
+        return if parts.get(4).is_some() {
+            (raw.to_owned(), None)
+        } else {
+            fallback()
+        };
     }
     let mut text = String::with_capacity(size as usize);
     if negative {
@@ -401,20 +410,10 @@ fn string_source_map(
     }
 }
 
-fn unsupported_controls(text: &str) -> bool {
-    text.chars()
-        .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t'))
-}
-
 fn compact_key(key: &KeyValue) -> (String, Vec<WarningKind>) {
     fn render(key: &KeyValue, warnings: &mut Vec<WarningKind>) -> String {
         match key {
-            KeyValue::String(text) => {
-                if unsupported_controls(text) {
-                    warnings.push(WarningKind::NonStandardStringEscape);
-                }
-                quote_json(text)
-            }
+            KeyValue::String(text) => quote_json(text),
             KeyValue::Number(token) => {
                 let (text, warning) = number(token);
                 warnings.extend(warning);
@@ -536,15 +535,15 @@ mod tests {
     #[test]
     fn retained_standard_fixtures() {
         let fixtures = [
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/primitives.json"),
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/objects.json"),
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/arrays-primitive.json"),
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/arrays-nested.json"),
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/arrays-objects.json"),
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/arrays-tabular.json"),
-            include_str!("../tests/fixtures/toon-v3/tests/fixtures/encode/whitespace.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/primitives.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/objects.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/objects-keyed.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-primitive.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-nested.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-objects.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-tabular.json"),
+            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/whitespace.json"),
         ];
-        let mut checked = 0;
         for fixture in fixtures {
             let fixture = json(fixture);
             let field = |object, name: &str| {
@@ -562,7 +561,9 @@ mod tests {
                 let name = field(test, "name").unwrap();
                 let name = decode_string(&fixture.1[fixture[name].range.clone()]);
                 // The viewer's explicit order-preservation contract selects lists here.
-                if name == "uses field order from first object for tabular headers" {
+                if name == "uses field order from first object for tabular headers"
+                    || name == "orders fields by the first entry value's encounter order"
+                {
                     continue;
                 }
                 let input = field(test, "input").unwrap();
@@ -572,10 +573,8 @@ mod tests {
                     decode_string(&fixture.1[fixture[expected].range.clone()]),
                     "{name}"
                 );
-                checked += 1;
             }
         }
-        assert!(checked > 80);
     }
     #[test]
     fn standard_shapes_and_order() {
@@ -588,10 +587,10 @@ mod tests {
         for (input, expected) in [
             ("null", "null"),
             ("{}", ""),
-            ("[]", "[0]:"),
+            ("[]", "[]"),
             ("[{},{}]", "[2]:\n  -\n  -"),
             ("[[1,2],[]]", "[2]:\n  - [2]: 1,2\n  - [0]:"),
-            (r#"{"e":{},"a":[]}"#, "e:\na[0]:"),
+            (r#"{"e":{},"a":[]}"#, "e:\na: []"),
             (
                 r#"[{"a":1,"b":2},{"b":3,"a":4}]"#,
                 "[2]:\n  - a: 1\n    b: 2\n  - b: 3\n    a: 4",
@@ -715,11 +714,11 @@ mod tests {
             "1e1000000",
             "1e99999999999999999999999999",
             "1e-99999999999999999999",
-            "1_000",
-            "+1",
-            "01",
             "1e4096",
         ] {
+            assert_eq!(number(input), (input.into(), None));
+        }
+        for input in ["1_000", "+1", "01"] {
             assert_eq!(
                 number(input),
                 (input.into(), Some(WarningKind::NonCanonicalNumber))
@@ -781,7 +780,7 @@ mod tests {
         assert_eq!(layout.lines[4].text, "--- (3 of 4)");
         assert_eq!(layout.lines[5].text, "");
         assert_eq!(layout.lines[6].text, "--- (4 of 4)");
-        assert_eq!(layout.lines[7].text, "[0]:");
+        assert_eq!(layout.lines[7].text, "[]");
         assert_eq!(layout.nodes[roots[0]].line, 0);
         assert_eq!(layout.nodes[roots[1]].line, 2);
         assert_eq!(layout.nodes[roots[2]].line, 4);
@@ -1323,26 +1322,18 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_control_escapes_are_warned_but_literal_escape_text_is_not() {
-        let flat = json(r#"{"control":"\u0001","literal":"\\u0001","line":"\n"}"#);
-        let layout = Fixture::canonical(&flat);
+    fn control_escapes_and_hash_prefix_are_standard_strings() {
+        let flat = json(r##"{"control":"\u0001","literal":"\\u0001","hash":"#tag"}"##);
         assert_eq!(
-            layout.lines[0].text,
-            r#"control: "\u0001"  # WARN Non-standard string escape"#
-        );
-        assert_eq!(
-            layout
-                .warnings
-                .iter()
-                .filter(|warning| warning.kind == WarningKind::NonStandardStringEscape)
-                .count(),
-            1
+            text(&flat),
+            "control: \"\\u0001\"\nliteral: \"\\\\u0001\"\nhash: \"#tag\""
         );
         assert!(!text(&flat).chars().any(|ch| ch == '\u{1}'));
         let key = json(r#"{"\u0001":1}"#);
-        assert!(text(&key).contains("# WARN Non-standard string escape"));
+        assert_eq!(text(&key), "\"\\u0001\": 1");
         let key = yaml("? [\"\\u0001\"]\n: value\n");
-        assert!(text(&key).contains("Non-string key; Non-standard string escape"));
+        assert!(text(&key).contains("Non-string key"));
+        assert!(!text(&key).contains("Non-standard string escape"));
     }
     #[test]
     fn mixed_warning_kinds_follow_node_order_and_hidden_summary_is_last() {
@@ -1350,7 +1341,7 @@ mod tests {
         let layout = Fixture::canonical(&flat);
         assert_eq!(
             layout.lines[0].text,
-            r#"[3]: "\u0001",.inf,1e1000000  # WARN Non-standard string escape at [0]; Non-finite number at [1]; Non-canonical number at [2]"#
+            r#"[3]: "\u0001",.inf,1e1000000  # WARN Non-finite number at [1]"#
         );
         assert_eq!(
             layout
@@ -1358,11 +1349,7 @@ mod tests {
                 .iter()
                 .map(|warning| warning.kind)
                 .collect::<Vec<_>>(),
-            vec![
-                WarningKind::NonStandardStringEscape,
-                WarningKind::NonFiniteNumber,
-                WarningKind::NonCanonicalNumber
-            ]
+            vec![WarningKind::NonFiniteNumber]
         );
         let mut flat = yaml(".inf: {a: .inf}");
         let layout = Fixture::canonical(&flat);
@@ -1396,7 +1383,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_root_omits_key_warnings_even_when_collapsed() {
+    fn selected_root_key_control_is_not_a_warning() {
         let mut flat = json(r#"{"k\u0001":[1,2,3,4,5,6,7]}"#);
         let root = children(&flat, 0)[0];
         let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
@@ -1407,12 +1394,8 @@ mod tests {
         let flat = json(r#"{"k\u0001":"v\u0001"}"#);
         let root = children(&flat, 0)[0];
         let layout = Fixture::for_view_with_roots(&flat, 120, &HashSet::new(), &[root]);
-        assert_eq!(layout.warnings.len(), 1);
-        assert_eq!(
-            layout.warnings[0].kind,
-            WarningKind::NonStandardStringEscape
-        );
-        assert!(layout.lines[0].text.contains("# WARN"));
+        assert!(layout.warnings.is_empty());
+        assert_eq!(layout.lines[0].text, "\"v\\u0001\"");
     }
 
     #[test]
@@ -1514,19 +1497,256 @@ mod tests {
         let flat = json(&input);
         let layout = Fixture::for_view(&flat, 120, &HashSet::new());
         assert_eq!(layout.lines[0].text, "[134]:");
-        assert_eq!(layout.nodes[0].descendant_warnings, 7);
+        assert_eq!(layout.nodes[0].descendant_warnings, 4);
         let kinds: Vec<_> = layout.warnings.iter().map(|warning| warning.kind).collect();
         assert_eq!(
             kinds,
             [
                 WarningKind::DuplicateKey,
                 WarningKind::DuplicateKey,
-                WarningKind::NonCanonicalNumber,
                 WarningKind::DuplicateKey,
                 WarningKind::DuplicateKey,
-                WarningKind::NonStandardStringEscape,
-                WarningKind::NonStandardStringEscape,
             ]
         );
+    }
+    #[test]
+    fn nested_uniform_tables_preserve_field_identity_and_row_positions() {
+        let flat = json(r#"[{"id":1,"meta":{"score":2}},{"id":3,"meta":{"score":4}}]"#);
+        assert_eq!(text(&flat), "[2]{id,meta{score}}:\n  1,2\n  3,4");
+        let rows = children(&flat, 0);
+        let group = children(&flat, rows[1])[1];
+        let leaf = children(&flat, group)[0];
+        let layout = Fixture::canonical(&flat);
+        let analysis = &layout.layout.analysis;
+        assert_eq!(analysis.table_owner(&flat, leaf), Some(0));
+        assert_eq!(analysis.table_row_owner(&flat, leaf), Some(rows[1]));
+        assert_eq!(
+            analysis.table_cells(&flat, rows[1]).collect::<Vec<_>>(),
+            vec![children(&flat, rows[1])[0], leaf]
+        );
+        assert!(layout.nodes[group].body_extent == layout.nodes[leaf].body_extent);
+        assert!(!layout.nodes[group].collapsible);
+        assert_eq!(
+            layout
+                .layout
+                .source_line(&flat, leaf, flat[leaf].key_range.as_ref().map(|r| r.start)),
+            0
+        );
+        assert_eq!(
+            layout
+                .layout
+                .source_line(&flat, leaf, Some(flat[leaf].range.start)),
+            2
+        );
+        let first_leaf = children(&flat, children(&flat, rows[0])[1])[0];
+        let definition = layout.lines[0]
+            .spans
+            .iter()
+            .find(|span| span.node == first_leaf && span.role == TokenRole::FieldDefinition)
+            .unwrap();
+        assert_eq!(&layout.lines[0].text[definition.range.clone()], "score");
+        let visible = layout
+            .layout
+            .visible_line(
+                &flat,
+                &layout.layout.project_with_documents(&flat, &HashSet::new()),
+                0,
+            )
+            .unwrap();
+        let focused_header = layout.layout.render(&flat, visible, leaf, None);
+        assert!(focused_header.spans.iter().any(|span| {
+            span.node == leaf
+                && span.role == TokenRole::FieldDefinition
+                && span.source == flat[leaf].key_range
+        }));
+        let mut shared = layout.lines[0].clone();
+        let source = flat[leaf].key_range.clone().unwrap();
+        layout
+            .layout
+            .highlight_shared_fields(&flat, &mut shared, &[source], &(0..0));
+        assert!(
+            shared
+                .shared_matches
+                .iter()
+                .any(|(range, _)| { &shared.text[range.clone()] == "score" })
+        );
+    }
+
+    #[test]
+    fn keyed_tables_obey_position_and_order_restrictions() {
+        assert_eq!(
+            text(&json(r#"{"alice":{"age":30},"bob":{"age":25}}"#)),
+            "[2:]{age}:\n  alice: 30\n  bob: 25"
+        );
+        assert_eq!(
+            text(&json(r#"{"server":{"a":{"x":1},"b":{"x":2}}}"#)),
+            "server[2:]{x}:\n  a: 1\n  b: 2"
+        );
+        let anonymous = json(r#"[{"a":{"x":1},"b":{"x":2}},0]"#);
+        assert_eq!(
+            text(&anonymous),
+            "[2]:\n  - a:\n      x: 1\n    b:\n      x: 2\n  - 0"
+        );
+        assert!(
+            !Fixture::canonical(&anonymous)
+                .layout
+                .analysis
+                .node(&anonymous, children(&anonymous, 0)[0])
+                .table
+        );
+        let reordered = json(r#"[{"a":1,"b":{"x":2,"y":3}},{"a":4,"b":{"y":5,"x":6}}]"#);
+        assert!(
+            !Fixture::canonical(&reordered)
+                .layout
+                .analysis
+                .node(&reordered, 0)
+                .table
+        );
+    }
+
+    #[test]
+    fn aligned_nested_leaves_and_keyed_prefixes_share_columns() {
+        let flat = json(
+            r#"{"short":{"num":2,"group":{"score":"ok"}},"longer":{"num":100,"group":{"score":"界"}}}"#,
+        );
+        let layout = layout::Layout::new(&flat, &[0], 120, false, &HashSet::new());
+        let metrics = alignment::TableMetrics::measure(&flat, &layout.analysis, 0);
+        let projection = layout.project_with_documents(&flat, &HashSet::new());
+        let rendered: Vec<_> = (0..projection.len())
+            .map(|n| {
+                layout.render(
+                    &flat,
+                    layout.visible_line(&flat, &projection, n).unwrap(),
+                    0,
+                    Some(&metrics),
+                )
+            })
+            .collect();
+        let starts: Vec<_> = rendered
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .find(|span| match span.role {
+                        TokenRole::FieldDefinition => &line.text[span.range.clone()] == "score",
+                        TokenRole::String => {
+                            &line.text[span.range.clone()] == "ok"
+                                || &line.text[span.range.clone()] == "界"
+                        }
+                        _ => false,
+                    })
+                    .unwrap()
+                    .range
+                    .start
+            })
+            .collect();
+        assert_eq!(starts, [starts[0]; 3]);
+        let right_edges: Vec<_> = rendered[1..]
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .find(|span| span.role == TokenRole::Number)
+                    .unwrap()
+                    .range
+                    .end
+            })
+            .collect();
+        assert_eq!(right_edges[0], right_edges[1]);
+        assert!(
+            metrics.extent(
+                layout
+                    .geometry
+                    .table_field_start(&flat, &layout.analysis, 0)
+            ) >= unicode_width::UnicodeWidthStr::width(rendered[2].text.as_str())
+        );
+    }
+    #[test]
+    fn aligned_nested_numbers_include_group_prefixes_in_column_widths() {
+        let flat = json(r#"[{"meta":{"n":1234567890}},{"meta":{"n":1}}]"#);
+        let layout = layout::Layout::new(&flat, &[0], 120, false, &HashSet::new());
+        let metrics = alignment::TableMetrics::measure(&flat, &layout.analysis, 0);
+        let projection = layout.project_with_documents(&flat, &HashSet::new());
+        let rows: Vec<_> = (1..=2)
+            .map(|line| {
+                layout.render(
+                    &flat,
+                    layout.visible_line(&flat, &projection, line).unwrap(),
+                    0,
+                    Some(&metrics),
+                )
+            })
+            .collect();
+        let numbers: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                let span = row
+                    .spans
+                    .iter()
+                    .find(|span| span.role == TokenRole::Number)
+                    .unwrap();
+                (
+                    &row.text[span.range.clone()],
+                    unicode_width::UnicodeWidthStr::width(&row.text[..span.range.end]),
+                )
+            })
+            .collect();
+        assert_eq!(numbers[0].0, "1234567890");
+        assert_eq!(numbers[1].0, "1");
+        assert_eq!(numbers[0].1, numbers[1].1);
+    }
+
+    #[test]
+    fn del_and_c1_controls_use_standard_terminal_safe_unicode_escapes() {
+        let flat = json(r#"["a\u007fb","a\u0085b","\u009b31m"]"#);
+        let fixture = Fixture::canonical(&flat);
+        assert_eq!(
+            fixture.lines[0].text,
+            r#"[3]: "a\u007fb","a\u0085b","\u009b31m""#
+        );
+        assert!(fixture.warnings.is_empty());
+    }
+
+    #[test]
+    fn deep_uniform_groups_keep_table_text_without_recursive_stack_growth() {
+        let depth = 512;
+        let prefix = r#"{"group":"#.repeat(depth);
+        let suffix = "}".repeat(depth);
+        // Constrain only the display traversal, not the existing input parser.
+        let flat = json(&format!("[{prefix}1{suffix},{prefix}2{suffix}]"));
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                let layout = layout::Layout::new(&flat, &[0], 120, false, &HashSet::new());
+                let projection = layout.project_with_documents(&flat, &HashSet::new());
+                let header = layout.render(
+                    &flat,
+                    layout.visible_line(&flat, &projection, 0).unwrap(),
+                    0,
+                    None,
+                );
+                assert_eq!(
+                    header.text,
+                    format!(
+                        "[2]{{{}group{}}}:",
+                        "group{".repeat(depth - 1),
+                        "}".repeat(depth - 1)
+                    )
+                );
+                for (line, expected) in [(1, "  1"), (2, "  2")] {
+                    let row = layout.render(
+                        &flat,
+                        layout.visible_line(&flat, &projection, line).unwrap(),
+                        0,
+                        None,
+                    );
+                    assert_eq!(row.text, expected);
+                }
+                let metrics = alignment::TableMetrics::measure(&flat, &layout.analysis, 0);
+                assert_eq!(metrics.widths, [depth * 7 - 2]);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

@@ -65,6 +65,8 @@ A write command SHALL require an explicit destination and use that filename lite
 
 `write-toon` and the default commands SHALL retain standard whole-document TOON encoding: exactly one active root, two-space indentation, comma delimiters, no key folding, no final newline, and existing codec normalization and limitations. `write-json` SHALL retain the native JSON output contract: two-space pretty printing and a final LF per active root, multiple roots in order without a synthetic array, preservation of JSON number spellings, duplicate entries and entry order, JSON escaping, and rejection of non-string mapping keys or non-finite numbers. `write-yaml` SHALL retain the native YAML output contract: `---` on its own line before every root and a final LF per document, preservation of parsed scalar types, entry order and duplicates, and support for parsed non-string keys and non-finite numbers. Parser normalization remains in effect; no command SHALL promise source comments, anchors, formatting, or byte-for-byte restoration. Export SHALL NOT contain terminal styles, display warnings, gutters, previews, or status text.
 
+Standard TOON writes SHALL use the published TOON 4.1 codec independently of presentation annotations and alignment. Empty arrays SHALL encode as `[]`, empty-object arrays SHALL use decodable list rows, and uniform nested objects MAY use nested table field groups or keyed tabular form. These wire spellings SHALL NOT change selected parsed values or introduce presentation padding.
+
 #### Scenario: Multiple-root native output
 
 - **WHEN** two active roots are exported with `write-json` and `write-yaml`

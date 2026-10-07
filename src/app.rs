@@ -582,8 +582,14 @@ impl App {
                     && self
                         .viewer
                         .layout
-                        .node(&self.viewer.flatjson, self.viewer.focused_node)
-                        .table_cell
+                        .analysis
+                        .table_row_owner(&self.viewer.flatjson, self.viewer.focused_node)
+                        .is_some()
+                    && !self
+                        .viewer
+                        .layout
+                        .analysis
+                        .table_row(&self.viewer.flatjson, self.viewer.focused_node)
                     && matches!(
                         action,
                         Action::MoveLeft

@@ -35,7 +35,7 @@ The CLI SHALL accept `-o <format>` and `--output-format <format>`, with lowercas
 
 ### Requirement: Parsed standard TOON output
 
-Non-terminal TOON output SHALL parse the input and use the existing standard whole-document TOON export contract. It SHALL use two-space indentation, comma delimiters, no key folding, and no final newline. It SHALL NOT include generated display warnings, gutters, styles, previews, or status text. Existing export normalization and documented codec limitations SHALL apply, including last-value-wins duplicate keys, numeric conversion, possible table-field reordering, and the known empty-object-array encoding limitation. Success SHALL NOT imply an exact round trip.
+Non-terminal TOON output SHALL parse the input and use the published TOON 4.1 whole-document export contract. It SHALL use two-space indentation, comma delimiters, no key folding, and no final newline. It SHALL NOT include generated display warnings, gutters, styles, previews, or status text. Export normalization and documented codec limitations SHALL apply, including last-value-wins duplicate JSON keys, numeric conversion, and possible table-field reordering. Empty arrays SHALL encode as `[]`; arrays of empty objects SHALL use decodable list rows rather than zero-field tables. Success SHALL NOT imply an exact numeric or key-order round trip.
 
 #### Scenario: Equivalent inputs
 
@@ -59,6 +59,23 @@ Non-terminal TOON output SHALL parse the input and use the existing standard who
 - **WHEN** JSON `{"a":1,"a":2}` is converted to TOON
 - **THEN** stdout SHALL contain `a: 2` without a final newline
 - **AND** no generated duplicate-key warning SHALL appear in the payload
+
+#### Scenario: Empty containers round trip
+
+- **WHEN** JSON `[]` or `[{},{}]` is converted to TOON and the output is read with strict TOON input
+- **THEN** the decoded value SHALL retain its array shape and empty elements
+
+#### Scenario: Strict duplicate input rejection
+
+- **WHEN** TOON input contains duplicate sibling keys, such as `a: 1` followed by `a: 2`
+- **THEN** parsing SHALL fail with status 1 and a located stderr diagnostic before writing stdout
+- **AND** exporting duplicate JSON keys SHALL retain the separate last-value-wins behavior
+
+#### Scenario: TOON 4.1 structured input
+
+- **WHEN** TOON input uses nested table field groups or keyed tabular objects
+- **THEN** JSON output SHALL preserve the decoded nested object structure and keyed entries
+
 
 ### Requirement: Explicit JSON serialization
 

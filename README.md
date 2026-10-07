@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/CommandZero/tless/actions/workflows/ci.yml/badge.svg)](https://github.com/CommandZero/tless/actions/workflows/ci.yml)
 
-View your data in the compact TOON format, including JSON and YAML files. Forked from the excellent [jless](https://github.com/PaulJuliusMartinez/jless). Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
+View JSON, YAML, and TOON data using TOON 4.1 tables, including nested field groups and keyed object tables. Forked from the excellent [jless](https://github.com/PaulJuliusMartinez/jless). Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
 
 Why [TOON](https://toonformat.dev/) format? Look at this short example from the TOON format [getting started](https://toonformat.dev/guide/getting-started.html) guide.
 
@@ -59,25 +59,10 @@ location:
   country: DE
   units: metric
 alerts[2]: frost,wind
-forecast[3]:
-  - day: Mon
-    temp:
-      min: -2
-      max: 4
-    condition: snow
-    rainChance: 80
-  - day: Tue
-    temp:
-      min: 1
-      max: 7
-    condition: cloudy
-    rainChance: 20
-  - day: Wed
-    temp:
-      min: 3
-      max: 11
-    condition: sunny
-    rainChance: 5
+forecast[3]{day,temp{min,max},condition,rainChance}:
+  Mon,-2,4,snow,80
+  Tue,1,7,cloudy,20
+  Wed,3,11,sunny,5
 ```
 
 Yes, that is the exact same data.
