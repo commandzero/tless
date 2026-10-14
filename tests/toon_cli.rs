@@ -409,6 +409,256 @@ mod terminal_commands {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    struct XclipOwner(std::process::Child);
+
+    #[cfg(target_os = "linux")]
+    impl Drop for XclipOwner {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn read_x11_clipboard(deadline: Instant) -> io::Result<String> {
+        let mut reader = Command::new("xclip")
+            .args(["-selection", "clipboard", "-out", "-target", "UTF8_STRING"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        loop {
+            if reader.try_wait()?.is_some() {
+                let output = reader.wait_with_output()?;
+                if !output.status.success() {
+                    return Err(io::Error::other(format!(
+                        "xclip reader failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    )));
+                }
+                return String::from_utf8(output.stdout)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error));
+            }
+            if Instant::now() >= deadline {
+                reader.kill()?;
+                reader.wait()?;
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "xclip did not receive the X11 clipboard selection",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn seed_x11_clipboard(sentinel: &str) -> io::Result<XclipOwner> {
+        // Foreground ownership keeps the seed alive until tless replaces it.
+        let mut owner = XclipOwner(
+            Command::new("xclip")
+                .args(["-selection", "clipboard", "-in", "-quiet"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()?,
+        );
+        owner
+            .0
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(sentinel.as_bytes())?;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if read_x11_clipboard(deadline).is_ok_and(|value| value == sentinel) {
+                return Ok(owner);
+            }
+            if Instant::now() >= deadline || owner.0.try_wait()?.is_some() {
+                return Err(io::Error::other(
+                    "xclip did not establish the sentinel clipboard selection",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    enum CopyExpected<'a> {
+        Text(&'a str),
+        Json(&'a str),
+    }
+
+    #[cfg(target_os = "linux")]
+    fn assert_native_clipboard_session(
+        input: &str,
+        commands: &str,
+        format: Option<&str>,
+        expected: &[CopyExpected<'_>],
+    ) {
+        let mut pasted = Vec::new();
+        let mut seed = None;
+        let mut observe_copy = |event| {
+            match event {
+                CopyEvent::Before => {
+                    let sentinel = format!(
+                        "tless-native-sentinel-{}-{}",
+                        std::process::id(),
+                        NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    );
+                    seed = Some(seed_x11_clipboard(&sentinel)?);
+                }
+                CopyEvent::Complete => {
+                    pasted.push(read_x11_clipboard(
+                        Instant::now() + Duration::from_secs(10),
+                    )?);
+                    drop(seed.take());
+                }
+            }
+            Ok(())
+        };
+        let output = session_with_expectations(
+            input,
+            commands,
+            format,
+            120,
+            false,
+            Some(&mut observe_copy),
+            None,
+        );
+        assert_eq!(pasted.len(), expected.len(), "{output:?}");
+        for (actual, expected) in pasted.iter().zip(expected) {
+            match expected {
+                CopyExpected::Text(expected) => assert_eq!(actual, expected, "{output:?}"),
+                CopyExpected::Json(expected) => assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(actual).unwrap(),
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap(),
+                    "{output:?}"
+                ),
+            }
+        }
+        let printed: Vec<_> = output
+            .split("\x1b[?1049l")
+            .skip(1)
+            .filter_map(|screen| screen.split_once("\x1b[2J\x1b[1;1H"))
+            .filter_map(|(_, text)| text.split_once("\r\n\r\nPress any key to continue."))
+            .map(|(value, _)| value.replace("\r\n", "\n"))
+            .collect();
+        assert_eq!(printed, pasted, "{output:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires isolated authenticated X11 via scripts/preflight.sh test"]
+    fn native_x11_clipboard_roundtrips_preserve_values_and_focus() {
+        use CopyExpected::{Json, Text};
+        assert_eq!(
+            std::env::var("TLESS_NATIVE_X11").as_deref(),
+            Ok("1"),
+            "run through scripts/preflight.sh test, never the desktop display"
+        );
+        let display = std::env::var("DISPLAY").expect("the isolated Xvfb display is required");
+        assert!(
+            display
+                .strip_prefix(':')
+                .and_then(|number| number.parse::<u16>().ok())
+                .is_some(),
+            "xvfb-run must provide a local X11 display"
+        );
+        let authority = std::env::var_os("XAUTHORITY")
+            .expect("xvfb-run must provide a private Xauthority file");
+        use std::os::unix::fs::PermissionsExt;
+        let authority = std::fs::symlink_metadata(authority).unwrap();
+        assert!(authority.is_file() && authority.len() > 0);
+        assert_eq!(authority.permissions().mode() & 0o077, 0);
+
+        let nested_toon = "message: Ada\nitems[2]: 1,2";
+        assert_native_clipboard_session(
+            r#"{"nested":{"message":"Ada","items":[1,2]},"after":99}"#,
+            "lytpt yypp  ytpt jyppP yypp q",
+            None,
+            &[
+                Text(nested_toon),
+                Json(r#"{"message":"Ada","items":[1,2]}"#),
+                Text(nested_toon),
+                Text(".after"),
+                Text("99"),
+            ],
+        );
+        assert_native_clipboard_session(
+            r#"{"users":[{"id":1,"name":"Ada"},{"id":2,"name":"雪"}]}"#,
+            "lll\tjJytpt yppP yypp q",
+            None,
+            &[Text("雪"), Text(".users[1].name"), Text("\"雪\"")],
+        );
+        assert_native_clipboard_session(
+            "\"é.\\\"key\":\n  rows[2]: \"line\\n雪\",雪",
+            "lykpk yppP lllysps yppP jysps yppP q",
+            Some("--input-format=toon"),
+            &[
+                Text("\"é.\\\"key\""),
+                Text("[\"é.\\\"key\"]"),
+                Text("line\n雪"),
+                Text("[\"é.\\\"key\"].rows[0]"),
+                Text("雪"),
+                Text("[\"é.\\\"key\"].rows[1]"),
+            ],
+        );
+        assert_native_clipboard_session(
+            "0.123456789012345678901",
+            "ytpt q",
+            None,
+            &[Text("0.12345678901234568")],
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires native less; selected by scripts/preflight.sh test"]
+    fn native_help_pager_returns_to_selected_value() {
+        let output = session_with_expectations(
+            r#"{"a":1,"b":"雪"}"#,
+            "lj\x1b[11~qpP pp q",
+            None,
+            120,
+            false,
+            None,
+            Some(0),
+        );
+        assert!(strip_styles(&output).contains(".b\r\n"), "{output:?}");
+        assert!(output.contains("\"雪\"\r\n"), "{output:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "native startup-parse acceptance via scripts/preflight.sh test"]
+    fn native_malformed_toon_preserves_startup_terminal_state() {
+        let input = "items[2]: a";
+        let output = session_with_expectations(
+            input,
+            "",
+            Some("--input-format=toon"),
+            120,
+            false,
+            None,
+            Some(1),
+        );
+        assert!(output.contains("Unable to parse input"), "{output:?}");
+        assert!(!output.contains("\x1b[?1049h"), "{output:?}");
+        let redirected = run(&["-i", "toon", "-o", "toon"], input.as_bytes());
+        assert_eq!(redirected.status.code(), Some(1));
+        assert!(redirected.stdout.is_empty(), "{redirected:?}");
+        assert!(
+            String::from_utf8_lossy(&redirected.stderr).contains("Unable to parse input"),
+            "{redirected:?}"
+        );
+    }
+
+    enum CopyEvent {
+        Before,
+        Complete,
+    }
+
     fn session(input: &str, commands: &str) -> String {
         session_with_format(input, commands, None)
     }
@@ -432,6 +682,18 @@ mod terminal_commands {
         format: Option<&str>,
         width: u16,
         piped: bool,
+    ) -> String {
+        session_with_expectations(input, commands, format, width, piped, None, None)
+    }
+
+    fn session_with_expectations(
+        input: &str,
+        commands: &str,
+        format: Option<&str>,
+        width: u16,
+        piped: bool,
+        mut observe_copy: Option<&mut dyn FnMut(CopyEvent) -> io::Result<()>>,
+        expected_status: Option<i32>,
     ) -> String {
         let path = std::env::temp_dir().join(format!(
             "tless-pty-{}-{}.json",
@@ -472,7 +734,24 @@ mod terminal_commands {
         let mut master = unsafe { File::from_raw_fd(master) };
         let slave = unsafe { File::from_raw_fd(slave) };
         let slave_fd = slave.as_raw_fd();
+        use nix::sys::termios::{LocalFlags, tcgetattr};
+        let restored_flags = LocalFlags::ECHO | LocalFlags::ICANON;
+        let original_flags =
+            expected_status.map(|_| tcgetattr(&master).unwrap().local_flags & restored_flags);
         let mut command = Command::new(env!("CARGO_BIN_EXE_tless"));
+        if expected_status.is_some() {
+            command
+                .env(
+                    "LESS",
+                    "-PsTLESS_NATIVE_PAGER_READY -PmTLESS_NATIVE_PAGER_READY -PMTLESS_NATIVE_PAGER_READY",
+                )
+                .env("LESSHISTFILE", "-")
+                .env_remove("LESSOPEN")
+                .env_remove("LESSCLOSE");
+        }
+        if observe_copy.is_some() {
+            command.env_remove("WAYLAND_DISPLAY");
+        }
         if let Some(format) = format {
             command.arg(format);
         }
@@ -523,6 +802,11 @@ mod terminal_commands {
         let mut waiting_for_redraw = None;
         let mut pending_print = false;
         let mut waiting_for_print = None;
+        let mut pending_copy = false;
+        let mut waiting_for_copy = None;
+        let mut waiting_for_help = None;
+        let mut help_active = false;
+        let mut waiting_for_help_return = None;
         let mut scanned_cursor_requests = 0;
         loop {
             let mut buffer = [0; 16384];
@@ -537,6 +821,15 @@ mod terminal_commands {
                     // positioning marks the initial draw at every width.
                     let ready = output.windows(6).any(|bytes| bytes == b"\x1b[1;1H");
                     if !sent && ready {
+                        if expected_status == Some(0) {
+                            assert!(
+                                !tcgetattr(&master)
+                                    .unwrap()
+                                    .local_flags
+                                    .intersects(restored_flags),
+                                "viewer input must begin after raw-mode setup"
+                            );
+                        }
                         sent = true;
                         deadline = Instant::now() + Duration::from_secs(10);
                     }
@@ -566,7 +859,6 @@ mod terminal_commands {
                     .windows(b"Press any key to continue.".len())
                     .any(|bytes| bytes == b"Press any key to continue.")
                 {
-                    use nix::sys::termios::{LocalFlags, tcgetattr};
                     let mode = tcgetattr(&master).unwrap();
                     if !mode
                         .local_flags
@@ -576,10 +868,51 @@ mod terminal_commands {
                     }
                 }
             }
+            if let Some(start) = waiting_for_help {
+                let recent = String::from_utf8_lossy(&output[start..]);
+                if recent.contains("\x1b[?1049h") && recent.contains("TLESS_NATIVE_PAGER_READY") {
+                    waiting_for_help = None;
+                    help_active = true;
+                }
+            }
+            if let Some(start) = waiting_for_help_return {
+                let recent = String::from_utf8_lossy(&output[start..]);
+                if let Some((_, restored)) = recent.rsplit_once("\x1b[?1049h") {
+                    if recent.contains("\x1b[?1049l")
+                        && restored.contains("tless-pty-")
+                        && !tcgetattr(&master)
+                            .unwrap()
+                            .local_flags
+                            .intersects(restored_flags)
+                    {
+                        waiting_for_help_return = None;
+                    }
+                }
+            }
+            if let Some(start) = waiting_for_copy {
+                let recent = String::from_utf8_lossy(&output[start..]);
+                if recent.contains("Copied ") && recent.contains(" to clipboard") {
+                    // The X11 owner must remain alive until the independent
+                    // reader has obtained the selection, before any next key.
+                    if let Err(error) = observe_copy.as_mut().unwrap()(CopyEvent::Complete) {
+                        child.kill().unwrap();
+                        child.wait().unwrap();
+                        if !piped {
+                            std::fs::remove_file(&path).unwrap();
+                        }
+                        panic!("clipboard reader failed: {error}; {recent}");
+                    }
+                    waiting_for_copy = None;
+                    deadline = Instant::now() + Duration::from_secs(10);
+                }
+            }
             if sent
                 && waiting_for_prompt.is_none()
                 && waiting_for_redraw.is_none()
                 && waiting_for_print.is_none()
+                && waiting_for_copy.is_none()
+                && waiting_for_help.is_none()
+                && waiting_for_help_return.is_none()
                 && Instant::now() >= next_key_at
             {
                 if let Some(key) = keys.next() {
@@ -598,7 +931,10 @@ mod terminal_commands {
                         continue;
                     }
                     if !entering_command {
-                        if pending_print {
+                        if pending_copy {
+                            waiting_for_copy = Some(output.len());
+                            pending_copy = false;
+                        } else if pending_print {
                             if matches!(key, b'p' | b't' | b'v' | b's' | b'k' | b'P' | b'b' | b'q')
                             {
                                 waiting_for_print = Some(output.len());
@@ -606,6 +942,19 @@ mod terminal_commands {
                             pending_print = false;
                         } else {
                             pending_print = key == b'p';
+                            pending_copy = observe_copy.is_some() && key == b'y';
+                            if pending_copy {
+                                if let Err(error) =
+                                    observe_copy.as_mut().unwrap()(CopyEvent::Before)
+                                {
+                                    child.kill().unwrap();
+                                    child.wait().unwrap();
+                                    if !piped {
+                                        std::fs::remove_file(&path).unwrap();
+                                    }
+                                    panic!("clipboard seed failed: {error}");
+                                }
+                            }
                         }
                     }
                     if !entering_command && matches!(key, b':' | b'/' | b'?') {
@@ -627,6 +976,12 @@ mod terminal_commands {
                                 break;
                             }
                         }
+                    }
+                    if input == b"\x1b[11~" {
+                        waiting_for_help = Some(output.len());
+                    } else if help_active && key == b'q' {
+                        help_active = false;
+                        waiting_for_help_return = Some(output.len());
                     }
                     master.write_all(&input).unwrap();
                     // Bound application-response waits, not the time spent
@@ -656,7 +1011,29 @@ mod terminal_commands {
         if !piped {
             std::fs::remove_file(path).unwrap();
         }
-        assert!(status.success(), "{}", String::from_utf8_lossy(&output));
+        if let Some(expected) = expected_status {
+            assert_eq!(status.code(), Some(expected), "{output:?}");
+        } else {
+            assert!(status.success(), "{}", String::from_utf8_lossy(&output));
+        }
+        if let Some(original) = original_flags {
+            assert_eq!(
+                tcgetattr(&master).unwrap().local_flags & restored_flags,
+                original,
+                "child exit must leave the original ECHO/ICANON flags"
+            );
+        }
+        if expected_status == Some(0) {
+            let entered = output
+                .windows(8)
+                .rposition(|bytes| bytes == b"\x1b[?1049h")
+                .unwrap();
+            let left = output
+                .windows(8)
+                .rposition(|bytes| bytes == b"\x1b[?1049l")
+                .unwrap();
+            assert!(left > entered, "exit must return to the main screen");
+        }
         String::from_utf8(output).unwrap()
     }
 
@@ -1972,6 +2349,31 @@ mod terminal_commands {
         assert!(!output.contains(" written"));
         assert!(output.contains("42\r\n"));
         assert!(!target.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn full_device_write_reports_failure_and_retains_navigation() {
+        let output = session_with_expectations(
+            r#"{"a":42,"b":99}"#,
+            ":wt! /dev/full\nljpP pp q",
+            None,
+            120,
+            false,
+            None,
+            Some(0),
+        );
+        let entered = output.find("\x1b[?1049h").unwrap();
+        let failure = output
+            .find("Error writing file:")
+            .expect("write failure must be reported");
+        assert!(
+            entered < failure,
+            "write failure must occur after terminal setup"
+        );
+        assert!(!output.contains("/dev/full written"), "{output}");
+        assert!(strip_styles(&output).contains(".b\r\n"), "{output}");
+        assert!(output.contains("99\r\n"), "{output}");
     }
 
     #[test]

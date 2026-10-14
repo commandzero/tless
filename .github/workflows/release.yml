@@ -19,7 +19,7 @@ jobs:
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y shellcheck xvfb xauth xclip less
           npm install --global @fission-ai/openspec@1.11.0
           cargo install okf --version 0.2.7 --locked
           GOBIN="$HOME/.local/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -53,6 +53,11 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Install native Linux clipboard tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xclip less
       - name: Native behavior tests and extracted binary checks
         env:
           RELEASE_TARGET: ${{ matrix.target }}

@@ -30,8 +30,10 @@ Test terminal behavior. Passing a type check does not replace behavior tests.
 Install rustup and Rust 1.97.1 with rustfmt and Clippy. You also need ShellCheck,
 actionlint 1.7.12, okf 0.2.7, Node.js 20.19 or newer, and OpenSpec 1.11.0.
 Linux clipboard builds use arboard's Rust X11 backend and need no libxcb
-development packages. Scripts target Bash 3.2 and use the language's own tools.
-They do not require RTK.
+development packages. Linux preflight also requires `xvfb-run`, `Xvfb`, `xauth`,
+`xclip`, and `less` for native clipboard, help-pager, and terminal-restoration tests
+(on Ubuntu: `sudo apt-get install xvfb xauth xclip less`). macOS needs no X11 tools.
+Scripts target Bash 3.2 and use the language's own tools. They do not require RTK.
 
 ```sh
 rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
@@ -44,7 +46,13 @@ TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test
 Preflight checks formatting, runs all-target Clippy for minimal and combined
 features, and validates shell scripts and workflows. It also runs release and
 OpenSpec gate regression tests, the OpenSpec completion check for the PR, and
-the feature-profile tests.
+the five feature-profile tests. On Linux it then explicitly selects the native
+clipboard, help-pager, and malformed-input tests under a fresh authenticated Xvfb
+display with default features; missing native tools fail that check.
+The clipboard test requires preflight's isolation marker
+and private Xauthority file before any clipboard writes. Never enable the marker
+against a desktop display. This tests Linux X11 only, not the macOS clipboard
+backend or desktop/XWayland integration.
 
 CI uses the same script. It runs lint once, tests the minimum compiler on Linux,
 and runs terminal tests on macOS. Release checks cover every supported platform.
@@ -64,7 +72,8 @@ fixed budget on an entire script whose length includes literal temporary paths.
 For persistent print commands, wait for the continue prompt and the PTY's
 raw-mode restoration before sending the resume key; early input can be echoed
 into the printed payload while the terminal is temporarily in cooked mode.
-Run the manual checks in [TOON acceptance](toon-acceptance.md) before publishing.
+See [TOON acceptance](toon-acceptance.md) for automated native checks and evidence
+scope. Record the automated native results; there is no manual acceptance gate.
 
 For documentation-only edits, run `scripts/validate-docs.sh` locally. It validates
 the complete docs bundle with okf 0.2.7. CI runs this check through preflight,
