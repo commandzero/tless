@@ -23,9 +23,10 @@ generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
    upstream jless formula, tag, release, or registry package is replaced.
 5. Run local preflight and the Rust 1.87 feature profiles. Linux preflight must
    complete clipboard roundtrips, real help-pager return, and malformed-input
-   terminal restoration; install `xvfb-run`, `Xvfb`, `xauth`, `xclip`, and `less` first.
-   Clipboard tests use private authenticated Xvfb. Ordinary Linux profiles
-   also check `/dev/full` failures and continued navigation. Follow the automated
+   startup rejection before terminal setup; install `xvfb-run`, `Xvfb`, `xauth`,
+   `xclip`, and `less` first. Clipboard tests use private authenticated Xvfb.
+   Ordinary Linux profiles check post-setup `/dev/full` failures, continued
+   navigation, and terminal restoration on normal exit. Follow the automated
    evidence scopes in [TOON acceptance](toon-acceptance.md), recording actual hosts,
    compilers, source revision, and results. No separate manual acceptance gate is required.
    The X11 result does not certify the macOS clipboard backend or an untested

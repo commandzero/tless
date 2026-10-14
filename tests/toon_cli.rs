@@ -631,8 +631,8 @@ mod terminal_commands {
 
     #[cfg(target_os = "linux")]
     #[test]
-    #[ignore = "native terminal-restoration acceptance via scripts/preflight.sh test"]
-    fn native_malformed_toon_restores_terminal_without_partial_output() {
+    #[ignore = "native startup-parse acceptance via scripts/preflight.sh test"]
+    fn native_malformed_toon_preserves_startup_terminal_state() {
         let input = "items[2]: a";
         let output = session_with_expectations(
             input,
@@ -644,6 +644,7 @@ mod terminal_commands {
             Some(1),
         );
         assert!(output.contains("Unable to parse input"), "{output:?}");
+        assert!(!output.contains("\x1b[?1049h"), "{output:?}");
         let redirected = run(&["-i", "toon", "-o", "toon"], input.as_bytes());
         assert_eq!(redirected.status.code(), Some(1));
         assert!(redirected.stdout.is_empty(), "{redirected:?}");
@@ -820,6 +821,15 @@ mod terminal_commands {
                     // positioning marks the initial draw at every width.
                     let ready = output.windows(6).any(|bytes| bytes == b"\x1b[1;1H");
                     if !sent && ready {
+                        if expected_status == Some(0) {
+                            assert!(
+                                !tcgetattr(&master)
+                                    .unwrap()
+                                    .local_flags
+                                    .intersects(restored_flags),
+                                "viewer input must begin after raw-mode setup"
+                            );
+                        }
                         sent = true;
                         deadline = Instant::now() + Duration::from_secs(10);
                     }
@@ -1010,8 +1020,19 @@ mod terminal_commands {
             assert_eq!(
                 tcgetattr(&master).unwrap().local_flags & restored_flags,
                 original,
-                "the child must restore the original ECHO/ICANON flags"
+                "child exit must leave the original ECHO/ICANON flags"
             );
+        }
+        if expected_status == Some(0) {
+            let entered = output
+                .windows(8)
+                .rposition(|bytes| bytes == b"\x1b[?1049h")
+                .unwrap();
+            let left = output
+                .windows(8)
+                .rposition(|bytes| bytes == b"\x1b[?1049l")
+                .unwrap();
+            assert!(left > entered, "exit must return to the main screen");
         }
         String::from_utf8(output).unwrap()
     }
@@ -2333,8 +2354,23 @@ mod terminal_commands {
     #[cfg(target_os = "linux")]
     #[test]
     fn full_device_write_reports_failure_and_retains_navigation() {
-        let output = session(r#"{"a":42,"b":99}"#, ":wt! /dev/full\nljpP pp q");
-        assert!(output.contains("Error writing file:"), "{output}");
+        let output = session_with_expectations(
+            r#"{"a":42,"b":99}"#,
+            ":wt! /dev/full\nljpP pp q",
+            None,
+            120,
+            false,
+            None,
+            Some(0),
+        );
+        let entered = output.find("\x1b[?1049h").unwrap();
+        let failure = output
+            .find("Error writing file:")
+            .expect("write failure must be reported");
+        assert!(
+            entered < failure,
+            "write failure must occur after terminal setup"
+        );
         assert!(!output.contains("/dev/full written"), "{output}");
         assert!(strip_styles(&output).contains(".b\r\n"), "{output}");
         assert!(output.contains("99\r\n"), "{output}");

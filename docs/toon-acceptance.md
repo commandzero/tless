@@ -46,8 +46,9 @@ other indentation, or other encoder delimiters; tless exposes no non-strict mode
 | Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
 | Native Linux X11 clipboard values, decoded strings/keys/paths, rounding, and retained focus | `native_x11_clipboard_roundtrips_preserve_values_and_focus`, explicitly selected by Linux preflight under authenticated Xvfb |
-| Linux full-device write failure and continued navigation | `full_device_write_reports_failure_and_retains_navigation` |
-| Native help-pager return, preserved selection, and malformed-input terminal restoration | `native_help_pager_returns_to_selected_value`, `native_malformed_toon_restores_terminal_without_partial_output`, explicitly selected by Linux preflight |
+| Linux full-device failure after terminal setup, continued navigation, and restoration on exit | `full_device_write_reports_failure_and_retains_navigation` |
+| Native help-pager return and preserved selection | `native_help_pager_returns_to_selected_value`, explicitly selected by Linux preflight |
+| Malformed-input startup rejection before terminal setup, unchanged flags, and empty redirected stdout | `native_malformed_toon_preserves_startup_terminal_state`, explicitly selected by Linux preflight |
 
 Tests use isolated pseudoterminals and disposable files. They do not write to the
 user's clipboard or controlling terminal. Rerun terminal-setup permission failures
@@ -102,8 +103,9 @@ Record the actual host, OS, compiler, source revision, and automated results in
 the release PR; a different Linux distribution does not establish the Ubuntu
 support floor.
 
-The ordinary Linux profiles exercise `/dev/full` through `:wt!`, asserting a
-write error, no success message, and continued path/value navigation. The shared
+The ordinary Linux profiles exercise `/dev/full` through `:wt!` after confirming
+raw-mode setup, asserting a write error, no success message, continued path/value
+navigation, and restored ECHO/ICANON flags and main screen after normal exit. The shared
 writer propagates write and flush errors, but standard `File::flush` has no
 buffer to flush; no separate failing-file-flush test is claimed.
 Existing command/profile tests exercise supported write aliases and feature
@@ -113,8 +115,11 @@ strict malformed headers, indentation, nested groups, quoted keys, numeric
 rounding, and out-of-range string fallback.
 The native help test drives F1 into the real `less` pager, waits for pager readiness,
 quits it, and verifies the original selected path and value still print correctly.
-The malformed-input test checks exit status 1, a diagnostic, original ECHO/ICANON
-flags, and empty redirected stdout. Preflight executes both automatically;
+The malformed-input test checks startup exit status 1, a diagnostic, unchanged
+ECHO/ICANON flags, no alternate-screen entry, and empty redirected stdout. Input
+parsing fails before terminal setup; this test does not exercise restoration after
+an interactive error. The post-setup `/dev/full` test covers recoverable write
+failure followed by normal-exit restoration. Preflight executes these checks automatically;
 there is no manual clipboard, help, malformed-input, or full-device acceptance gate.
 
 ## Document-view acceptance
