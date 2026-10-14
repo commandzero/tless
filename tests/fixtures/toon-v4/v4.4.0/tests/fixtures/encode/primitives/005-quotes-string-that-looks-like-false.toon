@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: quotes string that looks like false
+# specSection: "7.2"
+# "input-json": "\"false\""
+# ---
+"false"

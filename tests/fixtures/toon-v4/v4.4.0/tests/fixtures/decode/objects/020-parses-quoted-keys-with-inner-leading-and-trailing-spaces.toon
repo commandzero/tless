@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: "parses quoted keys with inner, leading, and trailing spaces"
+# specSection: "7.4"
+# "expected-json": "{\"full name\":\"Ada\",\" a \":1}"
+# ---
+"full name": Ada
+" a ": 1

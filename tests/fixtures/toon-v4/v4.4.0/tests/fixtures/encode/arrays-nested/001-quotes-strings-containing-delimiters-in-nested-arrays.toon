@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: quotes strings containing delimiters in nested arrays
+# specSection: "9.2"
+# "input-json": "{\"pairs\":[[\"a\",\"b\"],[\"c,d\",\"e:f\",\"true\"]]}"
+# ---
+pairs[2]:
+  - [2]: a,b
+  - [3]: "c,d","e:f","true"

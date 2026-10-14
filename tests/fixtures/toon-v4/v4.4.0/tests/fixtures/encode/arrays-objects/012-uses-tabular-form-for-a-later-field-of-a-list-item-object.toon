@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses tabular form for a later field of a list-item object
+# specSection: "10"
+# "input-json": "{\"items\":[{\"id\":1,\"users\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2,\"name\":\"Bob\"}]}]}"
+# ---
+items[1]:
+  - id: 1
+    users[2]{id,name}:
+      1,Ada
+      2,Bob

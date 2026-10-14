@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: "throws on a [1] header with nothing after the colon"
+# shouldError: true
+# specSection: "9.1"
+# note: "Nothing after the colon is list form with zero items, not one empty inline value"
+# "expected-json": "null"
+# ---
+a[1]:

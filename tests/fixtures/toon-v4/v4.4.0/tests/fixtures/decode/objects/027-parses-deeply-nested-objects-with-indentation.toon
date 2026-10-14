@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses deeply nested objects with indentation
+# specSection: "8"
+# "expected-json": "{\"a\":{\"b\":{\"c\":\"deep\"}}}"
+# ---
+a:
+  b:
+    c: deep

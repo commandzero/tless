@@ -3,15 +3,16 @@ type: Guide
 title: TOON document view
 description: Path filtering, document rows, layout, wrapping, logical selection, collapse, and display extensions.
 status: draft
-generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T19:17:08Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-14T05:08:07Z }
 ---
 
 # TOON document view
 
-The interactive viewer renders JSON, YAML, and TOON through the same TOON 4.1
+The interactive viewer renders JSON, YAML, and TOON through the same TOON 4.4
 document view, using 2-space indentation and commas. Input, display, and standard
-export support TOON 4.1 in every build; presentation annotations and alignment
-remain separate from serialized data.
+export support TOON 4.4 in every build; presentation annotations and alignment
+remain separate from serialized data. The upgrade does not change valid table,
+list, keyed-object, or nested-field-group layouts, navigation, or alignment.
 
 Object fields keep their parsed order. Primitive arrays with at most five
 elements share a line when the entire line fits the terminal, including its
@@ -29,7 +30,7 @@ object shape uses a keyed table at the root or as an object field:
 `beta: b.example.com,9090`. Entry order and nested field order remain unchanged.
 Anonymous array elements never use a keyless fields-bearing table header:
 inner arrays use list form and anonymous objects use ordinary object layout.
-Nested-uniform columns use field groups instead. These positional rules follow TOON 4.1.
+Nested-uniform columns use field groups instead. These positional rules follow TOON 4.4.
 
 ```text
 tags[2]: rust,cli
@@ -318,15 +319,16 @@ control: "\u0001"
 
 Every occurrence of a duplicate decoded key receives a warning. Non-finite
 numbers retain numeric type as `.inf`, `-.inf`, or `.nan`. Finite decimal tokens
-normalize exactly without floating-point conversion. TOON 4.1 permits exponent
+normalize exactly without floating-point conversion. TOON 4.4 permits exponent
 notation outside its ordinary decimal range; large finite exponents can remain
 visible without allocating an unbounded expanded decimal. If a token cannot
 be normalized within the documented work bound without changing its value,
 its original spelling remains visible with a non-canonical-number warning.
 
-TOON 4.1 supports `\uXXXX` escapes for BMP scalars, including control characters.
-The viewer uses terminal-safe quoted escapes; these no longer receive
-`Non-standard string escape` warnings. Strings starting with `#` are quoted
+TOON 4.4 supports `\uXXXX` escapes for BMP scalars, including control characters.
+The viewer uses terminal-safe quoted escapes, including `\u007f` for DEL and
+Unicode escapes for C1 controls that the wire encoder leaves literal. These
+escapes receive no `Non-standard string escape` warnings. Strings starting with `#` are quoted
 so they remain data, not full-line comments. Shared-line warnings follow
 parsed-node encounter order: duplicate key, non-finite number,
 non-canonical number, then non-string key. A collapsed container's
@@ -346,7 +348,7 @@ containing `# WARN` are quoted data and do not increase warning counts.
 
 ## Copy and export
 
-Extended display text is not a serialized TOON 4.1 document. Its warnings, collapse arrows,
+Extended display text is not a serialized TOON 4.4 document. Its warnings, collapse arrows,
 counts, and previews are presentation annotations, not a new file format.
 Copy and print commands operate on the selected parsed value. Selecting a
 document row targets its parsed root. At the `:` prompt, whole-document writes

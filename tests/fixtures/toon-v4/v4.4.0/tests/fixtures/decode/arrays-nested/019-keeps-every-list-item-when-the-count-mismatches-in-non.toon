@@ -1,0 +1,17 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: keeps every list item when the count mismatches in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: "A declared [N] never truncates a scope"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"a\":[1,2],\"b\":[\"x\"]}"
+# ---
+a[1]:
+  - 1
+  - 2
+b[3]:
+  - x

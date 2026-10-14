@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on tabular row count mismatch in a later field of a list-item object
+# shouldError: true
+# specSection: "14.1"
+# "expected-json": "null"
+# ---
+items[1]:
+  - id: 1
+    users[2]{id,name}:
+      1,Ada

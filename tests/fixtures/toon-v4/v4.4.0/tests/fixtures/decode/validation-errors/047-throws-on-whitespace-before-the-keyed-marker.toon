@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on whitespace before the keyed marker
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+m[2 :]{v}:
+  a: 1
+  b: 2

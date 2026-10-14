@@ -1,0 +1,17 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: accepts non-multiple indentation at nested depths in non-strict mode
+# options:
+#   indentSize: 2
+#   strict: false
+# specSection: "14.4"
+# minSpecVersion: "4.4"
+# "expected-json": "{\"a\":{\"b\":{\"c\":1},\"d\":2,\"e\":[1,2]}}"
+# ---
+a:
+   b:
+     c: 1
+  d: 2
+   e[2]: 1,2

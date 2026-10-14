@@ -3,7 +3,7 @@
 The viewer derives from jless by Paul Julius Martinez.
 Its MIT license and copyright notice are in LICENSE.md.
 
-The published toon-format 0.6.1 crate is by Shreyas S Bhat and Johann Schopplich.
+The published toon-format 0.7.0 crate is by Shreyas S Bhat and Johann Schopplich.
 It is a crates.io dependency; tless contains no vendored codec source.
 Its MIT license is reproduced below and included in binary archives through this file.
 
@@ -12,9 +12,17 @@ c09f73b267323190f61de5b91563fa579b3b7c5e, copyright Johann Schopplich.
 Their MIT license remains in tests/fixtures/toon-v3/LICENSE.
 The fixtures are development inputs and are not included in binary archives.
 
-The TOON 4.1 specification fixtures are from toon-format/spec revision
+The historical TOON 4.1 specification fixtures are from toon-format/spec revision
 62f16b369408180f1faf1cba7da1b46d1f336f12, copyright Johann Schopplich.
 Their unchanged MIT license remains in tests/fixtures/toon-v4/LICENSE.
+
+The current TOON 4.4 specification fixtures are derived and reformatted from
+toon-format/spec revision d09c3d33e37389345a74bd96981eb96dd9be6c5e (tag v4.4.0),
+copyright Johann Schopplich. Each case is stored as a `.toon` file with comment-prefixed
+metadata, escaped JSON model text, and a verbatim TOON payload; tq 0.5.0 was used only
+to encode the metadata, not to regenerate the TOON payloads. The historical TOON 3.0
+and 4.1 fixtures are unchanged. All upstream licenses are preserved, including the
+unchanged MIT license in tests/fixtures/toon-v4/v4.4.0/LICENSE.
 
 Cargo.lock records the complete dependency versions used by this checkout.
 Dependency authors retain their respective copyrights and license terms.

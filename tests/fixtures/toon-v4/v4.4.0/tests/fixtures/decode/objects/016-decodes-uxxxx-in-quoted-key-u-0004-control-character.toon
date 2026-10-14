@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: "decodes \\uXXXX in quoted key (U+0004 control character)"
+# specSection: "7.1"
+# "expected-json": "{\"a\\u0004b\":1}"
+# ---
+"a\u0004b": 1

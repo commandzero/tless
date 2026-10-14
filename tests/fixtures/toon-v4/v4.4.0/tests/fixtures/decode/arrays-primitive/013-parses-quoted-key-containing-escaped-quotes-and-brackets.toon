@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: parses quoted key containing escaped quotes and brackets with inline array
+# specSection: "9.1"
+# note: "An escaped quote does not close a quoted key, so the [2] inside it is not a bracket segment"
+# "expected-json": "{\"has \\\"[2]\\\" in it\":[3,4,5]}"
+# ---
+"has \"[2]\" in it"[3]: 3,4,5

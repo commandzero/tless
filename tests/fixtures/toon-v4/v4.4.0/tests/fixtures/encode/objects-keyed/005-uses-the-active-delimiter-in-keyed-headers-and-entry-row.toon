@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Keyed tabular encoding – objects whose values are uniform objects collapse into keyed headers with entry rows
+# name: uses the active delimiter in keyed headers and entry-row cells
+# options:
+#   delimiter: |
+# specSection: "9.5"
+# minSpecVersion: "4.2"
+# note: "The keyed marker precedes the delimiter symbol: [2:|]"
+# "input-json": "{\"servers\":{\"alpha\":{\"host\":\"a.example.com\",\"port\":8080,\"note\":\"x|y\"},\"beta\":{\"host\":\"b.example.com\",\"port\":9090,\"note\":\"p,q\"}}}"
+# ---
+servers[2:|]{host|port|note}:
+  alpha: a.example.com|8080|"x|y"
+  beta: b.example.com|9090|p,q

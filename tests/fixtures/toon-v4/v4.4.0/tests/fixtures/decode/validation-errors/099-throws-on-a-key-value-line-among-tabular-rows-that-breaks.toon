@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a key-value line among tabular rows that breaks the declared count
+# shouldError: true
+# specSection: "9.3"
+# "expected-json": "null"
+# ---
+t[2]{a}:
+  1
+  x: 2

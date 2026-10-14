@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: encodes __proto__ as a tabular field name
+# specSection: "15"
+# "input-json": "{\"rows\":[{\"__proto__\":\"a\",\"x\":1},{\"__proto__\":\"b\",\"x\":2}]}"
+# ---
+rows[2]{__proto__,x}:
+  a,1
+  b,2

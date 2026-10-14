@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on list item with non-multiple indentation (3 spaces with indentSize 2)
+# shouldError: true
+# options:
+#   indentSize: 2
+#   strict: true
+# specSection: "14.2"
+# "expected-json": "null"
+# ---
+items[2]:
+   - id: 1
+   - id: 2

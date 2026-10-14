@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Keyed tabular encoding – objects whose values are uniform objects collapse into keyed headers with entry rows
+# name: quotes entry keys per key encoding
+# specSection: "9.5"
+# "input-json": "{\"ids\":{\"42\":{\"v\":1},\"my key\":{\"v\":2}}}"
+# ---
+ids[2:]{v}:
+  "42": 1
+  "my key": 2

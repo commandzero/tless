@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses keyed tabular objects
+# specSection: "9.5"
+# "expected-json": "{\"servers\":{\"alpha\":{\"host\":\"a.example.com\",\"port\":8080},\"beta\":{\"host\":\"b.example.com\",\"port\":9090}}}"
+# ---
+servers[2:]{host,port}:
+  alpha: a.example.com,8080
+  beta: b.example.com,9090

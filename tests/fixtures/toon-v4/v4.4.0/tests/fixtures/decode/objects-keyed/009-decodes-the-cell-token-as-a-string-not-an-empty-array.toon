@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: "decodes the cell token [] as a string, not an empty array"
+# specSection: "9.5"
+# note: The §9.1 empty-array form does not apply inside entry rows
+# "expected-json": "{\"m\":{\"a\":{\"v\":\"[]\"},\"b\":{\"v\":\"x\"}}}"
+# ---
+m[2:]{v}:
+  a: []
+  b: x

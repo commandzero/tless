@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: quotes a primitive list item containing the document delimiter
+# options:
+#   delimiter: |
+# specSection: "11.1"
+# minSpecVersion: "4.2"
+# "input-json": "{\"a\":[\"x|y\",\"p,q\",{\"b\":1}]}"
+# ---
+a[3|]:
+  - "x|y"
+  - p,q
+  - b: 1

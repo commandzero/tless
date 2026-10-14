@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses quoted object value with bracket text and a later colon
+# specSection: "5.2"
+# "expected-json": "{\"content\":\"accept (process.argv[2]) and greet: name\"}"
+# ---
+content: "accept (process.argv[2]) and greet: name"

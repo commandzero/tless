@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: parses negative zero as zero
+# specSection: "4"
+# note: "-0 and 0 are equal numbers (§2)"
+# "expected-json": "{\"a\":0,\"b\":0}"
+# ---
+a: -0
+b: -0.0

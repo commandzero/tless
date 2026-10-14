@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Comment lines – full-line decode-side comments stripped before structural interpretation
+# name: "parses quoted hash-leading first cell as data, not comment"
+# specSection: "5.1"
+# "expected-json": "{\"items\":[{\"tag\":\"#a\"}]}"
+# ---
+items[1]{tag}:
+  "#a"

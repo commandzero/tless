@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: "encodes root-level array mixing primitive, object, and array of objects in list form"
+# specSection: "9.4"
+# "input-json": "[\"summary\",{\"id\":1,\"name\":\"Ada\"},[{\"id\":2},{\"status\":\"draft\"}]]"
+# ---
+[3]:
+  - summary
+  - id: 1
+    name: Ada
+  - [2]:
+    - id: 2
+    - status: draft

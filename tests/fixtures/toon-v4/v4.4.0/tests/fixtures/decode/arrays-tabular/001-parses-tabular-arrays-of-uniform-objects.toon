@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: parses tabular arrays of uniform objects
+# specSection: "9.3"
+# "expected-json": "{\"items\":[{\"sku\":\"A1\",\"qty\":2,\"price\":9.99},{\"sku\":\"B2\",\"qty\":1,\"price\":14.5}]}"
+# ---
+items[2]{sku,qty,price}:
+  A1,2,9.99
+  B2,1,14.5

@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: keeps a second carriage return before CRLF as content
+# specSection: "12"
+# "expected-json": "{\"a\":\"x\\r\",\"b\":1}"
+# ---
+a: x
+b: 1

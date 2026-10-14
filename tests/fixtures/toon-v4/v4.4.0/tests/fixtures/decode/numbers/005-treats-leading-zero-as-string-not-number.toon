@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: treats leading zero as string not number
+# specSection: "4"
+# "expected-json": "{\"value\":\"05\"}"
+# ---
+value: 05

@@ -5,6 +5,19 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
+### Changed
+
+- Upgrade the published `toon-format` codec to 0.7.0 and TOON v4.4; keep strict two-space input, default comma/two-space output, and Rust 1.87 support. Valid nested/keyed tables retain their document view and navigation. See [codec behavior](docs/toon-codec.md) for the refined header, quoting, and whitespace rules.
+- Decode TOON numbers outside finite f64 range, such as `1e1025`, as strings rather than failing. Exporting the same numeric token from JSON to TOON still fails; exact decimal preservation remains outside the standard TOON conversion contract.
+
+### Fixed
+
+- Preserve a data carriage return immediately before a CRLF line ending instead of stripping it during TOON input normalization.
+- Quote BOM-prefixed root strings in the document view so their text remains string data when decoded.
+- Use correctly rounded binary floats for JSON-to-TOON conversion, including the shortest round-trip digits for large integer-valued numbers.
+
 ## [0.2.0] - 2026-10-07
 
 ### Removed
@@ -110,7 +123,8 @@ Earlier upstream history is preserved below.
 - Support TOON 3.0 input, focused copy/print, and whole-document output using the published codec, with documented conversion limits.
 - Add a shared local preflight, feature/MSRV tests, Conventional Commit title validation, and native release packaging with checksums and notices.
 
-[Unreleased]: https://github.com/CommandZero/tless/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/CommandZero/tless/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/CommandZero/tless/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/CommandZero/tless/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/CommandZero/tless/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/CommandZero/tless/compare/v0.1.2...v0.1.3

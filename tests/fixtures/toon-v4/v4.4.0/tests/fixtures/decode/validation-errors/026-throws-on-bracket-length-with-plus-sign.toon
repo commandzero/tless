@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on bracket length with plus sign
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: "[+3] carries a sign and is not a non-negative integer length; decoders MUST NOT interpret it as a bracket segment"
+# "expected-json": "null"
+# ---
+x[+3]: a,b,c

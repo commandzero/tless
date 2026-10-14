@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on a field line indented under a bare hyphen
+# shouldError: true
+# specSection: "8"
+# "expected-json": "null"
+# ---
+items[1]:
+  -
+    b: 1

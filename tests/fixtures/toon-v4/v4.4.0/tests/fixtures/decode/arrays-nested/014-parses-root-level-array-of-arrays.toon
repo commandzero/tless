@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses root-level array of arrays
+# specSection: "9.2"
+# "expected-json": "[[1,2],[]]"
+# ---
+[2]:
+  - [2]: 1,2
+  - [0]:

@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses quoted object value shaped like a count-matching inline array header
+# specSection: "4"
+# note: "Quoting makes the value opaque (§4), so it is never parsed as a header – the matching count is irrelevant because a quoted scalar is never a header candidate"
+# "expected-json": "{\"a\":\"[1]: x\"}"
+# ---
+a: "[1]: x"

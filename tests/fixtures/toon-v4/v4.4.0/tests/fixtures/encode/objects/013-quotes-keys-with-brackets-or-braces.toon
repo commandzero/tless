@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: quotes keys with brackets or braces
+# specSection: "7.3"
+# "input-json": "{\"[index]\":5,\"{key}\":6}"
+# ---
+"[index]": 5
+"{key}": 6

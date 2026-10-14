@@ -39,7 +39,7 @@ The viewer SHALL render every duplicate object entry in encounter order and atta
 
 ### Requirement: Non-finite and non-canonical numbers
 
-Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, or `.nan`, followed by `# WARN Non-finite number`. Standard finite numeric values SHALL render exactly without rounding or conversion to strings. TOON 4.1 exponent notation outside the ordinary decimal range SHALL remain a standard spelling, without requiring unbounded decimal expansion. Numeric normalization SHALL retain a 4096-character work bound; a parsed token that cannot be normalized within that bound without changing its value SHALL retain its original spelling with `# WARN Non-canonical number`. Literal strings that resemble numeric tokens SHALL be quoted.
+Non-finite numeric values SHALL remain numeric and display as `.inf`, `-.inf`, or `.nan`, followed by `# WARN Non-finite number`. Standard finite numeric values SHALL render exactly without rounding or conversion to strings. TOON 4.4 exponent notation outside the ordinary decimal range SHALL remain a standard spelling, without requiring unbounded decimal expansion. Numeric normalization SHALL retain a 4096-character work bound; a parsed token that cannot be normalized within that bound without changing its value SHALL retain its original spelling with `# WARN Non-canonical number`. Literal strings that resemble numeric tokens SHALL be quoted.
 
 #### Scenario: Infinity and a similar string
 
@@ -74,7 +74,7 @@ A non-string YAML key SHALL use the extension spelling `? <compact-key>: <value>
 
 ### Requirement: Standard Unicode control escapes
 
-String values and string keys containing control characters SHALL use terminal-safe quoted escapes, including TOON 4.1 `\uXXXX` spellings where appropriate. Unicode escapes SHALL NOT be labeled non-standard or counted as warnings. Literal backslash-u text SHALL remain distinct string data. Strings beginning with `#` SHALL be quoted so they cannot become full-line comments. Input parsing and export behavior SHALL remain unchanged.
+String values and string keys containing control characters SHALL use terminal-safe quoted escapes, including TOON 4.4 `\uXXXX` spellings where appropriate. Unicode escapes SHALL NOT be labeled non-standard or counted as warnings. Literal backslash-u text SHALL remain distinct string data. Strings beginning with `#` SHALL be quoted so they cannot become full-line comments. Input parsing and export behavior SHALL remain unchanged.
 
 #### Scenario: Unsafe control and literal escape text
 

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on keyless array header as a later field of a list-item object
+# shouldError: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+a[1]:
+  - b: 1
+    [2]: x,y

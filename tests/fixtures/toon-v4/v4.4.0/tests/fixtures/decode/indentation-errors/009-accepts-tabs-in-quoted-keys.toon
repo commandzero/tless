@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: accepts tabs in quoted keys
+# options:
+#   strict: true
+# specSection: "12"
+# "expected-json": "{\"key\\ttab\":\"value\"}"
+# ---
+"key	tab": value

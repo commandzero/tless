@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: uses the active delimiter inside nested field groups
+# options:
+#   delimiter: |
+# specSection: "9.3"
+# "input-json": "{\"orders\":[{\"id\":1,\"customer\":{\"name\":\"Ada\",\"country\":\"DK\"},\"total\":99},{\"id\":2,\"customer\":{\"name\":\"Bob\",\"country\":\"UK\"},\"total\":149}]}"
+# ---
+orders[2|]{id|customer{name|country}|total}:
+  1|Ada|DK|99
+  2|Bob|UK|149

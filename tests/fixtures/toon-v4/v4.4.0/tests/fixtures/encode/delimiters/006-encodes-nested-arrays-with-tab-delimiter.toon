@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: encodes nested arrays with tab delimiter
+# options:
+#   delimiter: "\t"
+# specSection: "11"
+# "input-json": "{\"pairs\":[[\"a\",\"b\"],[\"c\",\"d\"]]}"
+# ---
+pairs[2	]:
+  - [2	]: a	b
+  - [2	]: c	d

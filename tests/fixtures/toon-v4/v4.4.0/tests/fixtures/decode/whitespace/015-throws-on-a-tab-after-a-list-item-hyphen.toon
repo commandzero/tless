@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: throws on a tab after a list-item hyphen
+# shouldError: true
+# specSection: "5.2"
+# "expected-json": "null"
+# ---
+items[1]:
+  -	x

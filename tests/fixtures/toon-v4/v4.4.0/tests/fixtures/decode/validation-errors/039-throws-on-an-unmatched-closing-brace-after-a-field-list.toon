@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on an unmatched closing brace after a field list
+# shouldError: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+a[0]{x}}:

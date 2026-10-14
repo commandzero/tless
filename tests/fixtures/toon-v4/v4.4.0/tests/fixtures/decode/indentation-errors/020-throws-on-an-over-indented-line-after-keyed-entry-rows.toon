@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on an over-indented line after keyed entry rows
+# shouldError: true
+# specSection: "8"
+# "expected-json": "null"
+# ---
+m[1:]{v}:
+  a: 1
+    b: 2

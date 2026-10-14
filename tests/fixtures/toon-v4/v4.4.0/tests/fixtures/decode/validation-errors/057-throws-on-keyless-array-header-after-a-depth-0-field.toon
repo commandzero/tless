@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on keyless array header after a depth-0 field
+# shouldError: true
+# specSection: "6"
+# note: Keyless headers are valid only as the document's root header or as list items
+# "expected-json": "null"
+# ---
+a: 1
+[2]: x,y

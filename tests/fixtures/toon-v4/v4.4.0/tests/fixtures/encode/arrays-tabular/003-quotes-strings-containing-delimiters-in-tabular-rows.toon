@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: quotes strings containing delimiters in tabular rows
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"sku\":\"A,1\",\"desc\":\"cool\",\"qty\":2},{\"sku\":\"B2\",\"desc\":\"wip: test\",\"qty\":1}]}"
+# ---
+items[2]{sku,desc,qty}:
+  "A,1",cool,2
+  B2,"wip: test",1

@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses field order from first object for tabular headers
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"a\":1,\"b\":2,\"c\":3},{\"c\":30,\"b\":20,\"a\":10}]}"
+# ---
+items[2]{a,b,c}:
+  1,2,3
+  10,20,30

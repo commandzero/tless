@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: keeps every inline value when the count mismatches in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"tags\":[\"a\",\"b\"]}"
+# ---
+tags[1]: a,b

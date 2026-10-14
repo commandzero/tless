@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes a large integer-valued number with its shortest round-trip digits
+# specSection: "2"
+# note: The binary64 value is exactly 123456789012345683968
+# minSpecVersion: "4.2"
+# "input-json": "123456789012345680000"
+# ---
+123456789012345680000

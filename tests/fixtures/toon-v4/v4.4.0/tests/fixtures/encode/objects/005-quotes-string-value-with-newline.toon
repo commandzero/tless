@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: quotes string value with newline
+# specSection: "7.2"
+# "input-json": "{\"text\":\"line1\\nline2\"}"
+# ---
+text: "line1\nline2"

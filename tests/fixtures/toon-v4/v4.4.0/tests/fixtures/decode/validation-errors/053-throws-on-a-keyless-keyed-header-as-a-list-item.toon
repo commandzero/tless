@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a keyless keyed header as a list item
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "14.2"
+# note: "The keyless keyed header is valid only as the document's root header (§5, §9.5)"
+# "expected-json": "null"
+# ---
+items[1]:
+  - [2:]{v}:
+      a: 1
+      b: 2

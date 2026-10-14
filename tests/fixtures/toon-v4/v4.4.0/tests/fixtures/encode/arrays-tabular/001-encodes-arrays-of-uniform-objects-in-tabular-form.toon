@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: encodes arrays of uniform objects in tabular form
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"sku\":\"A1\",\"qty\":2,\"price\":9.99},{\"sku\":\"B2\",\"qty\":1,\"price\":14.5}]}"
+# ---
+items[2]{sku,qty,price}:
+  A1,2,9.99
+  B2,1,14.5

@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: materializes __proto__ tabular field name as ordinary own keys
+# specSection: "15"
+# "expected-json": "{\"rows\":[{\"__proto__\":\"a\",\"x\":1},{\"__proto__\":\"b\",\"x\":2}]}"
+# ---
+rows[2]{__proto__,x}:
+  a,1
+  b,2

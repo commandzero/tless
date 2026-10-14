@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: parses an unquoted colon after the active delimiter in a tabular row as data
+# specSection: "9.3"
+# "expected-json": "{\"items\":[{\"id\":1,\"note\":\"a:b\"}]}"
+# ---
+items[1|]{id|note}:
+  1|a:b

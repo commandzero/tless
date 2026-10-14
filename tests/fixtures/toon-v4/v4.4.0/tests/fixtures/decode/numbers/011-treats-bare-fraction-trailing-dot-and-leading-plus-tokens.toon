@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: "treats bare-fraction, trailing-dot, and leading-plus tokens as strings"
+# specSection: "4"
+# note: "Outside the number grammar, so a host number parser would corrupt the round-trip"
+# "expected-json": "{\"a\":\".5\",\"b\":\"1.\",\"c\":\"+1\"}"
+# ---
+a: .5
+b: 1.
+c: +1

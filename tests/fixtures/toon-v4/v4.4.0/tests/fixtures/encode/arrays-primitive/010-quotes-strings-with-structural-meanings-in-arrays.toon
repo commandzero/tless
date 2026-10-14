@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: quotes strings with structural meanings in arrays
+# specSection: "9.1"
+# "input-json": "{\"items\":[\"[5\",\"x]\",\"- item\",\"{key\",\"y}\"]}"
+# ---
+items[5]: "[5","x]","- item","{key","y}"

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: splits an entry row at its first unquoted colon before delimiter or header parsing
+# specSection: "9.5"
+# note: "The entry key is everything before the first unquoted colon, taken as a literal key per §7.4 even though an encoder would quote it"
+# "expected-json": "{\"m\":{\"a,b\":{\"v\":5},\"k[2]\":{\"v\":6}}}"
+# ---
+m[2:]{v}:
+  a,b: 5
+  k[2]: 6

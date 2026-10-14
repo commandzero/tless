@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a bracket length with a non-ASCII digit
+# shouldError: true
+# specSection: "6"
+# note: "A length takes ASCII digits only; a Unicode-aware \\d would accept ٢"
+# "expected-json": "null"
+# ---
+k[٢]: a,b

@@ -35,7 +35,7 @@ The CLI SHALL accept `-o <format>` and `--output-format <format>`, with lowercas
 
 ### Requirement: Parsed standard TOON output
 
-Non-terminal TOON output SHALL parse the input and use the published TOON 4.1 whole-document export contract. It SHALL use two-space indentation, comma delimiters, no key folding, and no final newline. It SHALL NOT include generated display warnings, gutters, styles, previews, or status text. Export normalization and documented codec limitations SHALL apply, including last-value-wins duplicate JSON keys, numeric conversion, and possible table-field reordering. Empty arrays SHALL encode as `[]`; arrays of empty objects SHALL use decodable list rows rather than zero-field tables. Success SHALL NOT imply an exact numeric or key-order round trip.
+Non-terminal TOON output SHALL parse the input and use the published TOON 4.4 whole-document export contract. It SHALL use two-space indentation, comma delimiters, no key folding, and no final newline. It SHALL NOT include generated display warnings, gutters, styles, previews, or status text. Export normalization and documented codec limitations SHALL apply, including last-value-wins duplicate JSON keys, numeric conversion, and possible table-field reordering. Empty arrays SHALL encode as `[]`; arrays of empty objects SHALL use decodable list rows rather than zero-field tables. Success SHALL NOT imply an exact numeric or key-order round trip.
 
 #### Scenario: Equivalent inputs
 
@@ -71,7 +71,7 @@ Non-terminal TOON output SHALL parse the input and use the published TOON 4.1 wh
 - **THEN** parsing SHALL fail with status 1 and a located stderr diagnostic before writing stdout
 - **AND** exporting duplicate JSON keys SHALL retain the separate last-value-wins behavior
 
-#### Scenario: TOON 4.1 structured input
+#### Scenario: TOON 4.4 structured input
 
 - **WHEN** TOON input uses nested table field groups or keyed tabular objects
 - **THEN** JSON output SHALL preserve the decoded nested object structure and keyed entries

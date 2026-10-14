@@ -1,0 +1,17 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: "uses tabular form for a list-item object's first field, with and without sibling fields"
+# specSection: "10"
+# note: Tabular header on hyphen line with rows at depth +2 and sibling fields at depth +1
+# "input-json": "{\"items\":[{\"users\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2,\"name\":\"Bob\"}],\"status\":\"active\"},{\"users\":[{\"id\":3,\"name\":\"Cy\"},{\"id\":4,\"name\":\"Dee\"}]}]}"
+# ---
+items[2]:
+  - users[2]{id,name}:
+      1,Ada
+      2,Bob
+    status: active
+  - users[2]{id,name}:
+      3,Cy
+      4,Dee

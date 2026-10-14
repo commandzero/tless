@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive value decoding – strings, numbers, booleans, null, unescaping"
+# name: decodes a raw control character inside a quoted string
+# specSection: "7.1"
+# minSpecVersion: "4.2"
+# "expected-json": "{\"val\":\"x\\u0001y\"}"
+# ---
+val: "xy"

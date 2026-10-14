@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a bare token line among list-item fields in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "5.2"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+items[1]:
+  - a: 1
+    b

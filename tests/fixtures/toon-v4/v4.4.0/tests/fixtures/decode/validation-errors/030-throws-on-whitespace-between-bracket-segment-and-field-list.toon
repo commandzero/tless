@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on whitespace between bracket segment and field list
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: "No whitespace is permitted between ] and the field list; mirrors the ]-to-colon rule"
+# "expected-json": "null"
+# ---
+items[0] {a,b}:

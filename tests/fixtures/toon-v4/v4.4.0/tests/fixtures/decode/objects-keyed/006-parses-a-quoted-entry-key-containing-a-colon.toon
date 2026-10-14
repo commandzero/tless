@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses a quoted entry key containing a colon
+# specSection: "9.5"
+# note: The entry-row split is at the first unquoted colon; the quoted colon is key data
+# "expected-json": "{\"m\":{\"a:b\":{\"v\":1}}}"
+# ---
+m[1:]{v}:
+  "a:b": 1

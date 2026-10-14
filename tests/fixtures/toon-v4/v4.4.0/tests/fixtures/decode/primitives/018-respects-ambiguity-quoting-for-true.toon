@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive value decoding – strings, numbers, booleans, null, unescaping"
+# name: respects ambiguity quoting for true
+# specSection: "4"
+# "expected-json": "\"true\""
+# ---
+"true"

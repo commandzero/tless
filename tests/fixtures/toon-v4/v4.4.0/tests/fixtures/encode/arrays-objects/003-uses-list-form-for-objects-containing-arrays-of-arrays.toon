@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses list form for objects containing arrays of arrays
+# specSection: "10"
+# "input-json": "{\"items\":[{\"matrix\":[[1,2],[3,4]],\"name\":\"grid\"}]}"
+# ---
+items[1]:
+  - matrix[2]:
+      - [2]: 1,2
+      - [2]: 3,4
+    name: grid

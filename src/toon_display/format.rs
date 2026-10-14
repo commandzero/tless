@@ -345,6 +345,15 @@ fn value(flat: &FlatJson, line: &mut DisplayLine, node: usize, number_width: Opt
         _ => TokenRole::Null,
     };
     let text = value_text(flat, node);
+    // A leading BOM at root position would be removed by the TOON decoder.
+    let text = if line.text.is_empty()
+        && matches!(flat[node].value, Value::String)
+        && text.starts_with('\u{feff}')
+    {
+        std::borrow::Cow::Owned(super::quote_json(&text))
+    } else {
+        text
+    };
     if let Some(width) = number_width {
         let padding = width - unicode_width::UnicodeWidthStr::width(text.as_ref());
         line.text.extend(std::iter::repeat_n(' ', padding));

@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Comment lines – full-line decode-side comments stripped before structural interpretation
+# name: decodes tab-indented hash row as data in non-strict mode
+# options:
+#   strict: false
+# specSection: "5.1"
+# note: "Comment removal precedes the §14.4 indentation recovery, so the tab keeps the line out of the pre-pass"
+# minSpecVersion: "4.4"
+# "expected-json": "{\"items\":[{\"id\":1},{\"id\":\"#x\"},{\"id\":2}]}"
+# ---
+items[3]{id}:
+  1
+	#x
+  2

@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes emoji inside a quoted string
+# specSection: "7.1"
+# note: "Quoting is triggered by the delimiter; the supplementary scalar stays literal UTF-8, never a surrogate escape"
+# "input-json": "\"a,🚀\""
+# ---
+"a,🚀"

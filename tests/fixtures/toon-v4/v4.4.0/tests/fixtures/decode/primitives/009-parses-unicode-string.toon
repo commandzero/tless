@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive value decoding – strings, numbers, booleans, null, unescaping"
+# name: parses Unicode string
+# specSection: "16"
+# "expected-json": "\"café\""
+# ---
+café

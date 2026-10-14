@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on keyed header without a field list
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "14.2"
+# note: A keyed header without a field list declares no cells at all
+# "expected-json": "null"
+# ---
+m[0:]:

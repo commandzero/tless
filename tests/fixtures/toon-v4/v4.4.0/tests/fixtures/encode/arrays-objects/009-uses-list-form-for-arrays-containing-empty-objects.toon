@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses list form for arrays containing empty objects
+# specSection: "9.4"
+# note: "Empty objects are excluded from tabular detection (§9.3), so the array uses list form with bare hyphen markers (§10)"
+# "input-json": "{\"items\":[{},{}]}"
+# ---
+items[2]:
+  -
+  -

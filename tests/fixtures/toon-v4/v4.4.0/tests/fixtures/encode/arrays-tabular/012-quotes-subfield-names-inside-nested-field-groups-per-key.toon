@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: quotes subfield names inside nested field groups per key encoding
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"id\":1,\"customer\":{\"full name\":\"Ada\",\"country\":\"UK\"}}]}"
+# ---
+items[1]{id,customer{"full name",country}}:
+  1,Ada,UK

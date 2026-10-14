@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on duplicate field names inside a nested field group
+# shouldError: true
+# specSection: "9.3"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+items[0]{n{x,x}}:

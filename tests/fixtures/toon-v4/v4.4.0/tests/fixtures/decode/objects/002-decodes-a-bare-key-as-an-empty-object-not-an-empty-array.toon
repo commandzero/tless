@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: "decodes a bare key: as an empty object, not an empty array"
+# specSection: "8"
+# "expected-json": "{\"user\":{}}"
+# ---
+user:

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: accepts unquoted keys with a leading digit or spelled like a literal or number as string keys
+# specSection: "7.4"
+# "expected-json": "{\"2key\":\"x\",\"true\":1,\"null\":2,\"1.50\":3}"
+# ---
+2key: x
+true: 1
+null: 2
+1.50: 3

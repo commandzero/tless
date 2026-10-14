@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: accepts unquoted values and keys an encoder would quote in strict mode
+# specSection: "7.4"
+# note: The first unquoted colon ends the key; the entire post-colon token is the value (§11.2)
+# "expected-json": "{\"k\":\"b:c\",\"paths\":[\"C:\\\\\",\"D:\\\\\"],\"a\\\\\":\"b\",\"e\":\"{}\"}"
+# ---
+k: b:c
+paths[2]: C:\,D:\
+a\: b
+e: {}

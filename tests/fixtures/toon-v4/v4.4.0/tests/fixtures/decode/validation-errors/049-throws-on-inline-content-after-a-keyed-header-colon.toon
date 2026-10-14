@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on inline content after a keyed header colon
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "14.2"
+# note: A keyed header carries no inline entries
+# "expected-json": "null"
+# ---
+m[1:]{v}: x
+  a: 1

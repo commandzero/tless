@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses unquoted values shaped like inline or tabular array headers after the key
+# specSection: "5.2"
+# note: "An unquoted key cannot contain a colon, so the first colon ends the key; a header shape in the remainder is value text"
+# "expected-json": "{\"key\":\"foo [2]: bar\",\"a\":\"b [2]{x,y}: 1,2\"}"
+# ---
+key: foo [2]: bar
+a: b [2]{x,y}: 1,2

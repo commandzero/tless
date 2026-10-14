@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on a depth jump to the first tabular row
+# shouldError: true
+# specSection: "8"
+# "expected-json": "null"
+# ---
+rows[1]{a}:
+    1

@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a tabular row with more cells than fields
+# shouldError: true
+# specSection: "14.1"
+# "expected-json": "null"
+# ---
+items[1]{a}:
+  1,2

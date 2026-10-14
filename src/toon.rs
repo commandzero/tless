@@ -244,12 +244,7 @@ pub fn parse(input: &str) -> Result<FlatJson, ToonDiagnostic> {
 }
 
 fn parse_on_codec_stack(input: &str) -> Result<FlatJson, ToonDiagnostic> {
-    let input = input.replace("\r\n", "\n");
-    let value: serde_json::Value = if input.trim_matches(&[' ', '\n'][..]).is_empty() {
-        serde_json::Value::Object(serde_json::Map::new())
-    } else {
-        toon_format::decode_strict(&input)?
-    };
+    let value: serde_json::Value = toon_format::decode_strict(input)?;
     let json = value.to_string();
     flatjson::parse_top_level_json(json)
         .map_err(|e| ToonDiagnostic::new(ToonErrorKind::InternalConversion, e))
@@ -257,7 +252,7 @@ fn parse_on_codec_stack(input: &str) -> Result<FlatJson, ToonDiagnostic> {
 
 #[cfg(test)]
 #[path = "toon_fixtures.rs"]
-mod fixtures;
+pub(crate) mod fixtures;
 
 #[cfg(test)]
 mod tests {
@@ -369,24 +364,25 @@ mod tests {
         }
     }
     #[test]
-    fn out_of_range_decoding_follows_published_codec() {
+    fn out_of_range_decoding_preserves_string_values() {
         for input in [
             "18446744073709551616".to_owned(),
             "9".repeat(1025),
-            "value: 1e1025".to_owned(),
+            "1e1025".to_owned(),
             "05".to_owned(),
             "007".to_owned(),
         ] {
-            let expected = toon_format::decode_strict::<serde_json::Value>(&input);
-            let actual = super::parse(&input);
-            match expected {
-                Ok(value) => assert_eq!(
-                    serde_json::from_str::<serde_json::Value>(&actual.unwrap().1).unwrap(),
-                    value
-                ),
-                Err(_) => assert!(actual.is_err()),
-            }
+            let actual = super::parse(&input).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&actual.1).unwrap(),
+                serde_json::Value::String(input)
+            );
         }
+        let actual = super::parse("value: 1e1025").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&actual.1).unwrap(),
+            serde_json::json!({"value": "1e1025"})
+        );
     }
 
     #[test]
@@ -437,19 +433,20 @@ mod tests {
     }
     #[test]
     fn export_numbers_follow_published_numeric_conversion() {
-        for number in [
-            "0.123456789012345678901",
-            "9223372036854775808.1",
-            "18446744073709551615",
-            "-9223372036854775808",
-            "0.1",
-            "-0",
+        for (number, expected) in [
+            ("0.123456789012345678901", "0.12345678901234568"),
+            ("9223372036854775808.1", "9223372036854775808"),
+            ("18446744073709551615", "18446744073709551615"),
+            ("-9223372036854775808", "-9223372036854775808"),
+            ("0.1", "0.1"),
+            ("-0", "0"),
+            ("123456789012345678901", "123456789012345680000"),
         ] {
-            let value: serde_json::Value = serde_json::from_str(number).unwrap();
             let doc = crate::flatjson::parse_top_level_json(number.to_owned()).unwrap();
             assert_eq!(
                 super::encode_document(&doc, super::EncodeOptions::default()).unwrap(),
-                toon_format::encode_default(&value).unwrap()
+                expected,
+                "{number}"
             );
         }
         let doc = crate::flatjson::parse_top_level_json("1e1025".to_owned()).unwrap();
@@ -525,20 +522,26 @@ mod tests {
 
     #[test]
     fn decimal_decoding_follows_published_numeric_conversion() {
-        for input in [
-            "0.123456789012345678901",
-            "a: 0.123456789012345678901",
-            "[1]: 0.123456789012345678901",
+        for (input, expected) in [
+            (
+                "0.123456789012345678901",
+                serde_json::json!(0.12345678901234568),
+            ),
+            (
+                "a: 0.123456789012345678901",
+                serde_json::json!({"a": 0.12345678901234568}),
+            ),
+            (
+                "[1]: 0.123456789012345678901",
+                serde_json::json!([0.12345678901234568]),
+            ),
         ] {
-            let expected: serde_json::Value = toon_format::decode_strict(input).unwrap();
             let actual = super::parse(input).unwrap();
             assert_eq!(
                 serde_json::from_str::<serde_json::Value>(&actual.1).unwrap(),
                 expected
             );
         }
-        let actual = super::parse("0.123456789012345678901").unwrap();
-        assert_ne!(actual.1.trim(), "0.123456789012345678901");
     }
 
     #[test]

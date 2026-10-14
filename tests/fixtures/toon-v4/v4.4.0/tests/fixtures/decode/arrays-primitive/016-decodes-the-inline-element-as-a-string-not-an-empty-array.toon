@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: "decodes the inline element [] as a string, not an empty array"
+# specSection: "9.3"
+# "expected-json": "{\"a\":[\"[]\"]}"
+# ---
+a[1]: []

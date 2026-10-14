@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: encodes empty nested object
+# specSection: "8"
+# "input-json": "{\"user\":{}}"
+# ---
+user:

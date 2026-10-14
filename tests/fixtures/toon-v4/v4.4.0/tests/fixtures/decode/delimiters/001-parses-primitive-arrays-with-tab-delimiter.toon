@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Delimiter decoding – tab and pipe delimiter parsing, delimiter-aware value splitting"
+# name: parses primitive arrays with tab delimiter
+# specSection: "11"
+# "expected-json": "{\"tags\":[\"reading\",\"gaming\",\"coding\"]}"
+# ---
+tags[3	]: reading	gaming	coding

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: "throws on the removed [#N] length marker in a root header"
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+[#2]: a,b

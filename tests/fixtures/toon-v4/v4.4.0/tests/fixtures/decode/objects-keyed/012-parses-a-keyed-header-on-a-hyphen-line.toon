@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses a keyed header on a hyphen line
+# specSection: "10"
+# "expected-json": "{\"items\":[{\"config\":{\"a\":{\"x\":1},\"b\":{\"x\":2}},\"status\":\"ok\"},{\"status\":\"down\"}]}"
+# ---
+items[2]:
+  - config[2:]{x}:
+      a: 1
+      b: 2
+    status: ok
+  - status: down

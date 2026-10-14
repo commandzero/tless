@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on depth jump of more than one level
+# shouldError: true
+# specSection: "8"
+# note: "Four leading spaces are a multiple of indentSize 2, but depth 2 directly under depth 0 skips a level"
+# "expected-json": "null"
+# ---
+a:
+    b: 1

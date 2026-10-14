@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: quotes ambiguous strings in tabular rows
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"id\":1,\"status\":\"true\"},{\"id\":2,\"status\":\"false\"}]}"
+# ---
+items[2]{id,status}:
+  1,"true"
+  2,"false"

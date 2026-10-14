@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: quotes hash-leading string as list item
+# specSection: "7.2"
+# "input-json": "{\"items\":[\"#x\",{\"a\":1}]}"
+# ---
+items[2]:
+  - "#x"
+  - a: 1

@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: decodes every entry row whatever the declared count in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"m\":{\"a\":{\"v\":1},\"b\":{\"v\":2}},\"n\":{\"c\":{\"v\":3}}}"
+# ---
+m[1:]{v}:
+  a: 1
+  b: 2
+n[3:]{v}:
+  c: 3

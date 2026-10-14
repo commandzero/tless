@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: parses quoted key with tabular array
+# specSection: "9.3"
+# "expected-json": "{\"x-items\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2,\"name\":\"Bob\"}]}"
+# ---
+"x-items"[2]{id,name}:
+  1,Ada
+  2,Bob

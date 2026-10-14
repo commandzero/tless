@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: unescapes newline and quotes in keys
+# specSection: "7.1"
+# "expected-json": "{\"line\\n\":1,\"he said \\\"hi\\\"\":2}"
+# ---
+"line\n": 1
+"he said \"hi\"": 2

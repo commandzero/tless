@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive value decoding – strings, numbers, booleans, null, unescaping"
+# name: decodes supplementary scalar (U+1F680) in quoted string as literal UTF-8
+# specSection: "7.1"
+# "expected-json": "\"🚀 launch\""
+# ---
+"🚀 launch"

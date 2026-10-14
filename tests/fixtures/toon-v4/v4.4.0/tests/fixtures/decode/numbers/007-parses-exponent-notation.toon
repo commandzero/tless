@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: parses exponent notation
+# specSection: "4"
+# "expected-json": "1000000"
+# ---
+1e6

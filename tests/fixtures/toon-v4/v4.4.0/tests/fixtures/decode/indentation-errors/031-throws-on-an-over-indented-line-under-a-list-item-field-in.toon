@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on an over-indented line under a list-item field in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: "The hyphen line is the list-item object's first line, so the depth-jump recovery does not apply"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+items[1]:
+  - a: 1
+      b: 2

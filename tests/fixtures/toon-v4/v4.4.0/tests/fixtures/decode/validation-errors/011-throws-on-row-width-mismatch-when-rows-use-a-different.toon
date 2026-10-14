@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on row width mismatch when rows use a different delimiter than the active delimiter
+# shouldError: true
+# specSection: "11.2"
+# note: "Active delimiter is tab; rows using comma each parse as 1 value, failing the row width check"
+# "expected-json": "null"
+# ---
+items[2	]{a	b}:
+  1,2
+  3,4

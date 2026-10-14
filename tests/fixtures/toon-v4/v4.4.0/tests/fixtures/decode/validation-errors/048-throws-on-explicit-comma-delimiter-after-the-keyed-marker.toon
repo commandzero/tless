@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on explicit comma delimiter after the keyed marker
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: "Comma is never written as a delimiter symbol; [N:] already declares it"
+# "expected-json": "null"
+# ---
+m[2:,]{v}:
+  a: 1
+  b: 2

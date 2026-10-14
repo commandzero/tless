@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: "keeps strings that only resemble numbers or literals, a leading byte-order mark, or DEL unquoted"
+# specSection: "7.2"
+# note: "Only a root primitive starting with U+FEFF is quoted, and only U+0000–U+001F count as controls (§7.1, §7.2)"
+# minSpecVersion: "4.2"
+# "input-json": "{\"a\":\".5\",\"b\":\"NaN\",\"c\":\"True\",\"d\":\"﻿x\",\"e\":\"a\u007fb\",\"f\":\"٤٢\"}"
+# ---
+a: .5
+b: NaN
+c: True
+d: ﻿x
+e: ab
+f: ٤٢

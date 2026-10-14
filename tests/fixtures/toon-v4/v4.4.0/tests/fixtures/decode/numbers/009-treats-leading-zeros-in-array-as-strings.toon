@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: treats leading-zeros in array as strings
+# specSection: "4"
+# "expected-json": "{\"nums\":[\"05\",\"007\",\"0123\",\"01.5\"]}"
+# ---
+nums[4]: 05,007,0123,01.5

@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: applies last-write-wins for duplicate entry keys in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: Entry keys are sibling keys of the decoded object and resolve last-write-wins
+# "expected-json": "{\"m\":{\"a\":{\"v\":2}}}"
+# ---
+m[2:]{v}:
+  a: 1
+  a: 2

@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses an empty unquoted key as the empty key
+# specSection: "7.4"
+# minSpecVersion: "4.2"
+# "expected-json": "{\"\":1,\"a\":{\"\":2},\"items\":[{\"\":3}],\"m\":{\"\":{\"v\":4}}}"
+# ---
+: 1
+a:
+  : 2
+items[1]:
+  - : 3
+m[1:]{v}:
+  : 4

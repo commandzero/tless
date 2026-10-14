@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: keeps every row when the count mismatches in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: "A declared [N] never truncates a scope"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"a\":[{\"x\":1},{\"x\":2}]}"
+# ---
+a[1]{x}:
+  1
+  2

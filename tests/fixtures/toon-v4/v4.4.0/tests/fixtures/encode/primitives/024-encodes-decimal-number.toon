@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes decimal number
+# specSection: "2"
+# "input-json": "3.14"
+# ---
+3.14

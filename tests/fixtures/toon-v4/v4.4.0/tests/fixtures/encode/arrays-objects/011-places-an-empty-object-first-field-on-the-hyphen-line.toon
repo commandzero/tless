@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: places an empty object first field on the hyphen line
+# specSection: "10"
+# "input-json": "{\"items\":[{\"a\":{},\"b\":1}]}"
+# ---
+items[1]:
+  - a:
+    b: 1

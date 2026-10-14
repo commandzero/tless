@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: "parses sibling nested field groups by depth-first cell assignment, with a name repeated across levels"
+# specSection: "9.3"
+# "expected-json": "{\"shipments\":[{\"id\":\"s1\",\"sender\":{\"id\":\"ACME\",\"city\":\"Berlin\"},\"receiver\":{\"id\":\"Globex\",\"city\":\"Oslo\"}}]}"
+# ---
+shipments[1]{id,sender{id,city},receiver{id,city}}:
+  s1,ACME,Berlin,Globex,Oslo

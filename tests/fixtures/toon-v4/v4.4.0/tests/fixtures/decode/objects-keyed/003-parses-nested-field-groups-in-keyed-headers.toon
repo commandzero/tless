@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses nested field groups in keyed headers
+# specSection: "9.5"
+# "expected-json": "{\"regions\":{\"eu\":{\"name\":\"Europe\",\"geo\":{\"lat\":50,\"lon\":10}},\"us\":{\"name\":\"America\",\"geo\":{\"lat\":40,\"lon\":-100}}}}"
+# ---
+regions[2:]{name,geo{lat,lon}}:
+  eu: Europe,50,10
+  us: America,40,-100

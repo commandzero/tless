@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Comment lines – full-line decode-side comments stripped before structural interpretation
+# name: strips outdented comment inside nested object scope without closing it
+# specSection: "5.1"
+# note: A depth-0 comment between depth-1 fields does not close the object
+# "expected-json": "{\"user\":{\"id\":1,\"name\":\"Ada\"}}"
+# ---
+user:
+  id: 1
+# outdented note
+  name: Ada

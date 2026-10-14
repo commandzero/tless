@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses list arrays for non-uniform objects
+# specSection: "9.4"
+# "expected-json": "{\"items\":[{\"id\":1,\"name\":\"First\"},{\"id\":2,\"name\":\"Second\",\"extra\":true}]}"
+# ---
+items[2]:
+  - id: 1
+    name: First
+  - id: 2
+    name: Second
+    extra: true

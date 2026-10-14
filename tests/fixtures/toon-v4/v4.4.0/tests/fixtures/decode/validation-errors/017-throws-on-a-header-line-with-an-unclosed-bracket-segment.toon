@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a header line with an unclosed bracket segment
+# shouldError: true
+# specSection: "5.2"
+# minSpecVersion: "4.3"
+# "expected-json": "null"
+# ---
+a[1:

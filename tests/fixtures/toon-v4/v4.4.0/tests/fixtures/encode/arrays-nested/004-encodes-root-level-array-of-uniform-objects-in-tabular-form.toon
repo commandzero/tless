@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: encodes root-level array of uniform objects in tabular form
+# specSection: "9.3"
+# "input-json": "[{\"id\":1},{\"id\":2}]"
+# ---
+[2]{id}:
+  1
+  2

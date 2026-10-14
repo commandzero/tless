@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: parses nested field groups with the pipe delimiter
+# specSection: "9.3"
+# "expected-json": "{\"orders\":[{\"id\":1,\"customer\":{\"name\":\"Ada\",\"country\":\"DK\"},\"total\":99},{\"id\":2,\"customer\":{\"name\":\"Bob\",\"country\":\"UK\"},\"total\":149}]}"
+# ---
+orders[2|]{id|customer{name|country}|total}:
+  1|Ada|DK|99
+  2|Bob|UK|149

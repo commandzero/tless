@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: keeps a leading NBSP and a trailing tab in unquoted values
+# specSection: "12"
+# note: Token trimming removes U+0020 only; NBSP and tab are part of the token
+# "expected-json": "{\"a\":\" v\",\"b\":\"v\\t\"}"
+# ---
+a:  v
+b: v	

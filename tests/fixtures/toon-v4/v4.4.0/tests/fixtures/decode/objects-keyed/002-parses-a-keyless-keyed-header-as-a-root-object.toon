@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses a keyless keyed header as a root object
+# specSection: "9.5"
+# note: "Root-form discovery (§5) routes the keyless keyed header to a root object, not a root array"
+# "expected-json": "{\"alice\":{\"age\":30,\"city\":\"Berlin\"},\"bob\":{\"age\":25,\"city\":\"Oslo\"}}"
+# ---
+[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Oslo

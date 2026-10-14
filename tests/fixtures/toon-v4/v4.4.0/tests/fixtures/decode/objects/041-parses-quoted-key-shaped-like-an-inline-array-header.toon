@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses quoted key shaped like an inline array header
+# specSection: "5.2"
+# "expected-json": "{\"k[2]: y\":1}"
+# ---
+"k[2]: y": 1

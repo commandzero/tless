@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: "applies last-write-wins for duplicate field names, bare or grouped, in non-strict mode"
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: Duplicate field names yield duplicate sibling keys per row; non-strict resolves last-write-wins
+# "expected-json": "{\"items\":[{\"a\":2,\"b\":{\"x\":4}}]}"
+# ---
+items[1]{a,a,b,b{x}}:
+  1,2,3,4

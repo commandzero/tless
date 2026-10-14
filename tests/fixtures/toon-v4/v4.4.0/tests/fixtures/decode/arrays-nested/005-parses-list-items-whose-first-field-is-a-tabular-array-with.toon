@@ -1,0 +1,17 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: "parses list items whose first field is a tabular array, with and without sibling fields"
+# specSection: "10"
+# note: "Canonical encoding: tabular header on hyphen line, rows at depth +2, sibling fields at depth +1"
+# "expected-json": "{\"items\":[{\"users\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2,\"name\":\"Bob\"}],\"status\":\"active\"},{\"users\":[{\"id\":3,\"name\":\"Cy\"},{\"id\":4,\"name\":\"Dee\"}]}]}"
+# ---
+items[2]:
+  - users[2]{id,name}:
+      1,Ada
+      2,Bob
+    status: active
+  - users[2]{id,name}:
+      3,Cy
+      4,Dee

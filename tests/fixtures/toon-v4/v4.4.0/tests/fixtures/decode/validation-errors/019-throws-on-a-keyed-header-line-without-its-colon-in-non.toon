@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a keyed header line without its colon in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "5.2"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+a[2:]{x}

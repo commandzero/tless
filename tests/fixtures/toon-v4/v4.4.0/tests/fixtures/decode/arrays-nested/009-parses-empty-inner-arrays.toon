@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses empty inner arrays
+# specSection: "9.2"
+# "expected-json": "{\"pairs\":[[],[]]}"
+# ---
+pairs[2]:
+  - [0]:
+  - [0]:

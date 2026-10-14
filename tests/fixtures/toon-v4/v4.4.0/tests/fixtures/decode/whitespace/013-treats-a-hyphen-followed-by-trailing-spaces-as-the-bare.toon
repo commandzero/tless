@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: treats a hyphen followed by trailing spaces as the bare marker
+# specSection: "12"
+# note: Trailing spaces are stripped before line classification
+# minSpecVersion: "4.1"
+# "expected-json": "{\"a\":[{}]}"
+# ---
+a[1]: 
+  - 

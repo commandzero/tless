@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: "parses literal [] at root as empty array"
+# options:
+#   strict: true
+# specSection: "5"
+# "expected-json": "[]"
+# ---
+[]

@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: keeps a root string containing only a non-document delimiter unquoted
+# options:
+#   delimiter: |
+# specSection: "11.1"
+# note: A root primitive is quoted against the document delimiter (§11.1)
+# minSpecVersion: "4.2"
+# "input-json": "\"a,b\""
+# ---
+a,b

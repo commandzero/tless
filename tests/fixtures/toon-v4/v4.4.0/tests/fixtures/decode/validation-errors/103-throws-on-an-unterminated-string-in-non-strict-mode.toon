@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on an unterminated string in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "7.1"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+k: "abc

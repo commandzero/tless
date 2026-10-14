@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: parses quoted subfield names inside nested field groups
+# specSection: "9.3"
+# "expected-json": "{\"items\":[{\"id\":1,\"customer\":{\"full name\":\"Ada\",\"country\":\"UK\"}}]}"
+# ---
+items[1]{id,customer{"full name",country}}:
+  1,Ada,UK

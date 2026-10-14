@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: removes a byte-order mark before a comment line
+# specSection: "12"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"a\":1}"
+# ---
+﻿# c
+a: 1

@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: ignores a brace inside a mid-name quote span in a field list
+# specSection: "6"
+# minSpecVersion: "4.2"
+# "expected-json": "{\"a\":[{\"x\\\"}\\\"y\":1}]}"
+# ---
+a[1]{x"}"y}:
+  1

@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: quotes strings that look like literals or numbers in arrays
+# specSection: "9.1"
+# "input-json": "{\"items\":[\"x\",\"true\",\"42\",\"-3.14\"]}"
+# ---
+items[4]: x,"true","42","-3.14"

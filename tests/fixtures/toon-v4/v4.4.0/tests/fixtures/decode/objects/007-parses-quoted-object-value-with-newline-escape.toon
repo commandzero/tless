@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses quoted object value with newline escape
+# specSection: "7.1"
+# "expected-json": "{\"text\":\"line1\\nline2\"}"
+# ---
+text: "line1\nline2"

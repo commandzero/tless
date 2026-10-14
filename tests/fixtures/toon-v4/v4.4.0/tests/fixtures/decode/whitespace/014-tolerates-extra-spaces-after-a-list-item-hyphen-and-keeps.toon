@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: tolerates extra spaces after a list-item hyphen and keeps an NBSP after them
+# specSection: "5.2"
+# minSpecVersion: "4.4"
+# "expected-json": "{\"items\":[\" a\",[1,2],{\"k\":[\"v\"]}]}"
+# ---
+items[3]:
+  -   a
+  -   [2]: 1,2
+  -  k[1]: v

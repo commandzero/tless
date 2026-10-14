@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: "keeps list items under a legacy [0] header in non-strict mode"
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: "A legacy [0] is a declared length, so its content is decoded (§14.4)"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"a\":[\"x\"]}"
+# ---
+a[0]:
+  - x

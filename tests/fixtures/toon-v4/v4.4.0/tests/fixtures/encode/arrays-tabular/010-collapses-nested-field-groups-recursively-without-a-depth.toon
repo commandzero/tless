@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: collapses nested field groups recursively without a depth cap
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"id\":1,\"geo\":{\"point\":{\"lat\":1.5,\"lon\":2.5}}},{\"id\":2,\"geo\":{\"point\":{\"lat\":3,\"lon\":4}}}]}"
+# ---
+items[2]{id,geo{point{lat,lon}}}:
+  1,1.5,2.5
+  2,3,4

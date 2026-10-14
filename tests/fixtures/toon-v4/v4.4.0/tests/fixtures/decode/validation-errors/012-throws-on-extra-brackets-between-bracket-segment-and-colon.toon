@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on extra brackets between bracket segment and colon
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: The line is an array-header line that fails the §6 grammar (§5.2)
+# "expected-json": "null"
+# ---
+foo[1][bar]: 10

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses list arrays containing objects with nested properties
+# specSection: "9.4"
+# "expected-json": "{\"items\":[{\"id\":1,\"nested\":{\"x\":1}}]}"
+# ---
+items[1]:
+  - id: 1
+    nested:
+      x: 1

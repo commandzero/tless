@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: accepts bare bracket pair as empty inner array list item
+# specSection: "9.2"
+# note: "Decode-side acceptance mirrors §9.1's key: [] form; encoders still emit - [0]:"
+# "expected-json": "{\"items\":[[],[\"x\"]]}"
+# ---
+items[2]:
+  - []
+  - [1]: x

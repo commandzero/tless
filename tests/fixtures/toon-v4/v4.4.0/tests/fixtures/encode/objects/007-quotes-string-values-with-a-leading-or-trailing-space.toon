@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: quotes string values with a leading or trailing space
+# specSection: "7.2"
+# "input-json": "{\"lead\":\" padded\",\"trail\":\"padded \"}"
+# ---
+lead: " padded"
+trail: "padded "

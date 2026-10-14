@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses a list-form array as the first field of a list-item object
+# specSection: "10"
+# "expected-json": "{\"items\":[{\"matrix\":[[1,2],[3,4]],\"name\":\"grid\"}]}"
+# ---
+items[1]:
+  - matrix[2]:
+      - [2]: 1,2
+      - [2]: 3,4
+    name: grid

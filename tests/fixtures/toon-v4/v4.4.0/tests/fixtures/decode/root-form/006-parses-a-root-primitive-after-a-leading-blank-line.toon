@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: parses a root primitive after a leading blank line
+# options:
+#   strict: true
+# specSection: "5"
+# "expected-json": "\"hello\""
+# ---
+
+hello

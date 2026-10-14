@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on keyed marker after the delimiter symbol
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: "The keyed colon must immediately follow the length and precede the delimiter symbol: [2:|]"
+# "expected-json": "null"
+# ---
+m[2|:]{v}:
+  a: 1
+  b: 2

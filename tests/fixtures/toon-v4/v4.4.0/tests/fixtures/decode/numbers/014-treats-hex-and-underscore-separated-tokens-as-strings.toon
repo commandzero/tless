@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: treats hex and underscore-separated tokens as strings
+# specSection: "4"
+# note: Host parsers that accept these forms have a wider grammar than the spec permits
+# "expected-json": "{\"a\":\"0x10\",\"b\":\"1_000\"}"
+# ---
+a: 0x10
+b: 1_000

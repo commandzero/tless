@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a length beyond the integer range that wraps to the value count
+# shouldError: true
+# specSection: "6"
+# note: 2^64 + 1 wraps to 1 in 64-bit integers; an unrepresentable length is unmet (§14.1)
+# minSpecVersion: "4.2"
+# "expected-json": "null"
+# ---
+a[18446744073709551617]: 1

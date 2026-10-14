@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on row cell count not matching the leaf-field count
+# shouldError: true
+# specSection: "14.1"
+# note: "The header declares three leaf fields (id, customer.name, customer.country); the row has two cells"
+# "expected-json": "null"
+# ---
+orders[1]{id,customer{name,country}}:
+  1,Ada

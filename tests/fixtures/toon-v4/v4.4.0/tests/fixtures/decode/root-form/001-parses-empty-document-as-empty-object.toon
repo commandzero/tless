@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: parses empty document as empty object
+# options:
+#   strict: true
+# specSection: "5"
+# "expected-json": "{}"
+# ---

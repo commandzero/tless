@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: "materializes __proto__, constructor, and prototype as ordinary own keys"
+# specSection: "15"
+# note: "Decoding MUST NOT mutate the host object model, so the decoded object carries these keys as own entries"
+# "expected-json": "{\"__proto__\":\"polluted\",\"constructor\":1,\"prototype\":2}"
+# ---
+__proto__: polluted
+constructor: 1
+prototype: 2
