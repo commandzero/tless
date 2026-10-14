@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: parses nulls and quoted values in tabular rows
+# specSection: "9.3"
+# "expected-json": "{\"items\":[{\"id\":1,\"value\":null},{\"id\":2,\"value\":\"test\"}]}"
+# ---
+items[2]{id,value}:
+  1,null
+  2,"test"

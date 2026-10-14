@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on depth jump inside a nested object
+# shouldError: true
+# specSection: "8"
+# "expected-json": "null"
+# ---
+a:
+  b:
+      c: 1

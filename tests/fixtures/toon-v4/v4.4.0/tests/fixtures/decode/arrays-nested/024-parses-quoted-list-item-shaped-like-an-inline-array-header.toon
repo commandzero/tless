@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses quoted list item shaped like an inline array header
+# specSection: "9.4"
+# "expected-json": "{\"xs\":[\"[2]: x\"]}"
+# ---
+xs[1]:
+  - "[2]: x"

@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: encodes deeply nested objects
+# specSection: "8"
+# "input-json": "{\"a\":{\"b\":{\"c\":\"deep\"}}}"
+# ---
+a:
+  b:
+    c: deep

@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: places empty arrays on the hyphen line when first and at field depth when later
+# specSection: "10"
+# "input-json": "{\"items\":[{\"data\":[],\"name\":\"Ada\"},{\"name\":\"Bob\",\"data\":[]}]}"
+# ---
+items[2]:
+  - data: []
+    name: Ada
+  - name: Bob
+    data: []

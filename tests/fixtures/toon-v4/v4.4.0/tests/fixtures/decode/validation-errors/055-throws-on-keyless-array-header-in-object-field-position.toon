@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on keyless array header in object field position
+# shouldError: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+a:
+  [2]: 1,2

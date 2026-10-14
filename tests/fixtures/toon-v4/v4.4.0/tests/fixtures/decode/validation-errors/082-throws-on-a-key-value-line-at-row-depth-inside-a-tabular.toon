@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a key-value line at row depth inside a tabular array
+# shouldError: true
+# specSection: "9.3"
+# note: "The colon precedes the delimiter, so the line ends the rows instead of becoming a second row"
+# "expected-json": "null"
+# ---
+items[2]{a,b}:
+  1,2
+  c: 3,4

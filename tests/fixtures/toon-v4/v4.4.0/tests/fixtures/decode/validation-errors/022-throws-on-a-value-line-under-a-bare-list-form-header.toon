@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a value line under a bare list-form header
+# shouldError: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+tags[3]:
+  reading,gaming,coding

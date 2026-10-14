@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: escapes newline and quotes in keys
+# specSection: "7.1"
+# "input-json": "{\"line\\n\":1,\"he said \\\"hi\\\"\":2}"
+# ---
+"line\n": 1
+"he said \"hi\"": 2

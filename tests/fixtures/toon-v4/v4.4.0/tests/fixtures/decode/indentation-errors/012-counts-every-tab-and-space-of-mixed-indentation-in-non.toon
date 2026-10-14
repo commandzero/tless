@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: counts every tab and space of mixed indentation in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: "One tab plus two spaces is depth 2 at indentSize 2, wherever the tab sits"
+# minSpecVersion: "4.4"
+# "expected-json": "{\"a\":{\"b\":{\"c\":1}}}"
+# ---
+a:
+  b:
+ 	 c: 1

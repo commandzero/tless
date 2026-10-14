@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a bare token line inside an array scope in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "5.2"
+# note: A scalar line outside root primitive position is an error in strict and non-strict mode alike
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+k[1]:
+  - x: 1
+  bare

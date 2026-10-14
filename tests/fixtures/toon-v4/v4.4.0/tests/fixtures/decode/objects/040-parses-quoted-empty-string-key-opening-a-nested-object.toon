@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses quoted empty string key opening a nested object
+# specSection: "8"
+# "expected-json": "{\"\":{\"a\":1}}"
+# ---
+"":
+  a: 1

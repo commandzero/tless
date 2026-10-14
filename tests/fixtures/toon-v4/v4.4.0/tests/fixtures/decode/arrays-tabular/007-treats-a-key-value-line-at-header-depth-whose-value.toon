@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: "treats a key-value line at header depth whose value contains the active delimiter as end of rows, not a row"
+# specSection: "9.3"
+# note: "The dedent to the header's depth closes the rows (§8); the line is a key-value pair, and the whole post-colon token is the value, non-numeric so a string (§11.2)"
+# "expected-json": "{\"t\":[{\"a\":1,\"b\":2},{\"a\":3,\"b\":4}],\"x\":\"3,4\"}"
+# ---
+t[2]{a,b}:
+  1,2
+  3,4
+x: 3,4

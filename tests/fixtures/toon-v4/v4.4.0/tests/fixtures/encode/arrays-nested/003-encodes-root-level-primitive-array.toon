@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: encodes root-level primitive array
+# specSection: "9.1"
+# "input-json": "[\"x\",\"y\",\"true\",true,10]"
+# ---
+[5]: x,y,"true",true,10

@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses list items shaped like headers without a colon as strings
+# specSection: "6"
+# minSpecVersion: "4.2"
+# "expected-json": "{\"a\":[\"[2]\",\"a[2]{x,x}\",\"[1,2,3]\"]}"
+# ---
+a[3]:
+  - [2]
+  - a[2]{x,x}
+  - [1,2,3]

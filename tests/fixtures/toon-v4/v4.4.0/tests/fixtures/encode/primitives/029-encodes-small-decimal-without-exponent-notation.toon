@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes small decimal without exponent notation
+# specSection: "2"
+# note: Lower bound of the canonical decimal range
+# "input-json": "0.000001"
+# ---
+0.000001

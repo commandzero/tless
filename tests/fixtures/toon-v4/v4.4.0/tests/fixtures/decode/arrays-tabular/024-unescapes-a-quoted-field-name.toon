@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: unescapes a quoted field name
+# specSection: "6"
+# "expected-json": "{\"a\":[{\"x\\\"y\":1}]}"
+# ---
+a[1]{"x\"y"}:
+  1

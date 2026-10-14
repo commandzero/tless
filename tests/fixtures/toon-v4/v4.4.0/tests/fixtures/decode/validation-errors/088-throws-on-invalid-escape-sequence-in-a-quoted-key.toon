@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on invalid escape sequence in a quoted key
+# shouldError: true
+# specSection: "7.4"
+# "expected-json": "null"
+# ---
+"a\x": 1

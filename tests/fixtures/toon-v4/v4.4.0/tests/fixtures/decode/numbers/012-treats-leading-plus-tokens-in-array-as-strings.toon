@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: treats leading-plus tokens in array as strings
+# specSection: "4"
+# note: "The grammar admits only an optional leading minus, so leading-plus cells stay strings"
+# "expected-json": "{\"values\":[\"+1\",\"+1.5\",\"+1e2\"]}"
+# ---
+values[3]: +1,+1.5,+1e2

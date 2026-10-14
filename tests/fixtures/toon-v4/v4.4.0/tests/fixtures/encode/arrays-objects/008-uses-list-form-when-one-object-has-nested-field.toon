@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses list form when one object has nested field
+# specSection: "9.4"
+# "input-json": "{\"items\":[{\"id\":1,\"data\":\"string\"},{\"id\":2,\"data\":{\"nested\":true}}]}"
+# ---
+items[2]:
+  - id: 1
+    data: string
+  - id: 2
+    data:
+      nested: true

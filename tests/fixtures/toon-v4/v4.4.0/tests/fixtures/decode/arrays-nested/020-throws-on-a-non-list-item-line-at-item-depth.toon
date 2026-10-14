@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: throws on a non-list-item line at item depth
+# shouldError: true
+# specSection: "9.4"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+items[2]:
+  - a
+  x: 1

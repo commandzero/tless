@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive value decoding – strings, numbers, booleans, null, unescaping"
+# name: "decodes \\uXXXX escape (U+0004)"
+# specSection: "7.1"
+# "expected-json": "{\"val\":\"a\\u0004b\"}"
+# ---
+val: "a\u0004b"

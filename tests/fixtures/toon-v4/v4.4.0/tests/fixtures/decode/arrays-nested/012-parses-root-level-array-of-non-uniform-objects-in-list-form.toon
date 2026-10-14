@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses root-level array of non-uniform objects in list form
+# specSection: "9.4"
+# "expected-json": "[{\"id\":1},{\"id\":2,\"name\":\"Ada\"}]"
+# ---
+[2]:
+  - id: 1
+  - id: 2
+    name: Ada

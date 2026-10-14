@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Comment lines – full-line decode-side comments stripped before structural interpretation
+# name: strips comment containing an unterminated quote without unescaping
+# specSection: "5.1"
+# note: Comment text is discarded without interpretation; the quote never reaches the tokenizer
+# "expected-json": "{\"a\":1}"
+# ---
+# "unterminated
+a: 1

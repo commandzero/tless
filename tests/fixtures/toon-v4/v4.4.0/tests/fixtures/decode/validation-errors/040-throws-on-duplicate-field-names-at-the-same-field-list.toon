@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on duplicate field names at the same field-list level in strict mode
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "9.3"
+# note: "A duplicate field name is a header defect, diagnosed from the header line alone"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+items[0]{a,a{x}}:

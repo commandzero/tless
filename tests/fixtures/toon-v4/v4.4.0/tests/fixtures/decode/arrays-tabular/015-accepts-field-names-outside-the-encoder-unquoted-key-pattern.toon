@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: accepts field names outside the encoder unquoted-key pattern
+# specSection: "7.4"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"items\":[{\"2key\":1,\"x:y\":2}]}"
+# ---
+items[1]{2key,x:y}:
+  1,2

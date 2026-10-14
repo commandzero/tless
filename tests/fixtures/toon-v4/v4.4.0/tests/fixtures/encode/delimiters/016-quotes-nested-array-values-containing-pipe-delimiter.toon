@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: quotes nested array values containing pipe delimiter
+# options:
+#   delimiter: |
+# specSection: "11"
+# "input-json": "{\"pairs\":[[\"a\",\"b|c\"]]}"
+# ---
+pairs[1|]:
+  - [2|]: a|"b|c"

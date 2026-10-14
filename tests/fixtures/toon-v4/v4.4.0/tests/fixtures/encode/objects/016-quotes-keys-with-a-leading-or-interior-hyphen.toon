@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: quotes keys with a leading or interior hyphen
+# specSection: "7.3"
+# "input-json": "{\"-lead\":1,\"a-b\":2}"
+# ---
+"-lead": 1
+"a-b": 2

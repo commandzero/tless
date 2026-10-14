@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: ignores comment lines between entry rows
+# specSection: "5.1"
+# note: "Comment removal never ends a keyed scope, and a comment line never counts as an entry"
+# "expected-json": "{\"m\":{\"a\":{\"v\":1},\"b\":{\"v\":2}}}"
+# ---
+m[2:]{v}:
+  a: 1
+# note
+  b: 2

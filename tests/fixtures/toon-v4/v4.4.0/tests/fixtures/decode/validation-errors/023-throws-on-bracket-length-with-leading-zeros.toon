@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on bracket length with leading zeros
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: "[03] is not a canonical non-negative integer length; decoders MUST NOT interpret it as a bracket segment"
+# "expected-json": "null"
+# ---
+items[03]: a,b,c

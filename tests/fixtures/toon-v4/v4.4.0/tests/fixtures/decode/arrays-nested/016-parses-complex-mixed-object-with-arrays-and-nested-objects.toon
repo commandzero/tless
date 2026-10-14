@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses complex mixed object with arrays and nested objects
+# specSection: "8"
+# "expected-json": "{\"user\":{\"id\":123,\"name\":\"Ada\",\"tags\":[\"reading\",\"gaming\"],\"active\":true,\"prefs\":[]}}"
+# ---
+user:
+  id: 123
+  name: Ada
+  tags[2]: reading,gaming
+  active: true
+  prefs[0]:

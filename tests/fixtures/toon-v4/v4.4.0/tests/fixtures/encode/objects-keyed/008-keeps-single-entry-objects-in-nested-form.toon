@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Keyed tabular encoding – objects whose values are uniform objects collapse into keyed headers with entry rows
+# name: keeps single-entry objects in nested form
+# specSection: "9.5"
+# note: Keyed tabular detection requires at least two entries
+# "input-json": "{\"config\":{\"only\":{\"a\":1,\"b\":2}}}"
+# ---
+config:
+  only:
+    a: 1
+    b: 2

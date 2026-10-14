@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: treats a carriage-return-only line as blank
+# specSection: "12"
+# "expected-json": "{\"a\":1,\"b\":2}"
+# ---
+a: 1
+
+b: 2

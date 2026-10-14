@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: encodes empty string keys for inline arrays
+# specSection: "9.1"
+# "input-json": "{\"\":[1,2,3]}"
+# ---
+""[3]: 1,2,3

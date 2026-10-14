@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses root-level primitive array inline
+# specSection: "9.1"
+# "expected-json": "[\"x\",\"y\",\"true\",true,10]"
+# ---
+[5]: x,y,"true",true,10

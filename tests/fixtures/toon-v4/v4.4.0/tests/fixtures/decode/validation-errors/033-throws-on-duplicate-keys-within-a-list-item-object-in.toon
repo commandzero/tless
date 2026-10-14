@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on duplicate keys within a list-item object in strict mode
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "14.3"
+# "expected-json": "null"
+# ---
+items[1]:
+  - id: 1
+    id: 2

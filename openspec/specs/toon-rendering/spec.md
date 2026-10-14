@@ -8,7 +8,7 @@ Provide one syntax-colored TOON document view with predictable collapse annotati
 
 ### Requirement: One rendering contract
 
-The viewer SHALL render every supported input format with the TOON 4.1 display profile: 2-space indentation, comma delimiters, nested uniform field groups, keyed object tables, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering. The published TOON 4.1 codec SHALL handle TOON input and export in every build profile; codec syntax SHALL NOT select a different document presentation. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
+The viewer SHALL render every supported input format with the TOON 4.4 display profile: 2-space indentation, comma delimiters, nested uniform field groups, keyed object tables, and no key folding. The documented display extensions SHALL apply where that profile cannot faithfully represent the parsed data. Every build profile SHALL provide this view. Input format selection SHALL remain independent of rendering. The published TOON 4.4 codec SHALL handle TOON input and export in every build profile; codec syntax SHALL NOT select a different document presentation. Optional `colorscheme` and `sexp` features SHALL retain their respective behavior without gating TOON support.
 
 #### Scenario: Equivalent inputs
 
@@ -16,9 +16,9 @@ The viewer SHALL render every supported input format with the TOON 4.1 display p
 - **THEN** their fully expanded document text SHALL match
 - **AND** input-format selectors SHALL NOT select a different rendering mode
 
-#### Scenario: TOON 4.1 input retains the document view
+#### Scenario: TOON 4.4 input retains the document view
 
-- **WHEN** TOON 4.1 input uses nested table field groups, keyed tables, `[]` empty arrays, or arrays of empty objects
+- **WHEN** TOON 4.4 input uses nested table field groups, keyed tables, `[]` empty arrays, or arrays of empty objects
 - **THEN** its expanded data rows SHALL match equivalent JSON at wide and narrow terminal sizes
 - **AND** eligible nested field groups SHALL render in table headers and keyed object tables SHALL retain entry-key prefixes
 - **AND** nested path filtering and focused print SHALL preserve the decoded leaf values
@@ -39,8 +39,8 @@ The viewer SHALL render every supported input format with the TOON 4.1 display p
 
 ### Requirement: Native TOON layout
 
-Fully expanded standard-compatible data SHALL use TOON 4.1 object fields, inline or multiline primitive arrays, recursively uniform object tables, keyed object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string fields in identical order across rows, recursively allowing nonempty uniform object columns with primitive leaves. Arrays, empty objects, mixed primitive/object columns, duplicate or typed keys, and differing nested field order SHALL disqualify the entire table. Keyed tables SHALL require at least two eligible object-valued entries and SHALL occur only at roots or object-field positions, never as anonymous array elements or within another table's nested field group. Array order and object entry order SHALL be preserved. When a table would reorder fields, the structure SHALL use ordinary object/list form. With alignment disabled, no clipping, representable graphemes, no display extensions, and soft-wrapped continuations rejoined without inserted characters, fully expanded single-root text stripped of presentation styling and gutters SHALL be valid TOON 4.1.
-Fields-bearing table headers SHALL occur only at roots or object-field positions. A tabular-eligible array nested as an anonymous list item SHALL use list form, per TOON 4.1 section 9.4.
+Fully expanded standard-compatible data SHALL use TOON 4.4 object fields, inline or multiline primitive arrays, recursively uniform object tables, keyed object tables, and list arrays for other structures. Tables SHALL require nonempty, unique string fields in identical order across rows, recursively allowing nonempty uniform object columns with primitive leaves. Arrays, empty objects, mixed primitive/object columns, duplicate or typed keys, and differing nested field order SHALL disqualify the entire table. Keyed tables SHALL require at least two eligible object-valued entries and SHALL occur only at roots or object-field positions, never as anonymous array elements or within another table's nested field group. Array order and object entry order SHALL be preserved. When a table would reorder fields, the structure SHALL use ordinary object/list form. With alignment disabled, no clipping, representable graphemes, no display extensions, and soft-wrapped continuations rejoined without inserted characters, fully expanded single-root text stripped of presentation styling and gutters SHALL be valid TOON 4.4.
+Fields-bearing table headers SHALL occur only at roots or object-field positions. A tabular-eligible array nested as an anonymous list item SHALL use list form, per TOON 4.4 section 9.4.
 
 #### Scenario: Primitive array default layout
 

@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses a hyphen-leading line off item depth as a key-value line or a tabular row
+# specSection: "5.2"
+# minSpecVersion: "4.2"
+# "expected-json": "{\"items\":[{\"a\":1,\"- y\":2}],\"rows\":[{\"a\":\"- y\",\"b\":2}]}"
+# ---
+items[1]:
+  - a: 1
+    - y: 2
+rows[1]{a,b}:
+  - y,2

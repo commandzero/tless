@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: does not quote commas in object values with pipe delimiter
+# options:
+#   delimiter: |
+# specSection: "11"
+# "input-json": "{\"note\":\"a,b\"}"
+# ---
+note: a,b

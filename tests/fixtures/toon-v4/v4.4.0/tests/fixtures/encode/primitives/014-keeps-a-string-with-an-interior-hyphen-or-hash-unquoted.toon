@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: keeps a string with an interior hyphen or hash unquoted
+# specSection: "7.2"
+# minSpecVersion: "4.2"
+# "input-json": "\"a-b #c\""
+# ---
+a-b #c

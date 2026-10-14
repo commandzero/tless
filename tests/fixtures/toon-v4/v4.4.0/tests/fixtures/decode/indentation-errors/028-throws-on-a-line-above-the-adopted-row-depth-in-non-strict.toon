@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on a line above the adopted row depth in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "14.4"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+rows[2]{a}:
+    1
+  x: 9
+    2

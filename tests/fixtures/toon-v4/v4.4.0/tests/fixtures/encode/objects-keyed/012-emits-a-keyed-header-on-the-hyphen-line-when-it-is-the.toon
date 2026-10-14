@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Keyed tabular encoding – objects whose values are uniform objects collapse into keyed headers with entry rows
+# name: emits a keyed header on the hyphen line when it is the first field of a list item
+# specSection: "10"
+# note: "Entry rows at depth +2, sibling fields at depth +1, mirroring tabular arrays on hyphen lines"
+# "input-json": "{\"items\":[{\"config\":{\"a\":{\"x\":1},\"b\":{\"x\":2}},\"status\":\"ok\"},{\"status\":\"down\"}]}"
+# ---
+items[2]:
+  - config[2:]{x}:
+      a: 1
+      b: 2
+    status: ok
+  - status: down

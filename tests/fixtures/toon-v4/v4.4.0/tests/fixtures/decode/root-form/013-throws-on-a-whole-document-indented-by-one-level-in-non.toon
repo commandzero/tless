@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: throws on a whole document indented by one level in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "8"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+  a: 1
+  b: 2

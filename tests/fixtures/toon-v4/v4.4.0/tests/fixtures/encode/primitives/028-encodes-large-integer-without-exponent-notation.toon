@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes large integer without exponent notation
+# specSection: "2"
+# note: Within the canonical decimal range
+# "input-json": "1E+6"
+# ---
+1000000

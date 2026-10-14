@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: falls back to list form when nested object keys differ per row
+# specSection: "9.3"
+# note: "The meta column is not nested-uniform (differing key sets), so the whole array uses §9.4"
+# "input-json": "{\"entries\":[{\"id\":1,\"meta\":{\"a\":1}},{\"id\":2,\"meta\":{\"b\":2}}]}"
+# ---
+entries[2]:
+  - id: 1
+    meta:
+      a: 1
+  - id: 2
+    meta:
+      b: 2

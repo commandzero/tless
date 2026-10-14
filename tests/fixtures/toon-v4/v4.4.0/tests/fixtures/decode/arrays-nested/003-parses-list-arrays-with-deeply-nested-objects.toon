@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses list arrays with deeply nested objects
+# specSection: "10"
+# "expected-json": "{\"items\":[{\"properties\":{\"state\":{\"type\":\"string\"}}},{\"id\":2}]}"
+# ---
+items[2]:
+  - properties:
+      state:
+        type: string
+  - id: 2

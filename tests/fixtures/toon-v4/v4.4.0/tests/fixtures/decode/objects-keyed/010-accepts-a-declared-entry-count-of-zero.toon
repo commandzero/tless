@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: accepts a declared entry count of zero
+# specSection: "9.5"
+# note: Encoders never emit keyed headers for fewer than two entries; decoders accept any N with count checks
+# "expected-json": "{\"m\":{}}"
+# ---
+m[0:]{v}:

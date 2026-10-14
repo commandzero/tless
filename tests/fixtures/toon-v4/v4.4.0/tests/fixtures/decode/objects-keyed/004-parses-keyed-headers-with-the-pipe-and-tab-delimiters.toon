@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses keyed headers with the pipe and tab delimiters
+# specSection: "9.5"
+# "expected-json": "{\"pipe\":{\"alpha\":{\"host\":\"a\",\"port\":8080},\"beta\":{\"host\":\"b\",\"port\":9090}},\"tab\":{\"alpha\":{\"host\":\"a\",\"port\":8080},\"beta\":{\"host\":\"b\",\"port\":9090}}}"
+# ---
+pipe[2:|]{host|port}:
+  alpha: a|8080
+  beta: b|9090
+tab[2:	]{host	port}:
+  alpha: a	8080
+  beta: b	9090

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on tabular rows at depth +1 under a list-item first-field header
+# shouldError: true
+# specSection: "10"
+# "expected-json": "null"
+# ---
+x[1]:
+  - a[1]{p}:
+    1

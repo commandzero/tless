@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: quotes array strings with comma
+# specSection: "9.1"
+# "input-json": "{\"items\":[\"a\",\"b,c\",\"d:e\"]}"
+# ---
+items[3]: a,"b,c","d:e"

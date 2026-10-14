@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: treats a key-value line at the header's depth as a sibling after entries end
+# specSection: "9.5"
+# note: A keyed scope ends only by dedent or end of input
+# "expected-json": "{\"data\":{\"a\":{\"x\":1},\"b\":{\"x\":2}},\"count\":3}"
+# ---
+data[2:]{x}:
+  a: 1
+  b: 2
+count: 3

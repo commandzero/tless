@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on characters after a closing quote in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "7.4"
+# note: The quoted-token boundary rule applies in strict and non-strict mode alike
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+k: "abc" def

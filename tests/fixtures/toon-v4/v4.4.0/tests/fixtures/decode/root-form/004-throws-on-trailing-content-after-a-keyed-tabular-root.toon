@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: throws on trailing content after a keyed tabular root
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "5"
+# "expected-json": "null"
+# ---
+[2:]{v}:
+  a: 1
+  b: 2
+junk: 3

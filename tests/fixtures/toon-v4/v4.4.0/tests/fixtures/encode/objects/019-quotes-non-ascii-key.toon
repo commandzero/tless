@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: quotes non-ASCII key
+# specSection: "7.3"
+# note: "The unquoted-key pattern is ASCII-only, so every non-ASCII key is quoted"
+# "input-json": "{\"café\":1}"
+# ---
+"café": 1

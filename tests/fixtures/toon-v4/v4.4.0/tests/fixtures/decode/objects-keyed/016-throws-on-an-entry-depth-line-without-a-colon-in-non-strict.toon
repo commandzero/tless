@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: throws on an entry-depth line without a colon in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "9.5"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+u[2:]{x}:
+  a: 1
+  boom

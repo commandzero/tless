@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: "keeps inline values under a legacy [0] header in non-strict mode"
+# options:
+#   strict: false
+# specSection: "14.4"
+# note: "A legacy [0] is a declared length, so its content is decoded (§14.4)"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"a\":[1,2]}"
+# ---
+a[0]: 1,2

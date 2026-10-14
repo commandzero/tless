@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: falls back to list form when a nested object contains an array
+# specSection: "9.3"
+# note: Array values disqualify a column; rows must contain only primitive cells
+# "input-json": "{\"orders\":[{\"id\":1,\"customer\":{\"name\":\"Ada\",\"tags\":[\"x\"]}}]}"
+# ---
+orders[1]:
+  - id: 1
+    customer:
+      name: Ada
+      tags[1]: x

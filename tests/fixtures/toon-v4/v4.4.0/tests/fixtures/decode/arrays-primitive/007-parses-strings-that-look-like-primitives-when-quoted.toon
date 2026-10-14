@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: parses strings that look like primitives when quoted
+# specSection: "9.1"
+# "expected-json": "{\"items\":[\"x\",\"true\",\"42\",\"-3.14\"]}"
+# ---
+items[4]: x,"true","42","-3.14"

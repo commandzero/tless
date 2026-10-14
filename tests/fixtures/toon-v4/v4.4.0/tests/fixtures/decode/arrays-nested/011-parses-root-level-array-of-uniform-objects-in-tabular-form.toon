@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses root-level array of uniform objects in tabular form
+# specSection: "9.3"
+# "expected-json": "[{\"id\":1},{\"id\":2}]"
+# ---
+[2]{id}:
+  1
+  2

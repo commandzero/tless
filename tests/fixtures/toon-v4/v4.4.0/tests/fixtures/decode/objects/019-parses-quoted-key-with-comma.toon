@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses quoted key with comma
+# specSection: "7.4"
+# "expected-json": "{\"a,b\":1}"
+# ---
+"a,b": 1

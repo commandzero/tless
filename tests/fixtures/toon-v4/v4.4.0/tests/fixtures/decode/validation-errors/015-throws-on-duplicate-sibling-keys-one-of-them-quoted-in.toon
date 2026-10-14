@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: "throws on duplicate sibling keys, one of them quoted, in strict mode"
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "14.3"
+# "expected-json": "null"
+# ---
+name: Ada
+"name": Bob

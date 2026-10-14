@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: falls back to list form when a column mixes null and objects
+# specSection: "9.3"
+# note: "A null cell is a primitive, so the customer column is neither uniform-primitive nor nested-uniform"
+# "input-json": "{\"orders\":[{\"id\":1,\"customer\":{\"name\":\"Ada\"}},{\"id\":2,\"customer\":null}]}"
+# ---
+orders[2]:
+  - id: 1
+    customer:
+      name: Ada
+  - id: 2
+    customer: null

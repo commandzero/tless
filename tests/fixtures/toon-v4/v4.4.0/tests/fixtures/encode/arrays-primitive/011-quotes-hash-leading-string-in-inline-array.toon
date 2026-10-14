@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: quotes hash-leading string in inline array
+# specSection: "7.2"
+# "input-json": "{\"tags\":[\"#a\",\"b\"]}"
+# ---
+tags[2]: "#a",b

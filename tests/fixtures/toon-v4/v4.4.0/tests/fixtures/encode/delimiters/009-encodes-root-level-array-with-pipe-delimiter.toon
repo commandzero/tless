@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: encodes root-level array with pipe delimiter
+# options:
+#   delimiter: |
+# specSection: "11"
+# "input-json": "[\"x\",\"y\",\"z\"]"
+# ---
+[3|]: x|y|z

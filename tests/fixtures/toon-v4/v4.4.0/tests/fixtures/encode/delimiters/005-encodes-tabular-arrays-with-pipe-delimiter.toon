@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: encodes tabular arrays with pipe delimiter
+# options:
+#   delimiter: |
+# specSection: "11"
+# "input-json": "{\"items\":[{\"sku\":\"A1\",\"qty\":2,\"price\":9.99},{\"sku\":\"B2\",\"qty\":1,\"price\":14.5}]}"
+# ---
+items[2|]{sku|qty|price}:
+  A1|2|9.99
+  B2|1|14.5

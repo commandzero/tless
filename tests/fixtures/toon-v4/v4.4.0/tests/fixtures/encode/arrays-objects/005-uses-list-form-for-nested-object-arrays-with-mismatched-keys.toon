@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses list form for nested object arrays with mismatched keys
+# specSection: "10"
+# "input-json": "{\"items\":[{\"users\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2}],\"status\":\"active\"}]}"
+# ---
+items[1]:
+  - users[2]:
+      - id: 1
+        name: Ada
+      - id: 2
+    status: active

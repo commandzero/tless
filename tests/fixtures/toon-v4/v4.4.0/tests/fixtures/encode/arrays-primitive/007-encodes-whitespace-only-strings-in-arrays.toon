@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: encodes whitespace-only strings in arrays
+# specSection: "9.1"
+# "input-json": "{\"items\":[\" \",\"  \"]}"
+# ---
+items[2]: " ","  "

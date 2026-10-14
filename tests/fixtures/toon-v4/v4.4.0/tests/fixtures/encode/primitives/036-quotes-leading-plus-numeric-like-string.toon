@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: quotes leading-plus numeric-like string
+# specSection: "7.2"
+# note: "Unquoted, a v3 host-parser decoder would read the number 1"
+# "input-json": "\"+1\""
+# ---
+"+1"

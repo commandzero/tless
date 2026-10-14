@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: parses a root line shaped like a header without a colon as a string
+# specSection: "6"
+# minSpecVersion: "4.2"
+# "expected-json": "\"items[2]\""
+# ---
+items[2]

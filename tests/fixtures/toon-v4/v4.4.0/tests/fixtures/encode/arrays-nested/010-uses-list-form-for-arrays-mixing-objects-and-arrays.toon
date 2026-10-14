@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: uses list form for arrays mixing objects and arrays
+# specSection: "9.4"
+# "input-json": "{\"items\":[{\"a\":1},[1,2]]}"
+# ---
+items[2]:
+  - a: 1
+  - [2]: 1,2

@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes large number
+# specSection: "2"
+# "input-json": "100000000000000000000"
+# ---
+100000000000000000000

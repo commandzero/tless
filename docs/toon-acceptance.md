@@ -3,14 +3,14 @@ type: Guide
 title: TOON acceptance checks
 description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
 status: draft
-generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-06T21:03:45Z }
+generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-14T05:08:07Z }
 ---
 
 # TOON acceptance checks
 
 Use [published codec behavior](toon-codec.md) for the conversion contract.
 Use [the document view](toon-view.md) for the separate display contract.
-The codec and document view support TOON 4.1. The display preserves parsed
+The codec and document view support TOON 4.4. The display preserves parsed
 identity and order; standard conversion does not promise exact-number or key-order preservation.
 
 ## Automated checks
@@ -19,19 +19,30 @@ Run `scripts/preflight.sh` with the pinned development compiler, then
 `TLESS_TOOLCHAIN=1.87.0 scripts/preflight.sh test` for the minimum compiler.
 Both exercise minimal and default builds, with TOON always enabled and optional
 S-expression and colorscheme features.
-The pinned TOON 4.1 profiles exercise 333 strict two-space decode cases and
-156 comma, two-space encode reference payloads with semantic round trips.
+The pinned TOON 4.4 profiles exercise 348 strict two-space decode cases and
+139 comma, two-space encode reference payloads with semantic round trips, selected
+from 564 total cases. The dataset under tests/fixtures/toon-v4/v4.4.0 is derived
+and reformatted from spec revision d09c3d33e37389345a74bd96981eb96dd9be6c5e
+(tag v4.4.0), not an unchanged JSON snapshot. Each case is a `.toon` file with
+comment-prefixed TOON metadata ending at `# ---`, escaped JSON model text in
+`input-json` or (when supplied) `expected-json`, and the original TOON body byte-for-byte.
+tq 0.5.0 was used only to encode metadata, never to regenerate the TOON 4.4 bodies.
+The historical TOON 3.0 and 4.1 fixtures remain unchanged, and upstream licenses
+are preserved. See [fixture verification](toon-codec.md#verification) for details.
+The profile excludes 56 decode and 21 encode cases for non-strict decoding,
+other indentation, or other encoder delimiters; tless exposes no non-strict mode.
 
 | Coverage | Evidence |
 | --- | --- |
 | Published strict decoder and default encoder | `toon::fixtures::pinned_decode_profile`, `pinned_encode_profile` |
-| Duplicate-input rejection, last-value-wins export, and numeric conversion | `duplicate_input_keys_are_rejected`, `export_duplicate_keys_follow_last_value_wins`, `decimal_decoding_follows_published_numeric_conversion`, `export_numbers_follow_published_numeric_conversion` |
+| Raw TOON encode fixtures, encounter-order preservation, and terminal-safe rendering | `toon_display::tests::retained_standard_fixtures` |
+| Duplicate-input rejection, last-value-wins export, numeric conversion, and out-of-range string fallback | `duplicate_input_keys_are_rejected`, `export_duplicate_keys_follow_last_value_wins`, `decimal_decoding_follows_published_numeric_conversion`, `export_numbers_follow_published_numeric_conversion`, `out_of_range_decoding_preserves_string_values` |
 | Empty-object array round trips | `empty_object_arrays_round_trip` |
 | Nesting bounds, empty input, CRLF, initial BOM | `input_depth_follows_published_codec_boundary`, `enforces_container_depth_and_accepts_blank_lines`, `accepts_empty_input_crlf_and_initial_bom` |
 | Focused export, unsupported YAML, multiple roots | `focused_export_includes_collapsed_children_and_normalizes_closing_rows`, `unsupported_yaml_does_not_block_a_supported_focused_value`, `export_depth_is_relative_to_the_selected_subtree` |
 | Navigation, search, paths, collapse/expand | `decoded_navigation_search_and_paths_match_json_with_escaped_unicode` |
 | Format options, feature profiles, input limits, parsed pipelines | `tests/toon_cli.rs` |
-| TOON 4.1 nested/keyed/empty presentation parity, nested focus, header search, alignment, mouse, filtering and serialization | `tests/toon_cli.rs::terminal_commands`, including `toon_41_input_renders_nested_keyed_and_empty_shapes_like_json`, `nested_columns_preserve_focus_search_alignment_and_paths`, `keyed_root_table_header_rows_groups_and_filter_restore` |
+| TOON 4.4 nested/keyed/empty presentation parity, nested focus, header search, alignment, mouse, filtering and serialization | `tests/toon_cli.rs::terminal_commands`, including `toon_44_input_renders_nested_keyed_and_empty_shapes_like_json`, `nested_columns_preserve_focus_search_alignment_and_paths`, `keyed_root_table_header_rows_groups_and_filter_restore` |
 | Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
 
@@ -64,7 +75,7 @@ Record the actual host and results in the release PR.
    `:write-yaml`/`:wy`, and `:write-ndjson`/`:write-jsonl`/`:wn` with `!`
    variants. Confirm default writes TOON and only `sexp` builds accept
    `:write-sexp`/`:ws` (including `!`). The old `:writetoon` and
-   `:writesexp` names must not work. Check TOON 4.1 codec and document-view wording.
+   `:writesexp` names must not work. Check TOON 4.4 codec and document-view wording.
 4. On Linux, use a disposable session to write to `/dev/full` with `:wt!`.
    Confirm a write error, no success message, and continued navigation.
    The shared writer propagates write and flush errors. Standard `File::flush`
@@ -72,6 +83,21 @@ Record the actual host and results in the release PR.
 5. Open malformed TOON interactively. Confirm a useful parse diagnostic and
    normal terminal restoration. Non-terminal TOON output must reject malformed
    input with status 1, a stderr diagnostic, and an empty stdout payload.
+6. Confirm strict malformed-header rejection (`a[2:]{x}`), indented-root and
+   tabs-only-line rejection, and invalid nested-group rejection. Check quoted
+   keys with spaces before the colon, multi-space list markers, NBSP as content,
+   and quotes opening spans away from token starts against the pinned fixtures.
+   Run each relevant parse case interactively and through redirected output;
+   errors must restore the terminal and never emit a partial stdout payload.
+7. Export JSON `123456789012345678901` as standard TOON and confirm the
+   `float_roundtrip` reference value `123456789012345680000`, not the old
+   `123456789012345670000`. Confirm native JSON writes and the document view
+   retain the parsed decimal token. Compare equivalent valid JSON and TOON
+   table/list layouts before and after the upgrade; alignment and navigation
+   must remain unchanged.
+8. Separately, confirm TOON `1e1025` converts to JSON string `"1e1025"`,
+   while exporting the JSON numeric token `1e1025` as TOON still fails before
+   stdout or file creation; this decoder fallback must not create an infinity.
 
 ## Document-view acceptance
 

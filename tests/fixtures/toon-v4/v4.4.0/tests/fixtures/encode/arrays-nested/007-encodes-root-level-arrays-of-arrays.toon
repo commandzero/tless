@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: encodes root-level arrays of arrays
+# specSection: "9.2"
+# "input-json": "[[1,2],[]]"
+# ---
+[2]:
+  - [2]: 1,2
+  - [0]:

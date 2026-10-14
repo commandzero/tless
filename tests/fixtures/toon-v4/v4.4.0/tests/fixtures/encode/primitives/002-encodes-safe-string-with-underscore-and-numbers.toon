@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: encodes safe string with underscore and numbers
+# specSection: "7.2"
+# "input-json": "\"Ada_99\""
+# ---
+Ada_99

@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on mixed tabs and spaces in indentation
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "14.2"
+# "expected-json": "null"
+# ---
+a:
+  b:
+  		c: 1

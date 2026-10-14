@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: preserves NBSP and tab around inline array tokens
+# specSection: "12"
+# note: Token trimming removes U+0020 only; a host trim() that also strips NBSP or tab corrupts this round-trip
+# "expected-json": "{\"items\":[\" a \",\"\\tb\"]}"
+# ---
+items[2]:  a ,	b

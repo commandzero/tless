@@ -1,5 +1,5 @@
 
-TOON 4.1
+TOON 4.4
 
   Open .toon files or use --input-format toon for standard input. TOON is shown using the
   document view. Searches use normalized JSON text.
@@ -54,8 +54,12 @@ TOON 4.1
   CLI input/output selectors still accept only toon, json, yaml.
   Non-terminal output parses and re-encodes TOON input; it does not pass through unchanged.
 
-  Codec: TOON 4.1; strict input rejects duplicate sibling keys.
-  The document view uses TOON 4.1 nested field groups and keyed object tables.
+  Codec: published toon-format 0.7.0, TOON 4.4; input is always strict,
+  with two-space indentation. Duplicate sibling keys and malformed headers fail.
+  There is no non-strict input mode. Standard output uses commas and two spaces.
+  Out-of-range TOON numeric tokens can decode as strings; JSON numeric
+  export still requires finite representable values and may lose precision.
+  The document view keeps nested field groups and keyed object tables.
   Empty root/field arrays use []; Unicode control escapes are standard.
   Nested groups and leaves keep their original paths. Table Tab alignment
   operates on primitive leaf columns; keyed entries keep their key prefixes.

@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: does not quote commas in tabular values with tab delimiter
+# options:
+#   delimiter: "\t"
+# specSection: "11"
+# "input-json": "{\"items\":[{\"id\":1,\"note\":\"a,b\"},{\"id\":2,\"note\":\"c,d\"}]}"
+# ---
+items[2	]{id	note}:
+  1	a,b
+  2	c,d

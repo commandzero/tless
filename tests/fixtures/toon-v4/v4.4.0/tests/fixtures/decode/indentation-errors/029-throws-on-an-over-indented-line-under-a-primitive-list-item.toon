@@ -1,0 +1,16 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on an over-indented line under a primitive list item in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "8"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+items[2]:
+  - a
+    b: 1
+  - c

@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: throws on an entry row with fewer cells than fields in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "14.1"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+m[1:]{a,b}:
+  k: 1

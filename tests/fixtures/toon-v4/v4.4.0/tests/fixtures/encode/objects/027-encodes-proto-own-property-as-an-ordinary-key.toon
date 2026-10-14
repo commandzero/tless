@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: encodes __proto__ own property as an ordinary key
+# specSection: "15"
+# note: "No key has special meaning, so the encoder emits prototype-named own entries like any other (§8)"
+# "input-json": "{\"__proto__\":\"polluted\",\"safe\":true}"
+# ---
+__proto__: polluted
+safe: true

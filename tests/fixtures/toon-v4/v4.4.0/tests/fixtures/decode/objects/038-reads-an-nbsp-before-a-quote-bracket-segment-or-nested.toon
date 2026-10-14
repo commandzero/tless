@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: "reads an NBSP before a quote, bracket segment, or nested field group as part of the name"
+# specSection: "6"
+# note: Whitespace is SP and HTAB only (§1.2); a leading NBSP keeps a line from being a keyless root header or a quoted key
+# minSpecVersion: "4.4"
+# "expected-json": "{\" \":[\"z\"],\" \\\"q\\\"\":[\"w\"],\"n \":[\"y\"],\"a\":[{\"b \":{\"c\":1}}]}"
+# ---
+ [1]: z
+ "q"[1]: w
+n [1]: y
+a[1]{b {c}}:
+  1

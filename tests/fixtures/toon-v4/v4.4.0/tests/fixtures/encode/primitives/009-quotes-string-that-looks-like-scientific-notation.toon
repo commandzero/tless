@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: quotes string that looks like scientific notation
+# specSection: "7.2"
+# "input-json": "\"1e-6\""
+# ---
+"1e-6"

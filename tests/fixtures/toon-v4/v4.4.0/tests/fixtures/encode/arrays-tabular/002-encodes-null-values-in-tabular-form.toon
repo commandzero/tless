@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: encodes null values in tabular form
+# specSection: "9.3"
+# "input-json": "{\"items\":[{\"id\":1,\"value\":null},{\"id\":2,\"value\":\"test\"}]}"
+# ---
+items[2]{id,value}:
+  1,null
+  2,test

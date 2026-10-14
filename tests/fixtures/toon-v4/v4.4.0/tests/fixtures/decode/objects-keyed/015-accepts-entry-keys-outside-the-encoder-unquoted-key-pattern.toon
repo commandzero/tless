@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: accepts entry keys outside the encoder unquoted-key pattern
+# specSection: "7.4"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"u\":{\"2key\":{\"a\":1},\"foo-bar\":{\"a\":2}}}"
+# ---
+u[2:]{a}:
+  2key: 1
+  foo-bar: 2

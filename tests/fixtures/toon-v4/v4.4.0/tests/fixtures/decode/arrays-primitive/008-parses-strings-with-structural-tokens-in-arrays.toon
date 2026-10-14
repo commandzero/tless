@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: parses strings with structural tokens in arrays
+# specSection: "9.1"
+# "expected-json": "{\"items\":[\"[5]\",\"- item\",\"{key}\"]}"
+# ---
+items[3]: "[5]","- item","{key}"

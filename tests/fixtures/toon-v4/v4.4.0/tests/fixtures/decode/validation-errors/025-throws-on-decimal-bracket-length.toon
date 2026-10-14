@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on decimal bracket length
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# note: "[3.7] is not an integer length – lengths are DIGIT-only – so decoders MUST NOT interpret it as a bracket segment"
+# "expected-json": "null"
+# ---
+x[3.7]: a,b,c

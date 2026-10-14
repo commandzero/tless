@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: "treats Infinity, NaN, and case variants of literals as strings"
+# specSection: "4"
+# "expected-json": "{\"a\":\"Infinity\",\"b\":\"-Infinity\",\"c\":\"NaN\",\"d\":\"True\",\"e\":\"NULL\"}"
+# ---
+a: Infinity
+b: -Infinity
+c: NaN
+d: True
+e: NULL

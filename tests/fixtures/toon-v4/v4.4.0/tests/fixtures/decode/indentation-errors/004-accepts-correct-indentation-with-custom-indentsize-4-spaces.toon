@@ -1,0 +1,17 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: accepts correct indentation with custom indentSize (4 spaces with indentSize 4)
+# options:
+#   indentSize: 4
+#   strict: true
+# specSection: "12"
+# "expected-json": "{\"a\":{\"b\":1},\"l\":[{\"b\":1,\"c\":2},1]}"
+# ---
+a:
+    b: 1
+l[2]:
+    - b: 1
+        c: 2
+    - 1

@@ -823,7 +823,7 @@ mod terminal_commands {
     }
 
     #[test]
-    fn toon_41_input_renders_nested_keyed_and_empty_shapes_like_json() {
+    fn toon_44_input_renders_nested_keyed_and_empty_shapes_like_json() {
         for (toon, json) in [
             (
                 "items[2]{id,nested{x}}:\n  1,2\n  3,4",
@@ -835,6 +835,10 @@ mod terminal_commands {
             ),
             ("items: []", r#"{"items":[]}"#),
             ("[2]:\n  -\n  -", "[{},{}]"),
+            ("\"name\"   : Ada", r#"{"name":"Ada"}"#),
+            ("items[2]:\n  -   a\n  -   c", r#"{"items":["a","c"]}"#),
+            ("value: \u{a0}Ada\u{a0}", "{\"value\":\"\u{a0}Ada\u{a0}\"}"),
+            ("value: 1e1025", r#"{"value":"1e1025"}"#),
         ] {
             for width in [120, 30] {
                 let actual = rendered_rows(

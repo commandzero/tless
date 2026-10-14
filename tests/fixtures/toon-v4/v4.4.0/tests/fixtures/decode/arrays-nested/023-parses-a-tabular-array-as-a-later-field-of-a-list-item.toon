@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses a tabular array as a later field of a list-item object
+# specSection: "10"
+# "expected-json": "{\"items\":[{\"id\":1,\"users\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2,\"name\":\"Bob\"}]}]}"
+# ---
+items[1]:
+  - id: 1
+    users[2]{id,name}:
+      1,Ada
+      2,Bob

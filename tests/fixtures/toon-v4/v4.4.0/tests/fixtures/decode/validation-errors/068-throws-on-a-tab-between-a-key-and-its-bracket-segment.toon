@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on a tab between a key and its bracket segment
+# shouldError: true
+# specSection: "6"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+t	[1]: x

@@ -532,49 +532,64 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n")
     }
+    fn ordered_values_equal(a: &serde_json::Value, b: &serde_json::Value) -> bool {
+        use serde_json::Value;
+        match (a, b) {
+            (Value::Object(a), Value::Object(b)) => {
+                a.len() == b.len()
+                    && a.iter()
+                        .zip(b)
+                        .all(|((ak, av), (bk, bv))| ak == bk && ordered_values_equal(av, bv))
+            }
+            (Value::Array(a), Value::Array(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| ordered_values_equal(a, b))
+            }
+            (Value::Number(a), Value::Number(b)) if a.is_f64() || b.is_f64() => {
+                a.as_f64() == b.as_f64()
+            }
+            _ => a == b,
+        }
+    }
     #[test]
     fn retained_standard_fixtures() {
-        let fixtures = [
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/primitives.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/objects.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/objects-keyed.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-primitive.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-nested.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-objects.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/arrays-tabular.json"),
-            include_str!("../tests/fixtures/toon-v4/tests/fixtures/encode/whitespace.json"),
-        ];
-        for fixture in fixtures {
-            let fixture = json(fixture);
-            let field = |object, name: &str| {
-                children(&fixture, object).into_iter().find(|&i| {
-                    fixture[i]
-                        .key_range
-                        .as_ref()
-                        .is_some_and(|r| decode_string(&fixture.1[r.clone()]) == name)
-                })
-            };
-            for test in children(&fixture, field(0, "tests").unwrap()) {
-                if field(test, "options").is_some() {
-                    continue;
-                }
-                let name = field(test, "name").unwrap();
-                let name = decode_string(&fixture.1[fixture[name].range.clone()]);
-                // The viewer's explicit order-preservation contract selects lists here.
-                if name == "uses field order from first object for tabular headers"
-                    || name == "orders fields by the first entry value's encounter order"
-                {
-                    continue;
-                }
-                let input = field(test, "input").unwrap();
-                let expected = field(test, "expected").unwrap();
-                assert_eq!(
-                    text(&json(&fixture.1[fixture[input].range.clone()])),
-                    decode_string(&fixture.1[fixture[expected].range.clone()]),
-                    "{name}"
-                );
+        let mut checked = 0;
+        for case in crate::toon::fixtures::load_fixtures("encode") {
+            let metadata = &case.metadata;
+            assert_eq!(metadata["fixture"]["category"], "encode", "{}", case.group);
+            let options = &metadata["options"];
+            if (options["indentSize"].is_number() && options["indentSize"] != 2)
+                || (options["delimiter"].is_string() && options["delimiter"] != ",")
+            {
+                continue;
             }
+            let name = metadata["name"].as_str().unwrap();
+            let input = metadata["input-json"].as_str().unwrap();
+            let actual = text(&json(input));
+            let expected = &case.toon;
+            let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+            let wire = crate::toon::parse(expected).unwrap();
+            let wire_value = serde_json::from_str(&wire.1).unwrap();
+            // Preserve terminal safety and encounter order even where
+            // standard encoding keeps raw controls or reorders fields.
+            let terminal_control = |ch: char| ch >= '\u{7f}' && ch.is_control();
+            if expected.chars().any(terminal_control)
+                || !ordered_values_equal(&input_value, &wire_value)
+            {
+                assert!(!actual.chars().any(terminal_control), "{name}");
+                let decoded = crate::toon::parse(&actual).unwrap();
+                assert!(
+                    ordered_values_equal(
+                        &serde_json::from_str::<serde_json::Value>(&decoded.1).unwrap(),
+                        &input_value
+                    ),
+                    "{name}: {actual}"
+                );
+            } else {
+                assert_eq!(&actual, expected, "{name}");
+            }
+            checked += 1;
         }
+        assert_eq!(checked, 139);
     }
     #[test]
     fn standard_shapes_and_order() {

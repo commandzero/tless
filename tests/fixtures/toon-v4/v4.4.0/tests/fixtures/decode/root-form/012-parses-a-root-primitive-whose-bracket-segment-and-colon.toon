@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: parses a root primitive whose bracket segment and colon follow an unclosed quote
+# specSection: "5.2"
+# minSpecVersion: "4.2"
+# "expected-json": "\"k\\\"x[2]: 1,2\""
+# ---
+k"x[2]: 1,2

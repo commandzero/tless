@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: accepts a header key outside the encoder unquoted-key pattern
+# specSection: "7.4"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"foo-bar\":[1,2]}"
+# ---
+foo-bar[2]: 1,2

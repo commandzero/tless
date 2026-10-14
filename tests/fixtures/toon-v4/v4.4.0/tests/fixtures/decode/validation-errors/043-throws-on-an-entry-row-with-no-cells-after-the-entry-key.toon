@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on an entry row with no cells after the entry key
+# shouldError: true
+# specSection: "14.1"
+# note: "A bare entrykey: has zero cells, and a field list always declares at least one leaf field (§9.5)"
+# "expected-json": "null"
+# ---
+m[1:]{v}:
+  a:

@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Indentation validation and its non-strict recoveries – non-multiple indentation, tab characters, custom indentSizes"
+# name: throws on an over-indented line after tabular rows in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "8"
+# minSpecVersion: "4.4"
+# "expected-json": "null"
+# ---
+u[1]{a}:
+  1
+    junk: 9

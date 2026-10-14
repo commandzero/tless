@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Delimiter decoding – tab and pipe delimiter parsing, delimiter-aware value splitting"
+# name: parses root-level array of objects with tab delimiter
+# specSection: "11"
+# "expected-json": "[{\"a\":1,\"b\":2}]"
+# ---
+[1	]{a	b}:
+  1	2

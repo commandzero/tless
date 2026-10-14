@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: throws on an indented root primitive in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "5"
+# minSpecVersion: "4.2"
+# "expected-json": "null"
+# ---
+  hello

@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on two primitives at root depth in non-strict mode
+# shouldError: true
+# options:
+#   strict: false
+# specSection: "5"
+# minSpecVersion: "4.1"
+# "expected-json": "null"
+# ---
+hello
+world

@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Nested and mixed array encoding – arrays of arrays, mixed type arrays, root arrays"
+# name: uses list form for a tabular-eligible array in list-item position
+# specSection: "9.4"
+# note: A keyless fields-bearing header is valid only at the document root
+# "input-json": "{\"a\":[[{\"x\":1},{\"x\":2}]]}"
+# ---
+a[1]:
+  - [2]:
+    - x: 1
+    - x: 2

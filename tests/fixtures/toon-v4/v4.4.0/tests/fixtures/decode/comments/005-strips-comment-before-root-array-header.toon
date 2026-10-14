@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Comment lines – full-line decode-side comments stripped before structural interpretation
+# name: strips comment before root array header
+# specSection: "5.1"
+# note: Root-form discovery runs on the comment-stripped sequence
+# "expected-json": "[\"a\",\"b\"]"
+# ---
+# heading
+[2]: a,b

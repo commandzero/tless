@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses a key-value colon with spaces before it and a key-value or header colon with none after it
+# specSection: "12"
+# "expected-json": "{\"a\":1,\"b\":2,\"c\":[\"x\",\"y\"]}"
+# ---
+a : 1
+b:2
+c[2]:x,y

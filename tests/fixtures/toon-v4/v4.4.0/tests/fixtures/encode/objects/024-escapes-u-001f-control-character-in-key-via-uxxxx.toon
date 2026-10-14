@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: "escapes U+001F control character in key via \\uXXXX"
+# specSection: "7.1"
+# "input-json": "{\"x\\u001fy\":2}"
+# ---
+"x\u001fy": 2

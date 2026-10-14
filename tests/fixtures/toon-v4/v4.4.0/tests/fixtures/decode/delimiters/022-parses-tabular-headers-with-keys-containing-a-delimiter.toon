@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Delimiter decoding – tab and pipe delimiter parsing, delimiter-aware value splitting"
+# name: parses tabular headers with keys containing a delimiter
+# specSection: "11"
+# "expected-json": "{\"items\":[{\"a|b\":1,\"c,d\":\"x\"},{\"a|b\":2,\"c,d\":\"y\"}]}"
+# ---
+items[2|]{"a|b"|"c,d"}:
+  1|x
+  2|y

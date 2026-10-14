@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Root form detection – empty document, single primitive, literal empty array"
+# name: throws on trailing content after a root empty array
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "5"
+# "expected-json": "null"
+# ---
+[]
+junk: 3

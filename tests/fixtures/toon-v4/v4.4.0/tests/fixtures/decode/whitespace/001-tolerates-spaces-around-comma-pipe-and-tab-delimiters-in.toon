@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: "tolerates spaces around comma, pipe, and tab delimiters in inline arrays"
+# specSection: "12"
+# "expected-json": "{\"comma\":[\"a\",\"b\",\"c\"],\"pipe\":[\"a\",\"b\",\"c\"],\"tab\":[\"a\",\"b\",\"c\"]}"
+# ---
+comma[3]: a , b , c
+pipe[3|]: a | b | c
+tab[3	]: a 	 b 	 c

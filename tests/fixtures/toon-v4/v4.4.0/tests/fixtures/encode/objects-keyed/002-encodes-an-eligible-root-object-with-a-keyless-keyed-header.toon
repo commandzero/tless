@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Keyed tabular encoding – objects whose values are uniform objects collapse into keyed headers with entry rows
+# name: encodes an eligible root object with a keyless keyed header
+# specSection: "9.5"
+# note: The keyless keyed header is valid only at the root (§5)
+# "input-json": "{\"alice\":{\"age\":30,\"city\":\"Berlin\"},\"bob\":{\"age\":25,\"city\":\"Oslo\"}}"
+# ---
+[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Oslo

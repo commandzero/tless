@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: collapses sibling nested field groups with depth-first row layout
+# specSection: "9.3"
+# "input-json": "{\"shipments\":[{\"id\":\"s1\",\"sender\":{\"name\":\"ACME\",\"city\":\"Berlin\"},\"receiver\":{\"name\":\"Globex\",\"city\":\"Oslo\"}}]}"
+# ---
+shipments[1]{id,sender{name,city},receiver{name,city}}:
+  s1,ACME,Berlin,Globex,Oslo

@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Primitive array decoding – inline arrays of strings, numbers, booleans, quoted strings"
+# name: parses whitespace-only strings in arrays
+# specSection: "9.1"
+# "expected-json": "{\"items\":[\" \",\"  \"]}"
+# ---
+items[2]: " ","  "

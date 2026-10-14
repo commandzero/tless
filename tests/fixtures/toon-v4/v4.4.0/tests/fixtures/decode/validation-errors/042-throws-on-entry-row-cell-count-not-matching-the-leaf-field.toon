@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on entry row cell count not matching the leaf-field count
+# shouldError: true
+# specSection: "14.1"
+# "expected-json": "null"
+# ---
+m[1:]{a,b}:
+  k: 1

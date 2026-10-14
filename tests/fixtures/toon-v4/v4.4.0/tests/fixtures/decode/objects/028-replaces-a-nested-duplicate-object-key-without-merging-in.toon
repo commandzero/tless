@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: replaces a nested duplicate object key without merging in non-strict mode
+# options:
+#   strict: false
+# specSection: "14.4"
+# "expected-json": "{\"outer\":{\"a\":{\"y\":2}}}"
+# ---
+outer:
+  a:
+    x: 1
+  a:
+    y: 2

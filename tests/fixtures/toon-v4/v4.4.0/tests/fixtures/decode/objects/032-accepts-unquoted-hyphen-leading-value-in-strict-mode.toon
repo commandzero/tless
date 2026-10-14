@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: accepts unquoted hyphen-leading value in strict mode
+# specSection: "7.4"
+# note: Encoders must quote hyphen-leading strings (§7.2); decoders accept the unquoted form as data
+# "expected-json": "{\"k\":\"-x\"}"
+# ---
+k: -x

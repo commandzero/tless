@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Comment lines – full-line decode-side comments stripped before structural interpretation
+# name: strips comment line whose indentation is not a multiple of indentSize
+# specSection: "5.1"
+# note: Comment lines are exempt from the §12 strict indentation check
+# "expected-json": "{\"a\":1,\"b\":2}"
+# ---
+a: 1
+   # three leading spaces
+b: 2

@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: preserves key order in objects with primitive values
+# specSection: "8"
+# "input-json": "{\"id\":123,\"name\":\"Ada\",\"active\":true,\"value\":null}"
+# ---
+id: 123
+name: Ada
+active: true
+value: null

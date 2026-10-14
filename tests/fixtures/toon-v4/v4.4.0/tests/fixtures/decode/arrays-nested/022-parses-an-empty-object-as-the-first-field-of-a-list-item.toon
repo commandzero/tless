@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: parses an empty object as the first field of a list-item object
+# specSection: "10"
+# "expected-json": "{\"items\":[{\"a\":{},\"b\":1}]}"
+# ---
+items[1]:
+  - a:
+    b: 1

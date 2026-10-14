@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive value encoding – strings, numbers, booleans, null"
+# name: quotes a root string starting with U+FEFF
+# specSection: "7.2"
+# note: "Unquoted, a decoder would remove the U+FEFF as a byte-order mark (§12) and read the number 8"
+# minSpecVersion: "4.1"
+# "input-json": "\"﻿8\""
+# ---
+"﻿8"

@@ -1,0 +1,13 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Delimiter options – tab and pipe delimiters, delimiter-aware quoting"
+# name: encodes root-level array of objects with pipe delimiter
+# options:
+#   delimiter: |
+# specSection: "11"
+# "input-json": "[{\"id\":1},{\"id\":2}]"
+# ---
+[2|]{id}:
+  1
+  2

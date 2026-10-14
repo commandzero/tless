@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses an unquoted field value starting with a bracket segment as a string
+# specSection: "5.2"
+# "expected-json": "{\"a\":\"[2]: x\"}"
+# ---
+a: [2]: x

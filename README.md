@@ -2,7 +2,13 @@
 
 [![ci](https://github.com/CommandZero/tless/actions/workflows/ci.yml/badge.svg)](https://github.com/CommandZero/tless/actions/workflows/ci.yml)
 
-View JSON, YAML, and TOON data using TOON 4.1 tables, including nested field groups and keyed object tables. Forked from the excellent [jless](https://github.com/PaulJuliusMartinez/jless). Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
+View JSON, YAML, and TOON data using TOON 4.4 tables, including nested field groups and keyed object tables. Forked from the excellent [jless](https://github.com/PaulJuliusMartinez/jless). Expand and collapse data, navigate with vim-style keys, and search with regular expressions.
+
+TOON input uses the published toon-format 0.7.0 codec in strict, two-space mode;
+there is no non-strict input option. Standard output keeps comma-separated,
+two-space layouts. See the [codec contract](docs/toon-codec.md) for TOON 4.4
+input changes and numeric conversion limits, and the
+[document view](docs/toon-view.md) for rendering and navigation behavior.
 
 Why [TOON](https://toonformat.dev/) format? Look at this short example from the TOON format [getting started](https://toonformat.dev/guide/getting-started.html) guide.
 

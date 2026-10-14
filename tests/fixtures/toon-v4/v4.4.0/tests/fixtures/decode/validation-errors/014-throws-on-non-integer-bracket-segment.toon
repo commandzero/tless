@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Validation errors – length mismatches, invalid escapes, syntax errors, delimiter mismatches"
+# name: throws on non-integer bracket segment
+# shouldError: true
+# options:
+#   strict: true
+# specSection: "6"
+# "expected-json": "null"
+# ---
+foo[bar]: 10

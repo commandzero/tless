@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Keyed tabular decoding – parsing keyed headers and entry rows into objects
+# name: parses quoted entry keys
+# specSection: "9.5"
+# "expected-json": "{\"ids\":{\"42\":{\"v\":1},\"my key\":{\"v\":2}}}"
+# ---
+ids[2:]{v}:
+  "42": 1
+  "my key": 2

@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Tabular array decoding – parsing arrays of uniform objects with headers
+# name: matches braces outside quoted names only when parsing field entries
+# specSection: "6"
+# note: A quoted field name may contain braces; brace matching is quote-aware
+# "expected-json": "{\"items\":[{\"a{b}\":1,\"c\":2}]}"
+# ---
+items[1]{"a{b}",c}:
+  1,2

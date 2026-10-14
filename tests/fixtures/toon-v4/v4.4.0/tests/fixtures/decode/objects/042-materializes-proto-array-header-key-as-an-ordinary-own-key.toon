@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: materializes __proto__ array header key as an ordinary own key
+# specSection: "15"
+# "expected-json": "{\"__proto__\":[1,2]}"
+# ---
+__proto__[2]: 1,2

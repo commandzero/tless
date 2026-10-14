@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: Whitespace tolerance in decoding – surrounding spaces around delimiters and values
+# name: tolerates leading and trailing spaces in tabular row values
+# specSection: "12"
+# "expected-json": "{\"items\":[{\"id\":1,\"name\":\"Ada\"},{\"id\":2,\"name\":\"Bob\"}]}"
+# ---
+items[2]{id,name}:
+  1 , Ada 
+  2 , Bob 

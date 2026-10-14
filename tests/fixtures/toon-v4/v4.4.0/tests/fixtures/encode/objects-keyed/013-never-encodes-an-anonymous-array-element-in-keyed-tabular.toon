@@ -1,0 +1,15 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Keyed tabular encoding – objects whose values are uniform objects collapse into keyed headers with entry rows
+# name: never encodes an anonymous array element in keyed tabular form
+# specSection: "9.5"
+# note: "The element object is keyed-eligible but has no key; the keyless form is root-only, so it encodes per §10"
+# "input-json": "{\"items\":[{\"a\":{\"x\":1},\"b\":{\"x\":2}},5]}"
+# ---
+items[2]:
+  - a:
+      x: 1
+    b:
+      x: 2
+  - 5

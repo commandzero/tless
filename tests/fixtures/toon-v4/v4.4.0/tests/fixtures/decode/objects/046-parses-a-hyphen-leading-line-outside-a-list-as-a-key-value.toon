@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses a hyphen-leading line outside a list as a key-value line
+# specSection: "5.2"
+# "expected-json": "{\"- a\":1}"
+# ---
+- a: 1

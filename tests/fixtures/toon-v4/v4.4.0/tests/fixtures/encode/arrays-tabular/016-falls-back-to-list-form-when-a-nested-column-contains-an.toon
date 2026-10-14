@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Tabular array encoding – arrays of uniform objects with primitive values
+# name: falls back to list form when a nested column contains an empty object
+# specSection: "9.3"
+# note: "Nested-uniform requires non-empty objects, mirroring the empty-object exclusion for elements"
+# "input-json": "{\"items\":[{\"id\":1,\"meta\":{}}]}"
+# ---
+items[1]:
+  - id: 1
+    meta:

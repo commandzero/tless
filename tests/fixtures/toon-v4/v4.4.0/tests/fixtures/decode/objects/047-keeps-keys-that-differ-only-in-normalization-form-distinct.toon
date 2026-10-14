@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: keeps keys that differ only in normalization form distinct
+# specSection: "16"
+# minSpecVersion: "4.1"
+# "expected-json": "{\"é\":1,\"é\":2}"
+# ---
+é: 1
+é: 2

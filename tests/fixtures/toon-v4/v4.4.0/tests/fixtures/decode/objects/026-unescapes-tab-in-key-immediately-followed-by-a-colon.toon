@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: unescapes tab in key immediately followed by a colon
+# specSection: "7.1"
+# "expected-json": "{\"\\t:x\":\"v\"}"
+# ---
+"\t:x": v

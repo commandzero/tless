@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Delimiter decoding – tab and pipe delimiter parsing, delimiter-aware value splitting"
+# name: parses a keyless inner array without a delimiter symbol as comma when parent uses pipe
+# specSection: "11"
+# "expected-json": "{\"pairs\":[[\"a\",\"b\"]]}"
+# ---
+pairs[1|]:
+  - [2]: a,b

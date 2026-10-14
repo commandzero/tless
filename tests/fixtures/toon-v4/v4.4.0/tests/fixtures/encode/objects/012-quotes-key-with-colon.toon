@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: quotes key with colon
+# specSection: "7.3"
+# "input-json": "{\"order:id\":7}"
+# ---
+"order:id": 7

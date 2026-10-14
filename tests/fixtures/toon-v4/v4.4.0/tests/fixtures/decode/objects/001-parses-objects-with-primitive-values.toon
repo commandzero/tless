@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: parses objects with primitive values
+# specSection: "8"
+# "expected-json": "{\"id\":123,\"name\":\"Ada\",\"active\":true,\"value\":null}"
+# ---
+id: 123
+name: Ada
+active: true
+value: null

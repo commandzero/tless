@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Delimiter decoding – tab and pipe delimiter parsing, delimiter-aware value splitting"
+# name: does not require quoting commas with tab delimiter
+# specSection: "11"
+# "expected-json": "{\"items\":[{\"id\":1,\"note\":\"a,b\"},{\"id\":2,\"note\":\"c,d\"}]}"
+# ---
+items[2	]{id	note}:
+  1	a,b
+  2	c,d

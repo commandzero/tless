@@ -1,0 +1,11 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Nested and mixed array decoding – list form, arrays of arrays, root arrays, mixed types"
+# name: "parses a legacy [0] header as a later field of a list-item object"
+# specSection: "10"
+# "expected-json": "{\"items\":[{\"name\":\"Ada\",\"data\":[]}]}"
+# ---
+items[1]:
+  - name: Ada
+    data[0]:

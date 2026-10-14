@@ -1,0 +1,8 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Object encoding – simple objects, nested objects, key encoding"
+# name: encodes an empty root object as an empty document
+# specSection: "8"
+# "input-json": "{}"
+# ---

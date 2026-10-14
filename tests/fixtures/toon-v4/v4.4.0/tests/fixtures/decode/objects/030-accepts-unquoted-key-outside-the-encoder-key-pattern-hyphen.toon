@@ -1,0 +1,10 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Object decoding – fields, nested objects, key parsing, and §14.3 duplicate keys"
+# name: accepts unquoted key outside the encoder key pattern (hyphen)
+# specSection: "7.4"
+# note: §7.3 constrains encoder output; decoders accept any token before the first unquoted colon as a literal key
+# "expected-json": "{\"foo-bar\":1}"
+# ---
+foo-bar: 1

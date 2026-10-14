@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: decode
+#   description: "Number decoding edge cases – trailing zeros, exponent forms, negative zero"
+# name: treats non-ASCII digits as a string
+# specSection: "4"
+# "expected-json": "{\"value\":\"٤٢\"}"
+# ---
+value: ٤٢

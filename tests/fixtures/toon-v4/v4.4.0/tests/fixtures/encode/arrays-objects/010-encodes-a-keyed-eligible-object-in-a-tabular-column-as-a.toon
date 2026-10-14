@@ -1,0 +1,12 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: encodes a keyed-eligible object in a tabular column as a nested field group
+# specSection: "9.5"
+# note: "Keyed tabular form is mandated in object-field and root positions, not in a column"
+# minSpecVersion: "4.1"
+# "input-json": "{\"a\":[{\"t\":{\"p\":{\"x\":1},\"q\":{\"x\":2}},\"other\":9}]}"
+# ---
+a[1]{t{p{x},q{x}},other}:
+  1,2,9

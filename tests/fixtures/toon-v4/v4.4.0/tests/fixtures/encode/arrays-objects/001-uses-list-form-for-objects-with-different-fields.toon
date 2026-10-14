@@ -1,0 +1,14 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: Arrays of objects encoding – list form for non-uniform objects and complex structures
+# name: uses list form for objects with different fields
+# specSection: "9.4"
+# "input-json": "{\"items\":[{\"id\":1,\"name\":\"First\"},{\"id\":2,\"name\":\"Second\",\"extra\":true}]}"
+# ---
+items[2]:
+  - id: 1
+    name: First
+  - id: 2
+    name: Second
+    extra: true

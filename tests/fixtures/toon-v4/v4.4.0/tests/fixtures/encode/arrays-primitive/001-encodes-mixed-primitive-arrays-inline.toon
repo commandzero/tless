@@ -1,0 +1,9 @@
+# fixture:
+#   version: "4.0"
+#   category: encode
+#   description: "Primitive array encoding – inline arrays of strings, numbers, booleans"
+# name: encodes mixed primitive arrays inline
+# specSection: "9.1"
+# "input-json": "{\"data\":[\"x\",\"y\",true,10]}"
+# ---
+data[4]: x,y,true,10
