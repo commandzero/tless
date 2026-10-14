@@ -21,9 +21,15 @@ generated: { by: codex/gpt-6, at: 2026-09-09T19:48:12Z }
 4. Recheck CommandZero/homebrew-tools and any installer consumers. Coordinate their
    URL construction before advertising a new distribution channel. No existing
    upstream jless formula, tag, release, or registry package is replaced.
-5. Run local preflight and the Rust 1.87 feature profiles. Complete the manual
-   clipboard, help, malformed-input restoration, and Linux full-device checks in
-   docs/toon-acceptance.md. Record actual host/results in the release PR.
+5. Run local preflight and the Rust 1.87 feature profiles. Linux preflight must
+   complete clipboard roundtrips, real help-pager return, and malformed-input
+   terminal restoration; install `xvfb-run`, `Xvfb`, `xauth`, `xclip`, and `less` first.
+   Clipboard tests use private authenticated Xvfb. Ordinary Linux profiles
+   also check `/dev/full` failures and continued navigation. Follow the automated
+   evidence scopes in [TOON acceptance](toon-acceptance.md), recording actual hosts,
+   compilers, source revision, and results. No separate manual acceptance gate is required.
+   The X11 result does not certify the macOS clipboard backend or an untested
+   Linux support floor.
 6. Merge after CI and review. Tag that main-branch commit as `vX.Y.Z` or
    `vX.Y.Z-rc.N`. Push the new tag only when the release proposal is accepted.
 
@@ -46,6 +52,9 @@ and membership in origin/main. It runs preflight and minimum-compiler tests befo
 
 Each target runs native feature tests, builds with locked dependencies and Rust 1.97.1,
 extracts its archive, and checks version, JSON, TOON, and input-limit behavior.
+Every Linux test/preflight job installs the mandatory X11 tools and exercises the
+isolated clipboard test; macOS jobs run native PTY tests without X11 tools and do
+not claim clipboard-backend certification.
 The supported targets and OS floors are in the [platform contract](contributing.md#platform-contract).
 
 Archives use `tless-vX.Y.Z-<rust-target-triple>.tar.gz`.
@@ -70,7 +79,7 @@ The packaging script refuses to overwrite existing artifacts.
 1. The final job requires all 4 archives and checksum sidecars, verifies hashes,
    archive layout, and source metadata, then creates a GitHub draft release.
    Release-candidate tags produce prerelease drafts.
-2. A maintainer checks the complete draft and recorded manual results, then publishes it.
+2. A maintainer checks the complete draft and recorded automated native results, then publishes it.
    Successful local checks alone do not authorize publication.
 3. If packaging fails, fix the cause before retrying. Existing local artifacts need
    deliberate removal or preservation in another directory before rebuilding.

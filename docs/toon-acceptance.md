@@ -1,7 +1,7 @@
 ---
 type: Guide
 title: TOON acceptance checks
-description: Automated coverage and manual release acceptance checks for TOON input, output, and document rows.
+description: Automated release acceptance coverage and exploratory scenarios for TOON input, output, and document rows.
 status: draft
 generated: { by: openai-codex/gpt-6.1-sol, at: 2026-10-14T05:08:07Z }
 ---
@@ -45,6 +45,9 @@ other indentation, or other encoder delimiters; tless exposes no non-strict mode
 | TOON 4.4 nested/keyed/empty presentation parity, nested focus, header search, alignment, mouse, filtering and serialization | `tests/toon_cli.rs::terminal_commands`, including `toon_44_input_renders_nested_keyed_and_empty_shapes_like_json`, `nested_columns_preserve_focus_search_alignment_and_paths`, `keyed_root_table_header_rows_groups_and_filter_restore` |
 | Output format matrix, framing, typed YAML, JSON compatibility, parse/encode failures | `tests/piped_output.rs` |
 | TOON writes and prints, overwrite refusal, replacement, encoding/open failures | `tests/toon_cli.rs::terminal_commands` |
+| Native Linux X11 clipboard values, decoded strings/keys/paths, rounding, and retained focus | `native_x11_clipboard_roundtrips_preserve_values_and_focus`, explicitly selected by Linux preflight under authenticated Xvfb |
+| Linux full-device write failure and continued navigation | `full_device_write_reports_failure_and_retains_navigation` |
+| Native help-pager return, preserved selection, and malformed-input terminal restoration | `native_help_pager_returns_to_selected_value`, `native_malformed_toon_restores_terminal_without_partial_output`, explicitly selected by Linux preflight |
 
 Tests use isolated pseudoterminals and disposable files. They do not write to the
 user's clipboard or controlling terminal. Rerun terminal-setup permission failures
@@ -58,52 +61,67 @@ For closed-pipe fixtures, use the child-side setup in the
 [subprocess contribution contract](contributing.md#local-checks) to preserve
 the no-reader precondition while other tests spawn processes concurrently.
 
-## Manual release checks
+## Automated native release checks
 
-These checks remain required before publication. Automated results do not establish
-that the desktop clipboard, help pager, or Linux full-device checks passed.
-Record the actual host and results in the release PR.
+On Linux, both preflight commands run the five ordinary feature profiles, then
+mandatorily run the ignored clipboard, real help-pager, and malformed-input native tests with default features:
 
-1. Copy a nested value using `yt`, paste it into a text editor, and compare it
-   with `pt`. Repeat after collapsing it and with an individual table cell.
-   Verify `yy`, string/key copy, and path copy with escaped and non-ASCII text.
-2. Open `0.123456789012345678901` as JSON and use `yt`. Confirm that it copies
-   the published encoder's rounded value, matching `pt`. Numeric precision loss
-   is accepted; the former `UnsupportedNumber` expectation is removed.
-3. Open in-app help in default and `--no-default-features` builds. Both builds
-   must list `:write`/`:w`, `:write-toon`/`:wt`, `:write-json`/`:wj`,
-   `:write-yaml`/`:wy`, and `:write-ndjson`/`:write-jsonl`/`:wn` with `!`
-   variants. Confirm default writes TOON and only `sexp` builds accept
-   `:write-sexp`/`:ws` (including `!`). The old `:writetoon` and
-   `:writesexp` names must not work. Check TOON 4.4 codec and document-view wording.
-4. On Linux, use a disposable session to write to `/dev/full` with `:wt!`.
-   Confirm a write error, no success message, and continued navigation.
-   The shared writer propagates write and flush errors. Standard `File::flush`
-   has no buffer to flush; no separate failing-file-flush test is claimed.
-5. Open malformed TOON interactively. Confirm a useful parse diagnostic and
-   normal terminal restoration. Non-terminal TOON output must reject malformed
-   input with status 1, a stderr diagnostic, and an empty stdout payload.
-6. Confirm strict malformed-header rejection (`a[2:]{x}`), indented-root and
-   tabs-only-line rejection, and invalid nested-group rejection. Check quoted
-   keys with spaces before the colon, multi-space list markers, NBSP as content,
-   and quotes opening spans away from token starts against the pinned fixtures.
-   Run each relevant parse case interactively and through redirected output;
-   errors must restore the terminal and never emit a partial stdout payload.
-7. Export JSON `123456789012345678901` as standard TOON and confirm the
-   `float_roundtrip` reference value `123456789012345680000`, not the old
-   `123456789012345670000`. Confirm native JSON writes and the document view
-   retain the parsed decimal token. Compare equivalent valid JSON and TOON
-   table/list layouts before and after the upgrade; alignment and navigation
-   must remain unchanged.
-8. Separately, confirm TOON `1e1025` converts to JSON string `"1e1025"`,
-   while exporting the JSON numeric token `1e1025` as TOON still fails before
-   stdout or file creation; this decoder fallback must not create an infinity.
+```sh
+xvfb-run -a env TLESS_NATIVE_X11=1 cargo test --locked --test toon_cli -- --ignored
+```
+
+Install `xvfb-run`, `Xvfb`, `xauth`, `xclip`, and `less` before running Linux preflight.
+Missing tools fail the explicit native check rather than skipping it. Linux CI,
+minimum-compiler, and release-package jobs install these tools and use the same
+preflight entry point. macOS jobs do not install or run X11 tools.
+
+The clipboard test requires the explicit isolation marker, a local display, and
+a nonempty private Xauthority file before any selection writes. Ordinary
+`cargo test`, including feature-profile runs, leaves the test ignored; direct
+`cargo test -- --ignored` fails without the isolation marker. Never set the
+marker for an existing desktop display. Use preflight's authenticated, disposable
+Xvfb session instead.
+
+Real PTY keys drive `yt` on an expanded nested value, the same collapsed value,
+and a selected table cell; independent `xclip` reads must equal the corresponding
+`pt` output. The test also compares `yy` with pretty-printed output and checks
+decoded TOON string/key/path copies containing escapes and Unicode. It checks
+subsequent selection and navigation, not just a copy status message.
+Before each copy, a real X11 owner publishes a distinct sentinel and an
+independent reader confirms it, so a stale selection cannot satisfy repeated
+expectations. Copy-completion, seed, reader, prompt, and terminal-response waits
+are bounded; tless remains alive until the selection has been read.
+
+The precise JSON decimal `0.123456789012345678901` must copy and print the
+published encoder's rounded `0.12345678901234568`. Numeric precision loss is
+accepted; the former `UnsupportedNumber` expectation is removed.
+
+This certifies the native Linux X11 clipboard backend only. It does not certify
+the macOS clipboard backend, a desktop clipboard manager, or XWayland integration.
+Record the actual host, OS, compiler, source revision, and automated results in
+the release PR; a different Linux distribution does not establish the Ubuntu
+support floor.
+
+The ordinary Linux profiles exercise `/dev/full` through `:wt!`, asserting a
+write error, no success message, and continued path/value navigation. The shared
+writer propagates write and flush errors, but standard `File::flush` has no
+buffer to flush; no separate failing-file-flush test is claimed.
+Existing command/profile tests exercise supported write aliases and feature
+availability. `toon_pipeline_validates_before_output` and the piped-output tests
+assert failure diagnostics without partial stdout; pinned codec fixtures cover
+strict malformed headers, indentation, nested groups, quoted keys, numeric
+rounding, and out-of-range string fallback.
+The native help test drives F1 into the real `less` pager, waits for pager readiness,
+quits it, and verifies the original selected path and value still print correctly.
+The malformed-input test checks exit status 1, a diagnostic, original ECHO/ICANON
+flags, and empty redirected stdout. Preflight executes both automatically;
+there is no manual clipboard, help, malformed-input, or full-device acceptance gate.
 
 ## Document-view acceptance
 
-Run these checks at 120 columns, then at 30 columns, in an isolated terminal.
-Record results against the implementation commit. Clipboard and host-specific
-release checks above remain separate.
+The automated PTY suite covers document-view behavior at multiple widths.
+The following are optional exploratory scenarios, not publication gates. Run
+them at 120 and 30 columns in an isolated terminal when investigating a change.
 
 1. Open equivalent JSON, YAML, and TOON containing a primitive array and a
    uniform object table. Confirm identical expanded text and distinct key,
@@ -162,12 +180,12 @@ release checks above remain separate.
 
 ## Aligned-table acceptance
 
-Run in an isolated PTY at 120 and 30 columns, repeating with absolute,
-relative, both, and no number gutters. Record actual frames, terminal-cell
-column starts, selected paths, and horizontal transitions against the
-implementation commit; also resize to 16 columns and change indentation with
-`<`/`>`. Use this JSON as a starting point, with the last row placed below the
-viewport when testing width measurement:
+The automated PTY suite covers alignment, selection, scrolling, and resize.
+For optional exploratory checks, use an isolated PTY at 120 and 30 columns with
+absolute, relative, both, and no number gutters. Record frames, terminal-cell
+column starts, selected paths, and horizontal transitions against the implementation
+commit; also resize to 16 columns and change indentation with `<`/`>`. Use this
+JSON as a starting point, with the last row below the viewport for width checks:
 
 ```json
 {"users":[{"id":1,"name":"Ada"},{"id":200,"name":"Lin"}],"other":[{"id":7,"name":"X"},{"id":8,"name":"Y"}],"nested":{"rows":[{"id":1,"name":"é界👩‍💻"},{"id":22,"name":"line\nbreak"}]},"plain":"outside"}

@@ -28,6 +28,15 @@ tests() {
     cargo test --locked --no-default-features --features sexp
     cargo test --locked --no-default-features --features colorscheme
     cargo test --locked --all-features
+    if [[ $(uname -s) == Linux ]]; then
+        for tool in xvfb-run Xvfb xauth xclip less; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+                echo "native Linux acceptance requires $tool" >&2
+                return 1
+            fi
+        done
+        xvfb-run -a env TLESS_NATIVE_X11=1 cargo test --locked --test toon_cli -- --ignored
+    fi
 }
 
 case "${1:-all}" in

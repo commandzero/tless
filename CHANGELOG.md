@@ -5,7 +5,7 @@ Earlier upstream history is preserved below.
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-10-13
+## [0.2.1] - 2026-10-14
 
 ### Changed
 
