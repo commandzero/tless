@@ -26,7 +26,8 @@ sexp = []
 logos = "0.16.1"
 unicode-width = "0.2.3"
 unicode-segmentation = "1.13.3"
-rustyline = { version = "19.0.0", default-features = false, features = ["custom-bindings"] }
+# Rustyline 19 uses cfg_select!, which is unavailable on Rust 1.87.
+rustyline = { version = "18.0.1", default-features = false, features = ["custom-bindings"] }
 regex = "1.13.1"
 lazy_static = "1.5.1"
 termion = "4.0.6"

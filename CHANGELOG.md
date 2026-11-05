@@ -9,7 +9,7 @@ Earlier upstream history is preserved below.
 
 ### Changed
 
-- Upgrade Cargo dependencies, including command-line editing, clipboard access, Unicode display widths, signal handling, and JSON serialization. Keep Rust 1.87 compatibility and the TOON 4.4 codec.
+- Upgrade Cargo dependencies, including clipboard access, Unicode display widths, signal handling, and JSON serialization. Keep Rust 1.87 compatibility and the TOON 4.4 codec.
 
 ## [0.2.1] - 2026-10-14
 
