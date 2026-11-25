@@ -1,16 +1,14 @@
 use crate::chunked_vec::ChunkedVec;
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Write};
 use std::ops::Range;
 
 use crate::jsonparser;
-use crate::lineprinter;
 use crate::yamlparser;
 
+mod path;
+mod presentation;
 #[cfg(feature = "sexp")]
-use crate::jsonstringunescaper::UnescapeError;
-use crate::jsonstringunescaper::unsafe_unescape_json_string;
+mod sexp;
 
 pub type Index = usize;
 
@@ -174,135 +172,6 @@ impl FlatJson {
         self.0[index].collapse();
     }
 
-    pub fn build_path_to_node(&self, path_type: PathType, index: Index) -> Result<String, String> {
-        let mut buf = String::new();
-
-        // A copied top-level value is the complete-document filter path.
-        if self[index].parent.is_nil() {
-            match path_type {
-                PathType::Dot => return Ok(".".to_owned()),
-                PathType::Bracket => {
-                    return Err("Cannot build path to top-level element".to_string());
-                }
-                PathType::Query => {
-                    return Ok(".".to_string());
-                }
-                PathType::DotWithTopLevelIndex => { /* Handled in impl */ }
-            }
-        }
-
-        self.build_path_to_node_impl(path_type, index, &mut buf)?;
-        Ok(buf)
-    }
-
-    fn build_path_to_node_impl(
-        &self,
-        path_type: PathType,
-        index: Index,
-        buf: &mut String,
-    ) -> Result<(), String> {
-        let row = &self[index];
-
-        if row.is_closing_of_container() {
-            return self.build_path_to_node_impl(path_type, row.pair_index().unwrap(), buf);
-        }
-
-        if let Some(parent_index) = row.parent.as_option() {
-            self.build_path_to_node_impl(path_type, parent_index, buf)?;
-        }
-
-        let res = if let Some(key_range) = &row.key_range {
-            let key_open_delimiter = &self.1[key_range.start..key_range.start + 1];
-            let key = &self.1[key_range.start + 1..key_range.end - 1];
-
-            // For non-string keys in YAML.
-            if key_open_delimiter == "[" {
-                if path_type == PathType::Query {
-                    return Err(
-                        "Path to node contains non-string keys not supported in JSON".to_string(),
-                    );
-                }
-
-                write!(buf, "[{key}]")
-            } else if path_type == PathType::Dot {
-                // yp is an input-compatible representation, so it must use
-                // decoded key values and JSON escaping rather than YAML's
-                // display spelling. This matters for quotes, backslashes,
-                // controls, and Unicode escapes in YAML keys.
-                let decoded = self.decoded_string_key(index)?;
-                let Some(decoded) = decoded else {
-                    return Err("Unable to decode string object key".to_owned());
-                };
-                if lineprinter::JS_IDENTIFIER.is_match(&decoded) {
-                    write!(buf, ".{decoded}")
-                } else {
-                    let quoted = serde_json::to_string(&decoded)
-                        .map_err(|error| format!("Unable to escape object key: {error}"))?;
-                    write!(buf, "[{quoted}]")
-                }
-            } else {
-                if path_type != PathType::Bracket && lineprinter::JS_IDENTIFIER.is_match(key) {
-                    write!(buf, ".{key}")
-                } else {
-                    if path_type == PathType::Query && row.depth == 1 {
-                        // Handle square brackets as the first part of the path.
-                        write!(buf, ".[\"{key}\"]")
-                    } else {
-                        write!(buf, "[\"{key}\"]")
-                    }
-                }
-            }
-        } else {
-            if row.parent.is_nil() {
-                // We only print the top level index for this PathType,
-                // but we don't print it out if there's only a single
-                // top-level element.
-                if path_type == PathType::DotWithTopLevelIndex
-                    && (index != 0 || row.next_sibling.is_some())
-                {
-                    write!(buf, "[{}]", row.index_in_parent)
-                } else {
-                    Ok(())
-                }
-            } else {
-                match path_type {
-                    PathType::Query => {
-                        if row.depth == 1 {
-                            // Handle square brackets as the first part of the path.
-                            write!(buf, ".[]")
-                        } else {
-                            write!(buf, "[]")
-                        }
-                    }
-                    _ => write!(buf, "[{}]", row.index_in_parent),
-                }
-            }
-        };
-
-        res.map_err(|e| e.to_string())
-    }
-    pub fn decoded_string_key(&self, index: Index) -> Result<Option<Cow<'_, str>>, String> {
-        let row = &self[index];
-        match self.key_value(index) {
-            Some(KeyValue::String(text)) => Ok(Some(Cow::Borrowed(text))),
-            Some(_) => Ok(None),
-            None => {
-                let Some(range) = &row.key_range else {
-                    return Ok(None);
-                };
-                let raw = &self.1[range.start + 1..range.end - 1];
-                if raw.as_bytes().contains(&b'\\') {
-                    unsafe_unescape_json_string(raw)
-                        .map(Cow::Owned)
-                        .map(Some)
-                        .map_err(|error| format!("Unable to decode object key: {error}"))
-                } else {
-                    Ok(Some(Cow::Borrowed(raw)))
-                }
-            }
-        }
-    }
-
     /// Inclusive flat-row span of a value, accepting its opening or closing row.
     pub fn subtree_range(&self, index: Index) -> std::ops::RangeInclusive<Index> {
         let start = if self[index].is_closing_of_container() {
@@ -312,194 +181,6 @@ impl FlatJson {
         };
         let end = self[start].pair_index().as_option().unwrap_or(start);
         start..=end
-    }
-
-    #[cfg(feature = "sexp")]
-    fn sexp_atom_needs_escaping(s: &str) -> bool {
-        // See: https://github.com/janestreet/sexplib0/blob/master/src/sexp.ml#L58
-        if s.is_empty() {
-            return true;
-        }
-
-        let bytes = s.as_bytes();
-        let last_ch_index = bytes.len() - 1;
-        for (i, ch) in bytes.iter().enumerate() {
-            match ch {
-                // sexp syntactical characters must be escaped
-                b' ' | b'"' | b'(' | b')' | b';' | b'\\' => return true,
-                // The start or end of a multiline comment "#| comment |#" must be escaped
-                b'|' => {
-                    if i < last_ch_index && bytes[i + 1] == b'#' {
-                        return true;
-                    }
-                }
-                b'#' => {
-                    if i < last_ch_index && bytes[i + 1] == b'|' {
-                        return true;
-                    }
-                }
-                // sexplib0 source matches [0 .. 32]. 32 is space, and I included
-                // that above more explicitly.
-                0..=31 | 127..=255 => return true,
-                _ => (),
-            }
-        }
-
-        false
-    }
-
-    #[cfg(feature = "sexp")]
-    fn escape_and_write_sexp_atom(buf: &mut String, atom: &str) {
-        // https://github.com/janestreet/sexplib0/blob/master/src/sexp.ml#L81-L132
-        buf.push('"');
-        for ch in atom.bytes() {
-            match ch {
-                // Double quote and backslashes are escaped
-                b'"' => buf.push_str(r#"\""#),
-                b'\\' => buf.push_str(r#"\\"#),
-                // White space get special escape codes
-                b'\n' => buf.push_str(r#"\n"#),
-                b'\t' => buf.push_str(r#"\t"#),
-                b'\r' => buf.push_str(r#"\r"#),
-                8 /* backspace */ => buf.push_str(r#"\b"#),
-                32..=126 => buf.push(ch as char),
-                _ => {
-                    buf.push('\\');
-                    let zero = b'0';
-                    buf.push((zero + (ch / 100)) as char);
-                    buf.push((zero + ((ch / 10) % 10)) as char);
-                    buf.push((zero + (ch % 10)) as char);
-                }
-            }
-        }
-        buf.push('"');
-    }
-
-    #[cfg(feature = "sexp")]
-    fn write_sexp_atom(
-        &self,
-        buf: &mut String,
-        range: Range<usize>,
-        decoded: Option<&str>,
-    ) -> Result<(), UnescapeError> {
-        let unescaped;
-        let value = if let Some(value) = decoded {
-            value
-        } else {
-            unescaped = unsafe_unescape_json_string(&self.1[range.start + 1..range.end - 1])?;
-            &unescaped
-        };
-        if Self::sexp_atom_needs_escaping(value) {
-            Self::escape_and_write_sexp_atom(buf, value);
-        } else {
-            buf.push_str(value);
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "sexp")]
-    pub fn sexp_string(&self, roots: &[Index]) -> Result<String, UnescapeError> {
-        let mut buf = String::new();
-
-        for &root in roots {
-            let range = self.subtree_range(root);
-            let (root, end) = (*range.start(), *range.end());
-            for index in range {
-                let row = &self[index];
-                if index != root && row.parent.is_some() && row.prev_sibling.is_some() {
-                    buf.push(' ');
-                }
-                if index != root {
-                    if let Some(key_range) = &row.key_range {
-                        buf.push('(');
-                        let decoded = match self.key_value(index) {
-                            Some(KeyValue::String(value)) => Some(value.as_str()),
-                            _ => None,
-                        };
-                        self.write_sexp_atom(&mut buf, key_range.clone(), decoded)?;
-                        buf.push(' ');
-                    }
-                }
-
-                match &row.value {
-                    Value::Null | Value::EmptyObject | Value::EmptyArray => buf.push_str("()"),
-                    Value::Boolean | Value::Number => buf.push_str(&self.1[row.range.clone()]),
-                    Value::String => {
-                        self.write_sexp_atom(&mut buf, row.range.clone(), self.string_value(index))?
-                    }
-                    Value::OpenContainer { .. } => buf.push('('),
-                    Value::CloseContainer { .. } => buf.push(')'),
-                }
-
-                // Close key-value tuple if we wrote a primitive. If we wrote the closing of a
-                // container, check if the opening had a key, and close it.
-                if index != root && row.is_primitive() && row.key_range.is_some() {
-                    buf.push(')');
-                } else if row.is_closing_of_container() {
-                    let opening = row.pair_index().unwrap();
-                    if opening != root && self[opening].key_range.is_some() {
-                        buf.push(')');
-                    }
-                }
-
-                // Write newline after every top-level sexp.
-                if index == end {
-                    buf.push('\n');
-                }
-            }
-        }
-
-        Ok(buf)
-    }
-
-    pub fn pretty_printed_value(&self, value_index: Index) -> Result<String, std::fmt::Error> {
-        if self[value_index].is_primitive() {
-            return Ok(self.1[self[value_index].range.clone()].to_string());
-        }
-
-        let mut buf = String::new();
-
-        let container_type = self[value_index].value.container_type().unwrap();
-        let depth_offset = self[value_index].depth;
-        let pair_index = self[value_index].pair_index().unwrap();
-
-        let start_index = value_index.min(pair_index);
-        let end_index = value_index.max(pair_index);
-
-        writeln!(buf, "{}", container_type.open_str())?;
-
-        for index in start_index + 1..end_index {
-            let row = &self[index];
-            for _ in 0..(row.depth - depth_offset) {
-                write!(buf, "  ")?;
-            }
-            if let Some(ref key_range) = row.key_range {
-                write!(buf, "{}: ", &self.1[key_range.clone()])?;
-            }
-            let mut trailing_comma = row.parent.is_some() && row.next_sibling.is_some();
-            if let Some(container_type) = row.value.container_type() {
-                if row.value.is_opening_of_container() {
-                    write!(buf, "{}", container_type.open_str())?;
-                    // Don't print trailing commas after { or [.
-                    trailing_comma = false;
-                } else {
-                    write!(buf, "{}", container_type.close_str())?;
-                    // Check container opening to see if we have a next sibling.
-                    trailing_comma = row.parent.is_some()
-                        && self[row.pair_index().unwrap()].next_sibling.is_some();
-                }
-            } else {
-                write!(buf, "{}", &self.1[row.range.clone()])?;
-            }
-            if trailing_comma {
-                write!(buf, ",")?;
-            }
-            writeln!(buf)?;
-        }
-
-        writeln!(buf, "{}", container_type.close_str())?;
-
-        Ok(buf)
     }
 }
 
@@ -761,6 +442,7 @@ pub fn parse_top_level_yaml(yaml: String) -> Result<FlatJson, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
 
     const OBJECT: &str = r#"{
         "1": 1,
@@ -873,17 +555,15 @@ mod tests {
     fn test_move_by_visible_rows_collapsed() {
         let mut fj = parse_top_level_json(NESTED_OBJECT.to_owned()).unwrap();
 
-        fj.collapse(2);
-        assert_visited_rows(&fj, vec![1, 2, 5, 6, 7, 8, 9, NIL]);
-
-        fj.collapse(5);
-        assert_visited_rows(&fj, vec![1, 2, 5, 8, 9, NIL]);
-
-        fj.collapse(1);
-        assert_visited_rows(&fj, vec![1, 9, NIL]);
-
-        fj.collapse(0);
-        assert_visited_rows(&fj, vec![NIL]);
+        for (index, expected) in [
+            (2, &[1, 2, 5, 6, 7, 8, 9, NIL][..]),
+            (5, &[1, 2, 5, 8, 9, NIL]),
+            (1, &[1, 9, NIL]),
+            (0, &[NIL]),
+        ] {
+            fj.collapse(index);
+            assert_visited_rows(&fj, expected.to_vec());
+        }
     }
 
     #[test]
@@ -916,350 +596,46 @@ mod tests {
     }
 
     fn assert_row_iter(
-        movement_name: &'static str,
         fj: &FlatJson,
-        start_index: Index,
-        expected_visited_rows: &[usize],
-        movement_fn: fn(&FlatJson, Index) -> OptionIndex,
+        start: Index,
+        expected: &[Index],
+        movement: fn(&FlatJson, Index) -> OptionIndex,
     ) {
-        let mut curr_index = start_index;
-        for expected_index in expected_visited_rows.iter() {
-            let next_index = movement_fn(fj, curr_index).as_usize();
-
-            assert_eq!(
-                next_index,
-                *expected_index,
-                "expected {}({}) to be {:?}",
-                movement_name,
-                curr_index,
-                OptionIndex::from(*expected_index),
-            );
-
-            curr_index = next_index;
+        let mut current = start;
+        for &expected in expected {
+            let next = movement(fj, current).as_usize();
+            assert_eq!(next, expected, "moving from row {current}");
+            current = next;
         }
     }
 
-    fn assert_visited_rows(fj: &FlatJson, mut expected: Vec<usize>) {
-        assert_next_visited_rows(fj, 0, &expected);
-        let mut start = 0;
-        if expected.len() > 1 {
-            // Want to turn: 0; [1, 2, 3, 4, NIL]
-            // into:         4; [3, 2, 1, 0, NIL]
-            start = expected[expected.len() - 2];
-            expected.pop();
-            expected.pop();
-            expected.reverse();
-            expected.push(0);
-            expected.push(NIL);
-        }
-        assert_prev_visited_rows(fj, start, &expected);
-    }
-
-    fn assert_next_visited_rows(fj: &FlatJson, start_index: Index, expected: &[usize]) {
-        assert_row_iter(
-            "next_visible_row",
+    fn assert_visited_rows(fj: &FlatJson, expected: Vec<usize>) {
+        assert_visited(
             fj,
-            start_index,
             expected,
             FlatJson::next_visible_row,
-        );
-    }
-
-    fn assert_prev_visited_rows(fj: &FlatJson, start_index: Index, expected: &[usize]) {
-        assert_row_iter(
-            "prev_visible_row",
-            fj,
-            start_index,
-            expected,
             FlatJson::prev_visible_row,
         );
     }
 
-    fn assert_visited_items(fj: &FlatJson, mut expected: Vec<usize>) {
-        assert_next_visited_items(fj, 0, &expected);
-        let mut start = 0;
-        if expected.len() > 1 {
-            // Want to turn: 0; [1, 2, 3, 4, NIL]
-            // into:         4; [3, 2, 1, 0, NIL]
-            start = expected[expected.len() - 2];
-            expected.pop();
-            expected.pop();
+    fn assert_visited_items(fj: &FlatJson, expected: Vec<usize>) {
+        assert_visited(fj, expected, FlatJson::next_item, FlatJson::prev_item);
+    }
+
+    fn assert_visited(
+        flat: &FlatJson,
+        mut expected: Vec<Index>,
+        next: fn(&FlatJson, Index) -> OptionIndex,
+        prev: fn(&FlatJson, Index) -> OptionIndex,
+    ) {
+        assert_row_iter(flat, 0, &expected, next);
+        expected.pop();
+        let start = expected.pop().unwrap_or(0);
+        if start != 0 {
             expected.reverse();
             expected.push(0);
-            expected.push(NIL);
         }
-        assert_prev_visited_items(fj, start, &expected);
-    }
-
-    fn assert_next_visited_items(fj: &FlatJson, start_index: Index, expected: &[usize]) {
-        assert_row_iter("next_item", fj, start_index, expected, FlatJson::next_item);
-    }
-
-    fn assert_prev_visited_items(fj: &FlatJson, start_index: Index, expected: &[usize]) {
-        assert_row_iter("prev_item", fj, start_index, expected, FlatJson::prev_item);
-    }
-
-    #[test]
-    fn test_root_object_build_path_to_node() {
-        use PathType::*;
-
-        const ROOT_OBJECT: &str = r#"{
-            "non js key": 1,
-            "plain_key": [
-                {},
-                {
-                    "nested": 5,
-                },
-            ],
-        }"#;
-
-        let fj = parse_top_level_json(ROOT_OBJECT.to_owned()).unwrap();
-
-        assert_eq!(".", fj.build_path_to_node(Dot, 0).unwrap());
-        assert!(fj.build_path_to_node(Bracket, 0).is_err());
-        assert_eq!(".", fj.build_path_to_node(Query, 0).unwrap());
-        assert_eq!("", fj.build_path_to_node(DotWithTopLevelIndex, 0).unwrap());
-
-        let path = r#"["non js key"]"#;
-        let paths = (path, path, r#".["non js key"]"#, path);
-        assert_paths_to_node(&fj, 1, paths);
-
-        let nested_paths = (
-            ".plain_key[1].nested",
-            r#"["plain_key"][1]["nested"]"#,
-            ".plain_key[].nested",
-            ".plain_key[1].nested",
-        );
-        assert_paths_to_node(&fj, 5, nested_paths);
-    }
-
-    #[test]
-    fn test_root_array_build_path_to_node() {
-        use PathType::*;
-
-        const ROOT_ARRAY: &str = r#"[
-            1,
-            {
-                "nested": {
-                    "more nested": 4,
-                },
-            },
-        ]"#;
-
-        let fj = parse_top_level_json(ROOT_ARRAY.to_owned()).unwrap();
-
-        assert_eq!(".", fj.build_path_to_node(Dot, 0).unwrap());
-        assert!(fj.build_path_to_node(Bracket, 0).is_err());
-        assert_eq!(".", fj.build_path_to_node(Query, 0).unwrap());
-        assert_eq!("", fj.build_path_to_node(DotWithTopLevelIndex, 0).unwrap());
-
-        let paths = ("[0]", "[0]", ".[]", "[0]");
-        assert_paths_to_node(&fj, 1, paths);
-
-        let nested_paths = (
-            r#"[1].nested["more nested"]"#,
-            r#"[1]["nested"]["more nested"]"#,
-            r#".[].nested["more nested"]"#,
-            r#"[1].nested["more nested"]"#,
-        );
-        assert_paths_to_node(&fj, 4, nested_paths);
-    }
-
-    #[test]
-    fn test_multi_top_level_build_path_to_node() {
-        use PathType::*;
-
-        const MULTI_TOP_LEVEL: &str = r#"[
-            {
-                "nested": [
-                    3,
-                ],
-            },
-        ]
-        {
-            "plain_key": [
-                {
-                    "nested": 10,
-                },
-            ],
-        }"#;
-
-        let fj = parse_top_level_json(MULTI_TOP_LEVEL.to_owned()).unwrap();
-
-        assert_eq!(".", fj.build_path_to_node(Dot, 0).unwrap());
-        assert!(fj.build_path_to_node(Bracket, 0).is_err());
-        assert_eq!(".", fj.build_path_to_node(Query, 0).unwrap());
-        assert_eq!(
-            "[0]",
-            fj.build_path_to_node(DotWithTopLevelIndex, 0).unwrap()
-        );
-
-        assert_eq!(".", fj.build_path_to_node(Dot, 7).unwrap());
-        assert!(fj.build_path_to_node(Bracket, 7).is_err());
-        assert_eq!(".", fj.build_path_to_node(Query, 7).unwrap());
-        assert_eq!(
-            "[1]",
-            fj.build_path_to_node(DotWithTopLevelIndex, 7).unwrap()
-        );
-
-        let paths = (
-            "[0].nested[0]",
-            r#"[0]["nested"][0]"#,
-            ".[].nested[]",
-            "[0][0].nested[0]",
-        );
-        assert_paths_to_node(&fj, 3, paths);
-
-        let paths = (
-            ".plain_key[0].nested",
-            r#"["plain_key"][0]["nested"]"#,
-            ".plain_key[].nested",
-            "[1].plain_key[0].nested",
-        );
-        assert_paths_to_node(&fj, 10, paths);
-    }
-
-    #[test]
-    fn test_build_path_to_node_yaml_non_string_key() {
-        use PathType::*;
-
-        const YAML: &str = r#"{
-            [1, 1]: 1,
-        }"#;
-        let fj = parse_top_level_yaml(YAML.to_owned()).unwrap();
-        assert_eq!("[[1, 1]]", fj.build_path_to_node(Dot, 1).unwrap());
-        assert_eq!("[[1, 1]]", fj.build_path_to_node(Bracket, 1).unwrap());
-        assert!(fj.build_path_to_node(Query, 1).is_err());
-    }
-
-    #[test]
-    fn test_yp_escapes_yaml_string_keys() {
-        use PathType::Dot;
-
-        let flat = parse_top_level_yaml("---\n\"a\\\"b\\\\c\": value\n".to_owned()).unwrap();
-        let formatted = flat.build_path_to_node(Dot, 1).unwrap();
-        let path = crate::path_filter::PathFilter::parse(&formatted).unwrap();
-        assert_eq!(vec![1], path.resolve(&flat).unwrap());
-    }
-
-    #[track_caller]
-    fn assert_paths_to_node(fj: &FlatJson, index: Index, paths: (&str, &str, &str, &str)) {
-        use PathType::*;
-
-        let dot = fj.build_path_to_node(Dot, index).unwrap();
-        let bracket = fj.build_path_to_node(Bracket, index).unwrap();
-        let query = fj.build_path_to_node(Query, index).unwrap();
-        let dot_top_level = fj.build_path_to_node(DotWithTopLevelIndex, index).unwrap();
-
-        assert_eq!(
-            paths,
-            (
-                dot.as_str(),
-                bracket.as_str(),
-                query.as_str(),
-                dot_top_level.as_str()
-            )
-        );
-    }
-
-    #[test]
-    fn test_pretty_print() {
-        const JSON: &str = r#"{"a":1,"b":[2,{},[],false],"c":null}
-            [ "d"   , [1,{      "e" :   7 }]   ]"#;
-        const PRETTY: &str = r#"{
-  "a": 1,
-  "b": [
-    2,
-    {},
-    [],
-    false
-  ],
-  "c": null
-}
-[
-  "d",
-  [
-    1,
-    {
-      "e": 7
-    }
-  ]
-]
-"#;
-        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(
-            PRETTY,
-            crate::output::serialize_roots(
-                &fj,
-                crate::options::OutputFormat::Json,
-                &crate::path_filter::document_roots(&fj),
-            )
-            .unwrap()
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "sexp")]
-    fn test_sexp_string() {
-        const JSON: &str = r#"{"a":1,"b":[2,{},[],false],"c":null}
-            [ "d"   , [1,{      "e" :   7 }]   ]"#;
-        const PRETTY: &str = r#"((a 1) (b (2 () () false)) (c ()))
-(d (1 ((e 7))))
-"#;
-        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(
-            PRETTY,
-            fj.sexp_string(&crate::path_filter::document_roots(&fj))
-                .unwrap()
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "sexp")]
-    fn test_sexp_string_escaping() {
-        const JSON: &str = r#"["", "a b", "a\"b", "a\\b", "a#|b", "a|#b", "a;b", {"a(b": "a)b"}]
-            ["\n\t\r\b", "\u0000\u001f\u007f"]"#;
-        const PRETTY: &str = r#"("" "a b" "a\"b" "a\\b" "a#|b" "a|#b" "a;b" (("a(b" "a)b")))
-("\n\t\r\b" "\000\031\127")
-"#;
-        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        assert_eq!(
-            PRETTY,
-            fj.sexp_string(&crate::path_filter::document_roots(&fj))
-                .unwrap()
-        );
-    }
-
-    #[test]
-    fn test_pretty_printed_value() {
-        const JSON: &str = r#"[[{"3":3,"4":[5, 6, {"8": false}]}]]"#;
-        let fj = parse_top_level_json(JSON.to_owned()).unwrap();
-        const PRETTY_INNER_OBJ: &str = r#"{
-  "3": 3,
-  "4": [
-    5,
-    6,
-    {
-      "8": false
-    }
-  ]
-}
-"#;
-        assert_eq!(PRETTY_INNER_OBJ, fj.pretty_printed_value(2).unwrap());
-        assert_eq!("3", fj.pretty_printed_value(3).unwrap());
-
-        const PRETTY_ARRAY: &str = r#"[
-  5,
-  6,
-  {
-    "8": false
-  }
-]
-"#;
-        assert_eq!(PRETTY_ARRAY, fj.pretty_printed_value(4).unwrap());
-        assert_eq!("6", fj.pretty_printed_value(6).unwrap());
-
-        const PRETTY_NESTED_OBJ: &str = "{\n  \"8\": false\n}\n";
-        assert_eq!(PRETTY_NESTED_OBJ, fj.pretty_printed_value(7).unwrap());
+        expected.push(NIL);
+        assert_row_iter(flat, start, &expected, prev);
     }
 }
