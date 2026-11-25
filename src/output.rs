@@ -1,7 +1,8 @@
 //! Whole-document machine output, independent of terminal presentation.
 use std::fmt::Write;
+use std::ops::RangeInclusive;
 
-use crate::flatjson::{self, FlatJson, KeyValue, Value};
+use crate::flatjson::{self, ContainerType, FlatJson, KeyValue, Row, Value};
 use crate::jsonstringunescaper::unsafe_unescape_json_string;
 use crate::options::{DataFormat, OutputFormat};
 
@@ -47,126 +48,136 @@ enum Layout {
 }
 
 fn encode_roots(document: &FlatJson, roots: &[usize], layout: Layout) -> Result<String, String> {
-    let mut output = String::new();
+    let mut encoder = Encoder {
+        document,
+        layout,
+        output: String::new(),
+    };
     for &root in roots {
-        let range = document.subtree_range(root);
-        let (start, end) = (*range.start(), *range.end());
-        if layout == Layout::Yaml {
-            output.push_str("---\n");
-        }
-        encode_root(document, start, end, layout, &mut output)?;
-        if layout == Layout::CompactJson {
-            output.push('\n');
-        }
+        encoder.write_root(root)?;
     }
-    Ok(output)
+    Ok(encoder.output)
 }
 
-fn encode_root(
-    document: &FlatJson,
-    start: usize,
-    end: usize,
+struct Encoder<'a> {
+    document: &'a FlatJson,
     layout: Layout,
-    output: &mut String,
-) -> Result<(), String> {
-    let yaml = layout == Layout::Yaml;
-    let pretty = layout != Layout::CompactJson;
-    let base_depth = document[start].depth;
-    // Flat rows include closing delimiters, so this remains iterative and does
-    // not allocate a recursive traversal stack.
-    for index in start..=end {
-        let row = &document[index];
-        let closing = row.is_closing_of_container();
-        let is_root = index == start;
-        // A closing delimiter belongs at its opening value's indentation.
-        let node = if closing {
-            &document[row.pair_index().unwrap()]
-        } else {
-            row
-        };
-        if pretty {
-            let relative_depth = node.depth.saturating_sub(base_depth);
-            for _ in 0..relative_depth {
-                output.push_str("  ");
-            }
-        }
-        if !closing {
-            // The selected node is a standalone root: omit only its owning key.
-            if !is_root {
-                if let Some(range) = &row.key_range {
-                    match document.key_value(index) {
-                        Some(KeyValue::String(key)) => quote_mapping_key(output, key, yaml),
-                        Some(key) if yaml => {
-                            output.push_str("? ");
-                            key_yaml(output, key);
-                            output.push(' ');
-                        }
-                        Some(_) => {
-                            return Err("JSON output requires string mapping keys".to_owned());
-                        }
-                        None => {
-                            if yaml {
-                                quote_mapping_key(
-                                    output,
-                                    &decode(&document.1[range.clone()])?,
-                                    yaml,
-                                );
-                            } else {
-                                output.push_str(&document.1[range.clone()]);
-                            }
-                        }
-                    }
-                    output.push(':');
-                    if pretty {
-                        output.push(' ');
-                    }
-                }
-            }
+    output: String,
+}
+
+impl Encoder<'_> {
+    fn write_root(&mut self, root: usize) -> Result<(), String> {
+        let range = self.document.subtree_range(root);
+        if self.layout == Layout::Yaml {
+            self.output.push_str("---\n");
         }
 
-        match row.value {
-            Value::OpenContainer { .. } => {
-                output.push(if row.is_array() { '[' } else { '{' });
-                if pretty {
-                    output.push('\n');
-                }
-                continue;
-            }
-            Value::CloseContainer { .. } => {
-                output.push(if row.is_array() { ']' } else { '}' });
-            }
-            Value::EmptyObject => output.push_str("{}"),
-            Value::EmptyArray => output.push_str("[]"),
-            Value::String => {
-                if !yaml && document.string_value(index).is_none() {
-                    output.push_str(&document.1[row.range.clone()]);
-                } else {
-                    let text = match document.string_value(index) {
-                        Some(text) => std::borrow::Cow::Borrowed(text),
-                        None => std::borrow::Cow::Owned(decode(&document.1[row.range.clone()])?),
-                    };
-                    quote(output, &text, yaml);
-                }
-            }
-            Value::Number => {
-                let text = &document.1[row.range.clone()];
-                if yaml {
-                    output.push_str(text);
-                } else {
-                    output.push_str(&json_number(text)?);
-                }
-            }
-            Value::Boolean | Value::Null => output.push_str(&document.1[row.range.clone()]),
+        // Closing delimiters are rows too, so no traversal stack is needed.
+        for index in range.clone() {
+            self.write_row(index, &range)?;
         }
-
-        if index != end && !is_root && node.next_sibling.is_some() {
-            output.push(',');
+        if !self.pretty() {
+            self.output.push('\n');
         }
-        if pretty {
-            output.push('\n');
-        }
+        Ok(())
     }
-    Ok(())
+
+    fn write_row(&mut self, index: usize, range: &RangeInclusive<usize>) -> Result<(), String> {
+        let base_depth = self.document[*range.start()].depth;
+        let is_root = index == *range.start();
+        let is_last = index == *range.end();
+        let row = &self.document[index];
+        // A closing delimiter inherits its opener's indentation and siblings.
+        let node = match row.value {
+            Value::CloseContainer { open_index, .. } => &self.document[open_index],
+            _ => row,
+        };
+        if self.pretty() {
+            for _ in 0..node.depth.saturating_sub(base_depth) {
+                self.output.push_str("  ");
+            }
+        }
+
+        if !is_root && !row.is_closing_of_container() {
+            self.write_key(index)?;
+        }
+        self.write_value(index)?;
+        if needs_comma(row, node, is_root, is_last) {
+            self.output.push(',');
+        }
+        if self.pretty() {
+            self.output.push('\n');
+        }
+        Ok(())
+    }
+
+    fn write_key(&mut self, index: usize) -> Result<(), String> {
+        let Some(range) = &self.document[index].key_range else {
+            return Ok(());
+        };
+        let yaml = self.layout == Layout::Yaml;
+        match self.document.key_value(index) {
+            Some(KeyValue::String(key)) => quote_mapping_key(&mut self.output, key, yaml),
+            Some(key) if yaml => {
+                self.output.push_str("? ");
+                key_yaml(&mut self.output, key);
+                self.output.push(' ');
+            }
+            Some(_) => return Err("JSON output requires string mapping keys".to_owned()),
+            None => {
+                let raw = &self.document.1[range.clone()];
+                if yaml {
+                    quote_mapping_key(&mut self.output, &decode(raw)?, true);
+                } else {
+                    self.output.push_str(raw);
+                }
+            }
+        }
+        self.output.push(':');
+        if self.pretty() {
+            self.output.push(' ');
+        }
+        Ok(())
+    }
+
+    fn write_value(&mut self, index: usize) -> Result<(), String> {
+        let row = &self.document[index];
+        let raw = || &self.document.1[row.range.clone()];
+        match row.value {
+            Value::OpenContainer { container_type, .. } => {
+                self.output.push_str(container_type.open_str());
+            }
+            Value::CloseContainer { container_type, .. } => {
+                self.output.push_str(container_type.close_str());
+            }
+            Value::EmptyObject => self.output.push_str("{}"),
+            Value::EmptyArray => self.output.push_str("[]"),
+            Value::String => self.write_string(index, raw())?,
+            Value::Number if self.layout != Layout::Yaml => {
+                self.output.push_str(&json_number(raw())?);
+            }
+            Value::Number | Value::Boolean | Value::Null => self.output.push_str(raw()),
+        }
+        Ok(())
+    }
+
+    fn write_string(&mut self, index: usize, raw: &str) -> Result<(), String> {
+        let yaml = self.layout == Layout::Yaml;
+        match self.document.string_value(index) {
+            Some(text) => quote(&mut self.output, text, yaml),
+            None if yaml => quote(&mut self.output, &decode(raw)?, true),
+            None => self.output.push_str(raw),
+        }
+        Ok(())
+    }
+
+    fn pretty(&self) -> bool {
+        self.layout != Layout::CompactJson
+    }
+}
+
+fn needs_comma(row: &Row, node: &Row, is_root: bool, is_last: bool) -> bool {
+    !row.is_opening_of_container() && !is_root && !is_last && node.next_sibling.is_some()
 }
 
 fn decode(raw: &str) -> Result<String, String> {
@@ -193,15 +204,20 @@ fn quote(output: &mut String, text: &str, yaml: bool) {
             '\n' => output.push_str("\\n"),
             '\r' => output.push_str("\\r"),
             '\t' => output.push_str("\\t"),
-            ch if ch < ' '
-                || (yaml && (ch.is_control() || matches!(ch, '\u{2028}' | '\u{2029}'))) =>
-            {
+            ch if needs_unicode_escape(ch, yaml) => {
                 write!(output, "\\u{:04x}", ch as u32).unwrap();
             }
             ch => output.push(ch),
         }
     }
     output.push('"');
+}
+
+fn needs_unicode_escape(ch: char, yaml: bool) -> bool {
+    if ch < ' ' {
+        return true;
+    }
+    yaml && (ch.is_control() || matches!(ch, '\u{2028}' | '\u{2029}'))
 }
 
 pub(crate) fn json_number(text: &str) -> Result<String, String> {
@@ -221,20 +237,17 @@ pub(crate) fn json_number(text: &str) -> Result<String, String> {
     if integer.is_empty() && fraction.unwrap_or("").is_empty() {
         return Err("JSON output requires finite JSON numbers".to_owned());
     }
-    let mut result = String::new();
-    if &parts[1] == "-" {
-        result.push('-');
-    }
-    let integer = integer.trim_start_matches('0');
-    result.push_str(if integer.is_empty() { "0" } else { integer });
-    if let Some(fraction) = fraction {
-        result.push('.');
-        result.push_str(if fraction.is_empty() { "0" } else { fraction });
-    }
-    if let Some(exponent) = parts.get(4) {
-        result.push_str(exponent.as_str());
-    }
-    Ok(result)
+    let sign = if &parts[1] == "-" { "-" } else { "" };
+    let integer = digits_or_zero(integer.trim_start_matches('0'));
+    let exponent = parts.get(4).map_or("", |part| part.as_str());
+    Ok(match fraction {
+        Some(fraction) => format!("{sign}{integer}.{}{exponent}", digits_or_zero(fraction)),
+        None => format!("{sign}{integer}{exponent}"),
+    })
+}
+
+fn digits_or_zero(digits: &str) -> &str {
+    if digits.is_empty() { "0" } else { digits }
 }
 
 fn key_yaml(output: &mut String, key: &KeyValue) {
@@ -244,29 +257,35 @@ fn key_yaml(output: &mut String, key: &KeyValue) {
         KeyValue::Boolean(value) => output.push_str(if *value { "true" } else { "false" }),
         KeyValue::Null => output.push_str("null"),
         KeyValue::Array(items) => {
-            output.push('[');
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    output.push_str(", ");
-                }
-                key_yaml(output, item);
-            }
-            output.push(']');
+            write_key_collection(output, ContainerType::Array, items, key_yaml)
         }
         KeyValue::Object(entries) => {
-            output.push('{');
-            for (i, (key, value)) in entries.iter().enumerate() {
-                if i > 0 {
-                    output.push_str(", ");
-                }
-                output.push_str("? ");
-                key_yaml(output, key);
-                output.push_str(" : ");
-                key_yaml(output, value);
-            }
-            output.push('}');
+            write_key_collection(output, ContainerType::Object, entries, write_key_entry);
         }
     }
+}
+
+fn write_key_collection<T>(
+    output: &mut String,
+    container_type: ContainerType,
+    items: &[T],
+    write_item: fn(&mut String, &T),
+) {
+    output.push_str(container_type.open_str());
+    for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        write_item(output, item);
+    }
+    output.push_str(container_type.close_str());
+}
+
+fn write_key_entry(output: &mut String, (key, value): &(KeyValue, KeyValue)) {
+    output.push_str("? ");
+    key_yaml(output, key);
+    output.push_str(" : ");
+    key_yaml(output, value);
 }
 
 #[cfg(test)]

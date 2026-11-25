@@ -37,17 +37,19 @@ pub fn encode_value(
     let range = document.subtree_range(index);
     let (index, end) = (*range.start(), *range.end());
     let base_depth = document[index].depth;
-    for node in index..=end {
+    let too_deep = (index..=end).any(|node| {
         let row = &document[node];
-        if (row.is_opening_of_container()
-            || matches!(row.value, Value::EmptyArray | Value::EmptyObject))
-            && row.depth.saturating_sub(base_depth) + 1 > 256
-        {
-            return Err(ToonDiagnostic::new(
-                ToonErrorKind::UnsafeNesting,
-                "TOON output supports at most 256 nested containers",
-            ));
-        }
+        row.depth.saturating_sub(base_depth) >= 256
+            && matches!(
+                row.value,
+                Value::OpenContainer { .. } | Value::EmptyArray | Value::EmptyObject
+            )
+    });
+    if too_deep {
+        return Err(ToonDiagnostic::new(
+            ToonErrorKind::UnsafeNesting,
+            "TOON output supports at most 256 nested containers",
+        ));
     }
     std::thread::scope(|scope| {
         std::thread::Builder::new()
@@ -68,70 +70,87 @@ fn export_value(
     index: Index,
     path: &str,
 ) -> Result<serde_json::Value, ToonDiagnostic> {
+    use serde_json::Value as JsonValue;
     let row = &document[index];
-    if row.is_opening_of_container() {
-        let mut object = serde_json::Map::new();
-        let mut array = Vec::new();
-        let mut child = row.first_child();
-        while let Some(index) = child.as_option() {
-            let child_row = &document[index];
-            if row.is_array() {
-                array.push(export_value(
-                    document,
-                    index,
-                    &format!("{}[{}]", path, child_row.index_in_parent),
-                )?);
-            } else {
-                let key: String = match document.key_value(index) {
-                    Some(KeyValue::String(key)) => key.clone(),
-                    _ => {
-                        let key_text = &document.1[child_row.key_range.clone().unwrap()];
-                        serde_json::from_str(key_text).map_err(|_| {
-                            ToonDiagnostic::new(
-                                ToonErrorKind::UnsupportedValue,
-                                format!(
-                                    "{} entry {}: object key is not a string",
-                                    path,
-                                    child_row.index_in_parent + 1
-                                ),
-                            )
-                        })?
-                    }
-                };
-                let child_path = format!("{}[{}]", path, serde_json::to_string(&key).unwrap());
-                object.insert(key, export_value(document, index, &child_path)?);
-            }
-            child = child_row.next_sibling;
+    let raw = || &document.1[row.range.clone()];
+    match row.value {
+        Value::OpenContainer { .. } if row.is_array() => {
+            export_array(document, index, path).map(JsonValue::Array)
         }
-        Ok(if row.is_array() {
-            serde_json::Value::Array(array)
-        } else {
-            serde_json::Value::Object(object)
-        })
-    } else if matches!(row.value, Value::Number) {
-        let text = &document.1[row.range.clone()];
-        let normalized = crate::output::json_number(text).map_err(|error| {
-            ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{path}: {error}"))
-        })?;
-        normalized
-            .parse::<serde_json::Number>()
-            .map(serde_json::Value::Number)
-            .map_err(|e| {
-                ToonDiagnostic::new(ToonErrorKind::UnsupportedNumber, format!("{path}: {e}"))
-            })
-    } else if matches!(row.value, Value::String) {
-        if let Some(value) = document.string_value(index) {
-            Ok(serde_json::Value::String(value.to_owned()))
-        } else {
-            serde_json::from_str(&document.1[row.range.clone()]).map_err(|e| {
-                ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{}: {}", path, e))
-            })
-        }
-    } else {
-        serde_json::from_str(&document.1[row.range.clone()]).map_err(|e| {
-            ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{}: {}", path, e))
-        })
+        Value::OpenContainer { .. } => export_object(document, index, path).map(JsonValue::Object),
+        Value::Number => export_number(raw(), path).map(JsonValue::Number),
+        Value::String => match document.string_value(index) {
+            Some(text) => Ok(JsonValue::String(text.to_owned())),
+            None => export_scalar(raw(), path),
+        },
+        _ => export_scalar(raw(), path),
     }
+}
+
+fn export_array(
+    document: &FlatJson,
+    index: Index,
+    path: &str,
+) -> Result<Vec<serde_json::Value>, ToonDiagnostic> {
+    export_children(document, index)
+        .map(|child| {
+            let child_path = format!("{path}[{}]", document[child].index_in_parent);
+            export_value(document, child, &child_path)
+        })
+        .collect()
+}
+
+fn export_object(
+    document: &FlatJson,
+    index: Index,
+    path: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, ToonDiagnostic> {
+    export_children(document, index)
+        .map(|child| {
+            let key = export_key(document, child, path)?;
+            let child_path = format!("{path}[{}]", serde_json::to_string(&key).unwrap());
+            Ok((key, export_value(document, child, &child_path)?))
+        })
+        .collect()
+}
+
+fn export_children(document: &FlatJson, index: Index) -> impl Iterator<Item = Index> + '_ {
+    std::iter::successors(document[index].first_child().as_option(), |&child| {
+        document[child].next_sibling.as_option()
+    })
+}
+
+fn export_key(document: &FlatJson, index: Index, path: &str) -> Result<String, ToonDiagnostic> {
+    if let Some(KeyValue::String(key)) = document.key_value(index) {
+        return Ok(key.clone());
+    }
+
+    let row = &document[index];
+    let key_text = &document.1[row.key_range.clone().unwrap()];
+    serde_json::from_str(key_text).map_err(|_| {
+        ToonDiagnostic::new(
+            ToonErrorKind::UnsupportedValue,
+            format!(
+                "{path} entry {}: object key is not a string",
+                row.index_in_parent + 1
+            ),
+        )
+    })
+}
+
+fn export_number(raw: &str, path: &str) -> Result<serde_json::Number, ToonDiagnostic> {
+    let normalized = crate::output::json_number(raw).map_err(|error| {
+        ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{path}: {error}"))
+    })?;
+    normalized.parse().map_err(|error| {
+        ToonDiagnostic::new(ToonErrorKind::UnsupportedNumber, format!("{path}: {error}"))
+    })
+}
+
+fn export_scalar(raw: &str, path: &str) -> Result<serde_json::Value, ToonDiagnostic> {
+    serde_json::from_str(raw).map_err(|error| {
+        ToonDiagnostic::new(ToonErrorKind::UnsupportedValue, format!("{path}: {error}"))
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,32 +208,7 @@ impl From<toon_format::ToonError> for ToonDiagnostic {
                 line,
                 column,
                 ..
-            } => {
-                let kind = if message.starts_with("Invalid indentation")
-                    || message.starts_with("Tabs are not allowed")
-                {
-                    ToonErrorKind::Indentation
-                } else if message.starts_with("Invalid escape")
-                    || message.starts_with("Unterminated string")
-                {
-                    ToonErrorKind::InvalidEscape
-                } else if message.starts_with("Expected ")
-                    && (message.contains("tabular row values")
-                        || message.contains("keyed entry cells"))
-                {
-                    ToonErrorKind::RowWidthMismatch
-                } else if message.starts_with("Expected ")
-                    && (message.contains("inline-form values")
-                        || message.contains("tabular rows")
-                        || message.contains("list-form items")
-                        || message.contains("keyed entries"))
-                {
-                    ToonErrorKind::CountMismatch
-                } else {
-                    ToonErrorKind::Syntax
-                };
-                (kind, Some(*line), Some(*column))
-            }
+            } => (parse_error_kind(message), Some(*line), Some(*column)),
             ToonError::InvalidStructure(message)
                 if message.starts_with("Maximum nesting depth") =>
             {
@@ -227,6 +221,41 @@ impl From<toon_format::ToonError> for ToonDiagnostic {
         result.column = column;
         result
     }
+}
+
+fn parse_error_kind(message: &str) -> ToonErrorKind {
+    let prefixes = [
+        ("Invalid indentation", ToonErrorKind::Indentation),
+        ("Tabs are not allowed", ToonErrorKind::Indentation),
+        ("Invalid escape", ToonErrorKind::InvalidEscape),
+        ("Unterminated string", ToonErrorKind::InvalidEscape),
+    ];
+    for (prefix, kind) in prefixes {
+        if message.starts_with(prefix) {
+            return kind;
+        }
+    }
+
+    if message.starts_with("Expected ") {
+        return expected_error_kind(message);
+    }
+    ToonErrorKind::Syntax
+}
+
+fn expected_error_kind(message: &str) -> ToonErrorKind {
+    use ToonErrorKind::{CountMismatch, RowWidthMismatch};
+    let descriptions = [
+        ("tabular row values", RowWidthMismatch),
+        ("keyed entry cells", RowWidthMismatch),
+        ("inline-form values", CountMismatch),
+        ("tabular rows", CountMismatch),
+        ("list-form items", CountMismatch),
+        ("keyed entries", CountMismatch),
+    ];
+    descriptions
+        .into_iter()
+        .find_map(|(text, kind)| message.contains(text).then_some(kind))
+        .unwrap_or(ToonErrorKind::Syntax)
 }
 
 pub fn parse(input: &str) -> Result<FlatJson, ToonDiagnostic> {
