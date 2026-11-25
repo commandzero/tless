@@ -66,7 +66,7 @@ impl<'a> JsonParser<'a> {
             .ok_or_else(|| "Unexpected EOF".to_string())
     }
 
-    fn unexpected_token(&mut self) -> Result<usize, String> {
+    fn unexpected_token<T>(&mut self) -> Result<T, String> {
         Err(format!("Unexpected token: {:?}", self.peek_token()))
     }
 
@@ -92,9 +92,7 @@ impl<'a> JsonParser<'a> {
             let next_top_level = self.parse_elem()?;
             num_child += 1;
 
-            self.rows[next_top_level].prev_sibling = OptionIndex::from(prev_top_level);
-            self.rows[next_top_level].index_in_parent = num_child;
-            self.rows[prev_top_level].next_sibling = OptionIndex::from(next_top_level);
+            self.link_siblings(next_top_level, OptionIndex::from(prev_top_level), num_child);
 
             prev_top_level = next_top_level;
         }
@@ -108,8 +106,12 @@ impl<'a> JsonParser<'a> {
         self.max_depth = self.max_depth.max(self.parents.len());
 
         match self.peek_token()? {
-            JsonToken::OpenCurly => self.parse_object(),
-            JsonToken::OpenSquare => self.parse_array(),
+            JsonToken::OpenCurly => {
+                self.parse_container(ContainerType::Object, JsonToken::CloseCurly)
+            }
+            JsonToken::OpenSquare => {
+                self.parse_container(ContainerType::Array, JsonToken::CloseSquare)
+            }
             JsonToken::Null => self.parse_null(),
             JsonToken::True => self.parse_bool(true),
             JsonToken::False => self.parse_bool(false),
@@ -126,231 +128,133 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_array(&mut self) -> Result<usize, String> {
-        let open_value = Value::OpenContainer {
-            container_type: ContainerType::Array,
-            collapsed: false,
-            // To be set when parsing is complete.
-            first_child: 0,
-            close_index: 0,
-        };
-
-        let array_open_index = self.create_row(open_value, 1);
-
-        self.parents.push(array_open_index);
-        self.pretty_printed.push('[');
+    fn parse_container(
+        &mut self,
+        container_type: ContainerType,
+        closing_token: JsonToken,
+    ) -> Result<usize, String> {
+        let open = self.create_row(
+            Value::OpenContainer {
+                container_type,
+                collapsed: false,
+                first_child: 0,
+                close_index: 0,
+            },
+            1,
+        );
+        self.parents.push(open);
+        self.pretty_printed.push_str(container_type.open_str());
         self.advance_and_consume_whitespace();
 
-        let mut prev_sibling = OptionIndex::NIL;
-        let mut num_children = 0;
+        let mut previous = OptionIndex::NIL;
+        let mut position = 0;
+        while self.peek_token()? != closing_token {
+            let child = self.parse_child(container_type, position)?;
+            self.link_siblings(child, previous, position);
+            previous = OptionIndex::from(child);
+            position += 1;
 
-        loop {
-            if num_children != 0 {
-                match self.peek_token()? {
-                    // Great, we needed a comma; eat it up.
-                    JsonToken::Comma => self.advance_and_consume_whitespace(),
-                    // We're going to peek again below and check for ']', so we don't
-                    // need to do anything.
-                    JsonToken::CloseSquare => {}
-                    _ => return self.unexpected_token(),
-                }
+            match self.peek_token()? {
+                JsonToken::Comma => self.advance_and_consume_whitespace(),
+                token if token == closing_token => break,
+                _ => return self.unexpected_token(),
             }
-
-            if self.peek_token()? == JsonToken::CloseSquare {
-                self.advance();
-                break;
-            }
-
-            // Add comma to pretty printed version _after_ we know
-            // we didn't see a CloseSquare so we don't add a trailing comma.
-            if num_children != 0 {
-                self.pretty_printed.push_str(", ");
-            }
-
-            let child = self.parse_elem()?;
-            self.consume_whitespace();
-
-            if num_children == 0 {
-                match self.rows[array_open_index].value {
-                    Value::OpenContainer {
-                        ref mut first_child,
-                        ..
-                    } => {
-                        *first_child = child;
-                    }
-                    _ => panic!("Must be Array!"),
-                }
-            }
-
-            self.rows[child].prev_sibling = prev_sibling;
-            self.rows[child].index_in_parent = num_children;
-            if let Some(prev) = prev_sibling.as_option() {
-                self.rows[prev].next_sibling = OptionIndex::from(child);
-            }
-
-            num_children += 1;
-            prev_sibling = OptionIndex::from(child);
         }
 
+        self.advance();
         self.parents.pop();
-
-        if num_children == 0 {
-            self.rows[array_open_index].value = Value::EmptyArray;
-            self.rows[array_open_index].range.end = self.rows[array_open_index].range.start + 2;
-        } else {
-            let close_value = Value::CloseContainer {
-                container_type: ContainerType::Array,
-                collapsed: false,
-                last_child: prev_sibling.unwrap(),
-                open_index: array_open_index,
-            };
-
-            let array_close_index = self.create_row(close_value, 1);
-
-            // Update end of the Array range; we add the ']' to pretty_printed
-            // below, hence the + 1.
-            self.rows[array_open_index].range.end = self.pretty_printed.len() + 1;
-
-            match self.rows[array_open_index].value {
-                Value::OpenContainer {
-                    ref mut close_index,
-                    ..
-                } => {
-                    *close_index = array_close_index;
-                }
-                _ => panic!("Must be Array!"),
-            }
-        }
-
-        self.pretty_printed.push(']');
-        Ok(array_open_index)
+        self.finish_container(container_type, open, previous);
+        self.pretty_printed.push_str(container_type.close_str());
+        Ok(open)
     }
 
-    fn parse_object(&mut self) -> Result<usize, String> {
-        let open_value = Value::OpenContainer {
-            container_type: ContainerType::Object,
-            collapsed: false,
-            // To be set when parsing is complete.
-            first_child: 0,
-            close_index: 0,
+    fn parse_child(
+        &mut self,
+        container_type: ContainerType,
+        position: usize,
+    ) -> Result<usize, String> {
+        if position != 0 {
+            self.pretty_printed.push_str(", ");
+        }
+
+        let key_range = match container_type {
+            ContainerType::Object => {
+                if position == 0 {
+                    self.pretty_printed.push(' ');
+                }
+                Some(self.parse_key()?)
+            }
+            ContainerType::Array => None,
         };
+        let child = self.parse_elem()?;
+        self.rows[child].key_range = key_range;
+        self.consume_whitespace();
+        Ok(child)
+    }
 
-        let object_open_index = self.create_row(open_value, 1);
+    fn parse_key(&mut self) -> Result<std::ops::Range<usize>, String> {
+        if self.peek_token()? != JsonToken::String {
+            return self.unexpected_token();
+        }
 
-        self.parents.push(object_open_index);
-        self.pretty_printed.push('{');
+        let start = self.pretty_printed.len();
+        self.pretty_printed.push_str(self.tokenizer.slice());
+        let range = start..self.pretty_printed.len();
         self.advance_and_consume_whitespace();
 
-        let mut prev_sibling = OptionIndex::NIL;
-        let mut num_children = 0;
-
-        loop {
-            if num_children != 0 {
-                match self.peek_token()? {
-                    // Great, we needed a comma; eat it up.
-                    JsonToken::Comma => self.advance_and_consume_whitespace(),
-                    // We're going to peek again below and check for '}', so we don't
-                    // need to do anything.
-                    JsonToken::CloseCurly => {}
-                    _ => return self.unexpected_token(),
-                }
-            }
-
-            if self.peek_token()? == JsonToken::CloseCurly {
-                self.advance();
-                break;
-            }
-
-            // Add comma to pretty printed version _after_ we know
-            // we didn't see a CloseSquare so we don't add a trailing comma.
-            if num_children != 0 {
-                self.pretty_printed.push_str(", ");
-            } else {
-                // Add space inside objects.
-                self.pretty_printed.push(' ');
-            }
-
-            if self.peek_token()? != JsonToken::String {
-                return self.unexpected_token();
-            }
-
-            let key_range = {
-                let key_range_start = self.pretty_printed.len();
-                let key_span_len = self.tokenizer.span().len();
-                let key_range = key_range_start..key_range_start + key_span_len;
-
-                self.pretty_printed.push_str(self.tokenizer.slice());
-                self.advance_and_consume_whitespace();
-                key_range
-            };
-
-            if self.peek_token()? != JsonToken::Colon {
-                return self.unexpected_token();
-            }
-            self.advance_and_consume_whitespace();
-            self.pretty_printed.push_str(": ");
-
-            let child = self.parse_elem()?;
-            self.rows[child].key_range = Some(key_range);
-            self.consume_whitespace();
-
-            if num_children == 0 {
-                match self.rows[object_open_index].value {
-                    Value::OpenContainer {
-                        ref mut first_child,
-                        ..
-                    } => {
-                        *first_child = child;
-                    }
-                    _ => panic!("Must be Object!"),
-                }
-            }
-
-            self.rows[child].prev_sibling = prev_sibling;
-            self.rows[child].index_in_parent = num_children;
-            if let Some(prev) = prev_sibling.as_option() {
-                self.rows[prev].next_sibling = OptionIndex::from(child);
-            }
-
-            num_children += 1;
-            prev_sibling = OptionIndex::from(child);
+        if self.peek_token()? != JsonToken::Colon {
+            return self.unexpected_token();
         }
+        self.advance_and_consume_whitespace();
+        self.pretty_printed.push_str(": ");
+        Ok(range)
+    }
 
-        self.parents.pop();
+    fn link_siblings(&mut self, child: usize, previous: OptionIndex, position: usize) {
+        self.rows[child].prev_sibling = previous;
+        self.rows[child].index_in_parent = position;
+        if let Some(previous) = previous.as_option() {
+            self.rows[previous].next_sibling = OptionIndex::from(child);
+        }
+    }
 
-        if num_children == 0 {
-            self.rows[object_open_index].value = Value::EmptyObject;
-            self.rows[object_open_index].range.end = self.rows[object_open_index].range.start + 2;
-        } else {
-            // Print space inside closing brace.
+    fn finish_container(&mut self, container_type: ContainerType, open: usize, last: OptionIndex) {
+        self.rows[open].value = match last.as_option() {
+            Some(last_child) => self.close_container(container_type, open, last_child),
+            None => match container_type {
+                ContainerType::Array => Value::EmptyArray,
+                ContainerType::Object => Value::EmptyObject,
+            },
+        };
+        self.rows[open].range.end = self.pretty_printed.len() + 1;
+    }
+
+    fn close_container(
+        &mut self,
+        container_type: ContainerType,
+        open: usize,
+        last_child: usize,
+    ) -> Value {
+        if matches!(container_type, ContainerType::Object) {
             self.pretty_printed.push(' ');
-
-            let close_value = Value::CloseContainer {
-                container_type: ContainerType::Object,
-                collapsed: false,
-                last_child: prev_sibling.unwrap(),
-                open_index: object_open_index,
-            };
-
-            let object_close_index = self.create_row(close_value, 1);
-
-            // Update end of the Object range; we add the '}' to pretty_printed
-            // below, hence the + 1.
-            self.rows[object_open_index].range.end = self.pretty_printed.len() + 1;
-
-            match self.rows[object_open_index].value {
-                Value::OpenContainer {
-                    ref mut close_index,
-                    ..
-                } => {
-                    *close_index = object_close_index;
-                }
-                _ => panic!("Must be Object!"),
-            }
         }
 
-        self.pretty_printed.push('}');
-        Ok(object_open_index)
+        let close_index = self.create_row(
+            Value::CloseContainer {
+                container_type,
+                collapsed: false,
+                last_child,
+                open_index: open,
+            },
+            1,
+        );
+        Value::OpenContainer {
+            container_type,
+            collapsed: false,
+            // Children are appended in document order immediately after the opening row.
+            first_child: open + 1,
+            close_index,
+        }
     }
 
     fn parse_null(&mut self) -> Result<usize, String> {
