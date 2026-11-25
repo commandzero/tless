@@ -144,7 +144,7 @@ fn assert_escaped_header_highlight(
     query: &Range<usize>,
     focused_field: Option<Index>,
 ) {
-    use crate::lineprinter::{LineViewport, paint};
+    use crate::lineprinter::{LinePainter, LineViewport};
     use crate::terminal::Terminal;
     use crate::terminal::test::VisibleEscapesTerminal;
 
@@ -153,16 +153,10 @@ fn assert_escaped_header_highlight(
         None => (0..0, 0..0, "_FG(Yellow)__U_n"),
     };
     let mut terminal = VisibleEscapesTerminal::new(false, true);
-    paint(
-        &mut terminal,
-        header,
-        selection,
-        LineViewport::new(header, 0, 0),
-        80,
-        std::slice::from_ref(query),
-        &current_match,
-    )
-    .unwrap();
+    LinePainter::new(header, selection)
+        .with_search(std::slice::from_ref(query), &current_match)
+        .paint(&mut terminal, LineViewport::new(header, 0, 0), 80)
+        .unwrap();
     assert!(
         terminal.output().contains(highlight),
         "{}",

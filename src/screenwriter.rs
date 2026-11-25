@@ -515,30 +515,18 @@ impl ScreenWriter {
         let logical = row.logical_line;
         let line = viewer.rendered_line(logical);
         let focused_nodes = focused_node_range(viewer, logical == frame.focused_line);
-        if viewer.is_wrapped_line(logical) {
-            return lp::paint_wrapped_themed(
-                &mut self.terminal,
-                &self.theme,
-                line,
-                focused_nodes,
-                row,
-                width,
-                frame.matches,
-                &frame.current_match,
-            );
+        let viewport =
+            (!viewer.is_wrapped_line(logical)).then(|| self.line_viewport(viewer, logical));
+        let line = viewport.map_or(Cow::Borrowed(line), |viewport| {
+            fit_document_line(line, viewport, width)
+        });
+        let painter = lp::LinePainter::new(&line, focused_nodes)
+            .with_theme(&self.theme)
+            .with_search(frame.matches, &frame.current_match);
+        match viewport {
+            Some(viewport) => painter.paint(&mut self.terminal, viewport, width),
+            None => painter.paint_wrapped(&mut self.terminal, row, width),
         }
-        let viewport = self.line_viewport(viewer, logical);
-        let line = fit_document_line(line, viewport, width);
-        lp::paint_themed(
-            &mut self.terminal,
-            &self.theme,
-            &line,
-            focused_nodes,
-            viewport,
-            width,
-            frame.matches,
-            &frame.current_match,
-        )
     }
 
     pub fn get_command(&mut self, prompt: &str) -> rustyline::Result<String> {
