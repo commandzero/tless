@@ -652,8 +652,7 @@ fn map_sources(flat: &FlatJson, line: &mut DisplayLine) {
                     raw,
                     parsed,
                     &line.text[span.range.clone()],
-                    source.start,
-                    span.range.start,
+                    (source.start, span.range.start),
                 );
             }
             if span.source_map.is_empty() && raw == &line.text[span.range.clone()] {
@@ -762,7 +761,7 @@ pub fn highlight_shared_fields(
                     _ => None,
                 };
                 let maps =
-                    string_source_map(raw, parsed, rendered, source.start, column.range.start);
+                    string_source_map(raw, parsed, rendered, (source.start, column.range.start));
                 if maps.is_empty() {
                     mark(source, &column.range);
                 }

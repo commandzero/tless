@@ -172,6 +172,10 @@ fn uses_other_delimiter(options: &Value) -> bool {
     options["delimiter"].is_string() && options["delimiter"] != ","
 }
 
+pub(crate) fn uses_encode_profile(options: &Value) -> bool {
+    !uses_other_indentation(options) && !uses_other_delimiter(options)
+}
+
 #[test]
 fn pinned_encode_profile() {
     let mut selected = 0;
@@ -180,7 +184,7 @@ fn pinned_encode_profile() {
         let file = &fixture.group;
         let case = &fixture.metadata;
         let options = &case["options"];
-        if uses_other_indentation(options) || uses_other_delimiter(options) {
+        if !uses_encode_profile(options) {
             excluded += 1;
             eprintln!(
                 "EXCLUDED {} / {}: outside two-space comma profile",
