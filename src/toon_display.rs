@@ -21,7 +21,7 @@ use scalar_text::{
     bare_key, compact_key, decode_string, quote_json, quote_json_into, quote_key,
     value_needs_quotes,
 };
-use source_map::string_source_map;
+use source_map::mapped_range;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenRole {
@@ -67,14 +67,7 @@ impl Span {
         self.source_map
             .iter()
             .filter(|map| overlaps(&map.source))
-            .map(|map| {
-                if map.source.len() == map.display.len() {
-                    map.display.start + query.start.max(map.source.start) - map.source.start
-                        ..map.display.start + query.end.min(map.source.end) - map.source.start
-                } else {
-                    map.display.clone()
-                }
-            })
+            .map(|map| mapped_range(&map.source, &map.display, query))
             .collect()
     }
 }

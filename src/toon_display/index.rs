@@ -390,3 +390,21 @@ fn matching_field_types(flat: &FlatJson, left: usize, right: usize) -> bool {
         nonempty_object(&flat[left]) && nonempty_object(&flat[right])
     }
 }
+
+pub(super) fn same_field_path(flat: &FlatJson, mut first: usize, mut focused: usize) -> bool {
+    loop {
+        if flat[first].index_in_parent != flat[focused].index_in_parent {
+            return false;
+        }
+        let a = flat[first].parent.unwrap();
+        let b = flat[focused].parent.unwrap();
+        if flat[a].depth != flat[b].depth {
+            return false;
+        }
+        if flat[a].parent == flat[b].parent {
+            return true;
+        }
+        first = a;
+        focused = b;
+    }
+}

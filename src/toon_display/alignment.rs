@@ -119,15 +119,18 @@ impl Measurement<'_> {
         let mut width = 0;
         for owner in node..end {
             for warning in self.analysis.warnings(owner) {
-                super::format::warning_parts(
-                    self.flat,
-                    owner,
-                    warning,
-                    width == 0,
-                    owner != node,
-                    &mut self.quoted,
-                    |part, _| width += UnicodeWidthStr::width(part),
-                );
+                let position = super::format::WarningPosition {
+                    node: owner,
+                    first: width == 0,
+                    field: owner != node,
+                };
+                let mut text = super::format::WarningText {
+                    flat: self.flat,
+                    quoted: &mut self.quoted,
+                };
+                text.parts(warning, position, |part, _| {
+                    width += UnicodeWidthStr::width(part)
+                });
             }
         }
         width

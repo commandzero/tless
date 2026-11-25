@@ -274,14 +274,9 @@ impl Layout {
         focused: usize,
         alignment: Option<&super::alignment::TableMetrics>,
     ) -> DisplayLine {
-        super::format::row(
-            flat,
-            &self.analysis,
-            &self.geometry,
+        super::format::Formatter::new(flat, self, focused, alignment).row(
             visible.descriptor,
             visible.collapsed.then_some(visible.owner),
-            focused,
-            alignment,
         )
     }
 
@@ -292,6 +287,6 @@ impl Layout {
         matches: &[Range<usize>],
         current: &Range<usize>,
     ) {
-        super::format::highlight_shared_fields(flat, &self.analysis, line, matches, current);
+        super::format::highlight_shared_fields(flat, &self.analysis, line, (matches, current));
     }
 }

@@ -1,6 +1,7 @@
 //! Map a rendered string back to source bytes without retaining each character.
-use super::SourceMap;
 use super::scalar_text::{decode_string, escaped_literal};
+use super::{DisplayLine, FlatJson, SourceMap, Span, TokenRole};
+use crate::flatjson::KeyValue;
 use std::ops::Range;
 
 pub(super) fn string_source_map(
@@ -135,4 +136,58 @@ fn can_join(left: &SourceMap, right: &SourceMap) -> bool {
         && left.display.end == right.display.start
         && left.source.len() == left.display.len()
         && right.source.len() == right.display.len()
+}
+
+pub(super) fn map_sources(flat: &FlatJson, line: &mut DisplayLine) {
+    for span in &mut line.spans {
+        refresh_span_mapping(flat, &line.text, span);
+    }
+}
+
+fn refresh_span_mapping(flat: &FlatJson, text: &str, span: &mut Span) {
+    let Some(source) = &span.source else {
+        return;
+    };
+    let raw = &flat.1[source.clone()];
+    let rendered = &text[span.range.clone()];
+    if raw.starts_with('"') && mapped_string_role(span.role) {
+        let parsed = parsed_string(flat, span.node, span.role);
+        span.source_map =
+            string_source_map(raw, parsed, rendered, (source.start, span.range.start));
+    }
+    if span.source_map.is_empty() && raw == rendered {
+        span.source_map.push(SourceMap {
+            source: source.clone(),
+            display: span.range.clone(),
+        });
+    }
+}
+
+fn mapped_string_role(role: TokenRole) -> bool {
+    matches!(
+        role,
+        TokenRole::Key | TokenRole::FieldDefinition | TokenRole::String
+    )
+}
+
+pub(super) fn parsed_string(flat: &FlatJson, node: usize, role: TokenRole) -> Option<&str> {
+    if role == TokenRole::String {
+        return flat.string_value(node);
+    }
+    match flat.key_value(node) {
+        Some(KeyValue::String(value)) => Some(value.as_str()),
+        _ => None,
+    }
+}
+
+pub(super) fn mapped_range(
+    source: &Range<usize>,
+    display: &Range<usize>,
+    query: &Range<usize>,
+) -> Range<usize> {
+    if source.len() != display.len() {
+        return display.clone();
+    }
+    display.start + query.start.max(source.start) - source.start
+        ..display.start + query.end.min(source.end) - source.start
 }

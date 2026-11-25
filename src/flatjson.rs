@@ -225,9 +225,6 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn is_primitive(&self) -> bool {
-        self.value.is_primitive()
-    }
     pub fn is_container(&self) -> bool {
         self.value.is_container()
     }
@@ -334,10 +331,6 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn is_primitive(&self) -> bool {
-        !self.is_container()
-    }
-
     pub fn is_container(&self) -> bool {
         matches!(
             self,
