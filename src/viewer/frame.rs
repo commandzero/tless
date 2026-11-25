@@ -2,8 +2,7 @@ use super::Cursor;
 use super::JsonViewer;
 use crate::toon_display::DisplayLine;
 use crate::types::TTYDimensions;
-use crate::wrapped_view::PhysicalRow;
-use crate::wrapped_view::rows;
+use crate::wrapped_view::{PhysicalRow, Wrap, rows};
 use std::ops::Range;
 
 impl JsonViewer {
@@ -70,9 +69,10 @@ impl JsonViewer {
         rows(
             logical,
             &line.text,
-            self.wrap_width,
-            self.wrap_indentation,
-            self.is_wrapped_line(logical),
+            self.is_wrapped_line(logical).then_some(Wrap {
+                width: self.wrap_width,
+                indentation: self.wrap_indentation,
+            }),
         )
     }
 
@@ -94,15 +94,7 @@ impl JsonViewer {
                 0
             };
             let remaining = height - self.physical_rows.len();
-            let physical = rows(
-                logical,
-                &line.text,
-                self.wrap_width,
-                self.wrap_indentation,
-                self.is_wrapped_line(logical),
-            )
-            .skip(skip)
-            .take(remaining);
+            let physical = self.row_iter(logical, &line).skip(skip).take(remaining);
             self.physical_rows.extend(physical);
             self.frame.push((logical, line));
             if self.physical_rows.len() == height {

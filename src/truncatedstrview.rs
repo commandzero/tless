@@ -139,28 +139,23 @@ impl TruncatedStrView {
         available_space > 0 || (available_space == 0 && s.is_empty())
     }
 
-    /// Create a truncated view of a string that shows the beginning of
-    /// the string and elides the end if there is not sufficient space.
+    /// Show the beginning of the string, eliding its end if necessary.
     pub fn init_start(s: &str, available_space: isize) -> TruncatedStrView {
-        if !Self::can_str_fit_at_all(s, available_space) {
-            return Self::init_no_view(available_space);
-        }
-
-        let mut adj = RangeAdjuster::init_start(s, available_space);
-        adj.fill_right();
-        adj.to_view()
+        Self::init(s, available_space, Side::Left)
     }
 
-    /// Create a truncated view of a string that shows the end of the
-    /// string and elides the beginning if there is not sufficient space.
+    /// Show the end of the string, eliding its beginning if necessary.
     pub fn init_back(s: &str, available_space: isize) -> TruncatedStrView {
+        Self::init(s, available_space, Side::Right)
+    }
+
+    fn init(s: &str, available_space: isize, side: Side) -> TruncatedStrView {
         if !Self::can_str_fit_at_all(s, available_space) {
             return Self::init_no_view(available_space);
         }
-
-        let mut adj = RangeAdjuster::init_back(s, available_space);
-        adj.fill_left();
-        adj.to_view()
+        let mut adjuster = RangeAdjuster::init_at_index(s, available_space, side.limit(s));
+        adjuster.fill(side.opposite());
+        adjuster.to_view()
     }
 
     // Create a TruncatedStrView that indicates that the string cannot
@@ -195,84 +190,39 @@ impl TruncatedStrView {
         self.range.unwrap().adjuster(s, self.available_space)
     }
 
-    /// Scrolls a string view to the right by at least the specified
-    /// number of characters (unless the end of the string is reached).
+    /// Scroll by at least the requested grapheme count, up to the string's end.
     #[cfg(test)]
     pub fn scroll_right(&self, s: &str, count: usize) -> TruncatedStrView {
-        if self.range.is_none() {
-            return *self;
-        }
-
-        // If we only have two columns, we can't represent the middle
-        // of the string, so when we scroll right we'll just jump to
-        // the end.
-        if self.available_space <= 2 {
-            return Self::init_back(s, self.available_space);
-        }
-
-        let mut adjuster = self.range_adjuster(s);
-        // Show another character on the right.
-        adjuster.expand_right(count);
-        // Shrink from the left to fit in available space again.
-        adjuster.shrink_left_to_fit();
-        // Since we might have gotten rid of a wide character on
-        // the left, we might still have space to fill, so let's
-        // expand on the right more.
-        //
-        // But, if start == end, that means we expanded to show
-        // a multi-width character, and then shrunk past it because
-        // there wasn't enough space. In this case, don't fill because
-        // then we'll just skip that character. We actually want to show
-        // a replacement character in this case.
-        if adjuster.start != adjuster.end {
-            adjuster.fill_right();
-        }
-        adjuster.to_view()
+        self.scroll(s, count, Side::Right)
     }
 
-    /// Scrolls a string view to the left by at least the specified
-    /// number of characters (unless the start of the string is reached).
+    /// Scroll by at least the requested grapheme count, up to the string's start.
     #[cfg(test)]
     pub fn scroll_left(&self, s: &str, count: usize) -> TruncatedStrView {
+        self.scroll(s, count, Side::Left)
+    }
+
+    #[cfg(test)]
+    fn scroll(&self, s: &str, count: usize, side: Side) -> TruncatedStrView {
         if self.range.is_none() {
             return *self;
         }
 
-        // If we only have two columns, we can't represent the middle
-        // of the string, so when we scroll left we'll just jump to
-        // the start.
+        // Two columns cannot show a middle portion between ellipses.
         if self.available_space <= 2 {
-            return Self::init_start(s, self.available_space);
+            return Self::init(s, self.available_space, side);
         }
 
         let mut adjuster = self.range_adjuster(s);
-        // Show another character on the left.
-        adjuster.expand_left(count);
-        // Shrink from the right to fit in available space again.
-        adjuster.shrink_right_to_fit();
-        // Since we might have gotten rid of a wide character on
-        // the right, we might still have space to fill, so let's
-        // expand on the left more.
-        //
-        // But, if start == end, that means we expanded to show
-        // a multi-width character, and then shrunk past it because
-        // there wasn't enough space. In this case, don't fill because
-        // then we'll just skip that character. We actually want to show
-        // a replacement character in this case.
+        adjuster.extend(side, count);
+        adjuster.shrink_to_fit(side.opposite());
+        // Leave an empty view in place so it shows the overwide grapheme's
+        // replacement character instead of skipping to the next grapheme.
         if adjuster.start != adjuster.end {
-            adjuster.fill_left();
+            adjuster.fill(side);
         }
         adjuster.to_view()
     }
-
-    // Jump from whatever portion of the string is currently represented
-    // to showing either the start or the end of the string.
-    //
-    // Normally we will always jump to the back of the string, unless
-    // we are already showing the back of the string, in which case we
-    // will jump to the front.
-
-    // Update the string view with a new amount of available space.
 
     // Expand a view to fit into more available space.
     #[cfg(test)]
@@ -281,31 +231,11 @@ impl TruncatedStrView {
         let mut adjuster = self.range_adjuster(s);
         adjuster.available_space = available_space;
 
-        // When showing a prefix, we want to fill on the right:
-        //   a… -> abc…
-        // When showing a suffix, we want to fill on the left:
-        //   …z -> …xyz
-        // When showing the middle of the string, we want to fill
-        // along the right, and then if we still have space available,
-        // fill back on the left:
-        //   …m… -> …mno…
-        //   …x… -> …wxyz
+        adjuster.fill(Side::Right);
+        // Fill on the left only after the suffix becomes visible. Otherwise,
+        // a wide grapheme on the right should keep the viewport still.
         if adjuster.end == s.len() {
-            adjuster.fill_left();
-        } else {
-            adjuster.fill_right();
-            // Only try to then fill in the left if we reached all the way
-            // to the right. Otherwise, we might not expand to the right
-            // because the next character is wide, but we could expand to
-            // the left. Without this we'd do something like this:
-            //
-            // s = "a👍b👀c😱d"
-            //
-            // When expanding "…👀c…" by one column, we can't add the '😱',
-            // but we don't to expand on the left and show "…b👀c…".
-            if adjuster.end == s.len() {
-                adjuster.fill_left();
-            }
+            adjuster.fill(Side::Left);
         }
         adjuster.to_view()
     }
@@ -333,9 +263,9 @@ impl TruncatedStrView {
         // If we're showing a suffix of the string, shrink from the left
         // so we keep showing the end, otherwise shrink from the right.
         if adjuster.start > 0 && adjuster.end == s.len() {
-            adjuster.shrink_left_to_fit();
+            adjuster.shrink_to_fit(Side::Left);
         } else {
-            adjuster.shrink_right_to_fit();
+            adjuster.shrink_to_fit(Side::Right);
         }
 
         adjuster.to_view()
@@ -368,7 +298,7 @@ impl TruncatedStrView {
 
         // Make sure to include entire match if possible.
         while adjuster.end < end && adjuster.used_space < self.available_space {
-            adjuster.expand_right(1);
+            adjuster.extend(Side::Right, 1);
         }
 
         // Then fill from both sides to keep it centered.
@@ -378,19 +308,36 @@ impl TruncatedStrView {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Side {
+    Left,
+    Right,
+}
+
+impl Side {
+    fn opposite(self) -> Self {
+        match self {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
+
+    fn limit(self, text: &str) -> usize {
+        match self {
+            Self::Left => 0,
+            Self::Right => text.len(),
+        }
+    }
+
+    fn take<'a>(self, graphemes: &mut unicode_segmentation::Graphemes<'a>) -> Option<&'a str> {
+        match self {
+            Self::Left => graphemes.next_back(),
+            Self::Right => graphemes.next(),
+        }
+    }
+}
+
 impl<'a> RangeAdjuster<'a> {
-    /// Initialize a RangeAdjuster at the beginning of a string, but is
-    /// not showing any part of the string.
-    pub fn init_start(s: &'a str, available_space: isize) -> Self {
-        RangeAdjuster::init_at_index(s, available_space, 0)
-    }
-
-    /// Initialize a RangeAdjuster at the end of a string, but is not showing
-    /// any part of the string.
-    pub fn init_back(s: &'a str, available_space: isize) -> Self {
-        RangeAdjuster::init_at_index(s, available_space, s.len())
-    }
-
     /// Initialize a RangeAdjuster at an arbitrary spot in a string, but
     /// is not showing any part of the string.
     pub fn init_at_index(s: &'a str, available_space: isize, index: usize) -> Self {
@@ -413,203 +360,93 @@ impl<'a> RangeAdjuster<'a> {
         }
     }
 
-    /// Update the range to show another character on the right side.
-    #[cfg(test)]
-    pub fn expand_right(&mut self, count: usize) {
-        let mut right_graphemes = self.s[self.end..].graphemes(true);
-        for _ in 0..count {
-            if let Some(grapheme) = right_graphemes.next() {
-                self.end += grapheme.len();
-                self.used_space += UnicodeWidthStr::width(grapheme) as isize;
-                if self.end == self.s.len() {
-                    // No more trailing ellipsis.
-                    self.used_space -= 1;
-                }
-            } else {
-                break;
-            }
+    fn outside(&self, side: Side) -> unicode_segmentation::Graphemes<'a> {
+        match side {
+            Side::Left => self.s[..self.start].graphemes(true),
+            Side::Right => self.s[self.end..].graphemes(true),
         }
     }
 
-    /// Update the range to show another character on the left side.
-    #[cfg(test)]
-    pub fn expand_left(&mut self, count: usize) {
-        let mut left_graphemes = self.s[..self.start].graphemes(true);
-        for _ in 0..count {
-            if let Some(grapheme) = left_graphemes.next_back() {
-                self.start -= grapheme.len();
-                self.used_space += UnicodeWidthStr::width(grapheme) as isize;
-                if self.start == 0 {
-                    // No more leading ellipsis.
-                    self.used_space -= 1;
-                }
-            } else {
-                break;
-            }
+    fn edge(&mut self, side: Side) -> &mut usize {
+        match side {
+            Side::Left => &mut self.start,
+            Side::Right => &mut self.end,
         }
     }
 
-    /// Add as many characters to the right side of the string as we
-    /// can without exceeding the available space.
-    pub fn fill_right(&mut self) {
-        let right_graphemes = self.s[self.end..].graphemes(true);
-        // Note that we should consider the next grapheme even if we
-        // have already used up all the available space, because the
-        // next grapheme might be the end of the string, and we'd no
-        // longer have to show the ellipsis.
-        //
-        // This allows converting "…xy…" to "…xyz".
-        for grapheme in right_graphemes {
-            if !self.add_grapheme_to_right_if_it_will_fit(grapheme) {
-                break;
-            }
-        }
+    fn expanded_edge(&self, side: Side, grapheme: &str) -> (usize, isize) {
+        let position = match side {
+            Side::Left => self.start - grapheme.len(),
+            Side::Right => self.end + grapheme.len(),
+        };
+        // Reaching the boundary frees one cell for the ellipsis.
+        let ellipsis = isize::from(position == side.limit(self.s));
+        let used = self.used_space + UnicodeWidthStr::width(grapheme) as isize - ellipsis;
+        (position, used)
     }
 
-    // Adds a grapheme to the right side of a view if it will fit.
-    fn add_grapheme_to_right_if_it_will_fit(&mut self, grapheme: &str) -> bool {
-        let new_end = self.end + grapheme.len();
-        let mut new_used_space = self.used_space + UnicodeWidthStr::width(grapheme) as isize;
-
-        if new_end == self.s.len() {
-            // No more trailing ellipsis.
-            new_used_space -= 1;
-        }
-
-        if new_used_space > self.available_space {
+    fn add_if_fits(&mut self, side: Side, grapheme: &str) -> bool {
+        let (position, used) = self.expanded_edge(side, grapheme);
+        if used > self.available_space {
             return false;
         }
-
-        self.end = new_end;
-        self.used_space = new_used_space;
-
+        *self.edge(side) = position;
+        self.used_space = used;
         true
     }
 
-    /// Add as many characters to the left side of the string as we
-    /// can without exceeding the available space.
-    pub fn fill_left(&mut self) {
-        let mut left_graphemes = self.s[..self.start].graphemes(true);
-        // Note that we should consider the previous grapheme even if
-        // we have already used up all the available space, because
-        // the previous grapheme might be the start of the string, and
-        // we'd no longer have to show the ellipsis.
-        //
-        // This allows converting "…bc…" to "abc…".
-        while let Some(grapheme) = left_graphemes.next_back() {
-            if !self.add_grapheme_to_left_if_it_will_fit(grapheme) {
+    // Try the next grapheme even if there is no spare cell. It can replace
+    // the ellipsis at the boundary with no increase in width.
+    fn fill(&mut self, side: Side) {
+        let mut graphemes = self.outside(side);
+        while let Some(grapheme) = side.take(&mut graphemes) {
+            if !self.add_if_fits(side, grapheme) {
                 break;
             }
         }
     }
 
-    // Adds a grapheme to the left side of a view if it will fit.
-    fn add_grapheme_to_left_if_it_will_fit(&mut self, grapheme: &str) -> bool {
-        let new_start = self.start - grapheme.len();
-        let mut new_used_space = self.used_space + UnicodeWidthStr::width(grapheme) as isize;
-
-        if new_start == 0 {
-            // No more leading ellipsis.
-            new_used_space -= 1;
+    #[cfg(test)]
+    fn extend(&mut self, side: Side, count: usize) {
+        let mut graphemes = self.outside(side);
+        for _ in 0..count {
+            let Some(grapheme) = side.take(&mut graphemes) else {
+                break;
+            };
+            let (position, used) = self.expanded_edge(side, grapheme);
+            *self.edge(side) = position;
+            self.used_space = used;
         }
-
-        if new_used_space > self.available_space {
-            return false;
-        }
-
-        self.start = new_start;
-        self.used_space = new_used_space;
-
-        true
     }
 
-    /// Add as many characters to each side of the string, so that
-    /// the initial visible portion remains centered.
+    /// Add characters alternately by occupied width to keep the view centered.
     #[cfg(test)]
-    pub fn fill_from_both_sides(&mut self) {
-        let mut left_graphemes = self.s[..self.start].graphemes(true);
-        let mut right_graphemes = self.s[self.end..].graphemes(true);
-
-        let mut width_added_to_left = 0;
-        let mut width_added_to_right = 0;
-
-        let mut more_on_left = true;
-        let mut more_on_right = true;
-
-        // Need to try to expand even when used_space == available_space
-        // to possible consume ellipses.
+    fn fill_from_both_sides(&mut self) {
+        let mut left = FillSide::new(self, Side::Left);
+        let mut right = FillSide::new(self, Side::Right);
         while self.used_space <= self.available_space {
-            let mut added_to_left = false;
-            let mut added_to_right = false;
-
-            // Add to right first
-            while !more_on_left || width_added_to_right <= width_added_to_left {
-                if let Some(grapheme) = right_graphemes.next() {
-                    let used_space_before = self.used_space;
-                    if !self.add_grapheme_to_right_if_it_will_fit(grapheme) {
-                        more_on_right = false;
-                        break;
-                    }
-                    width_added_to_right += self.used_space - used_space_before;
-                    added_to_right = true;
-                } else {
-                    more_on_right = false;
-                    break;
-                }
-            }
-
-            while !more_on_right || width_added_to_left < width_added_to_right {
-                if let Some(grapheme) = left_graphemes.next_back() {
-                    let used_space_before = self.used_space;
-                    if !self.add_grapheme_to_left_if_it_will_fit(grapheme) {
-                        more_on_left = false;
-                        break;
-                    }
-                    width_added_to_left += self.used_space - used_space_before;
-                    added_to_left = true;
-                } else {
-                    more_on_left = false;
-                    break;
-                }
-            }
-
-            if !added_to_right && !added_to_left {
+            let added_right = right.fill_until(self, &left, true);
+            let added_left = left.fill_until(self, &right, false);
+            if !added_right && !added_left {
                 break;
             }
         }
     }
 
-    /// Remove characters from the right side of the range until the
-    /// amount of used space is within the available space.
     #[cfg(test)]
-    pub fn shrink_right_to_fit(&mut self) {
-        let mut visible_graphemes = self.s[self.start..self.end].graphemes(true);
+    fn shrink_to_fit(&mut self, side: Side) {
+        let mut visible = self.s[self.start..self.end].graphemes(true);
+        let limit = side.limit(self.s);
         while self.used_space > self.available_space {
             debug_assert!(self.start < self.end);
-            let rightmost_grapheme = visible_graphemes.next_back().unwrap();
-            if self.end == self.s.len() {
-                // Add trailing ellipsis.
-                self.used_space += 1;
+            let grapheme = side.opposite().take(&mut visible).unwrap();
+            let edge = self.edge(side);
+            let ellipsis = isize::from(*edge == limit);
+            match side {
+                Side::Left => *edge += grapheme.len(),
+                Side::Right => *edge -= grapheme.len(),
             }
-            self.end -= rightmost_grapheme.len();
-            self.used_space -= UnicodeWidthStr::width(rightmost_grapheme) as isize;
-        }
-    }
-
-    /// Remove characters from the left side of the range until the
-    /// amount of used space is within the available space.
-    #[cfg(test)]
-    pub fn shrink_left_to_fit(&mut self) {
-        let mut visible_graphemes = self.s[self.start..self.end].graphemes(true);
-        while self.used_space > self.available_space {
-            debug_assert!(self.start < self.end);
-            let leftmost_grapheme = visible_graphemes.next().unwrap();
-            if self.start == 0 {
-                // Add leading ellipsis.
-                self.used_space += 1;
-            }
-            self.start += leftmost_grapheme.len();
-            self.used_space -= UnicodeWidthStr::width(leftmost_grapheme) as isize;
+            self.used_space += ellipsis - UnicodeWidthStr::width(grapheme) as isize;
         }
     }
 
@@ -649,6 +486,50 @@ impl<'a> RangeAdjuster<'a> {
             #[cfg(test)]
             available_space: self.available_space,
         }
+    }
+}
+
+#[cfg(test)]
+struct FillSide<'a> {
+    side: Side,
+    graphemes: unicode_segmentation::Graphemes<'a>,
+    added_width: isize,
+    has_more: bool,
+}
+
+#[cfg(test)]
+impl<'a> FillSide<'a> {
+    fn new(adjuster: &RangeAdjuster<'a>, side: Side) -> Self {
+        Self {
+            side,
+            graphemes: adjuster.outside(side),
+            added_width: 0,
+            has_more: true,
+        }
+    }
+
+    fn fill_until(
+        &mut self,
+        adjuster: &mut RangeAdjuster<'a>,
+        other: &Self,
+        take_ties: bool,
+    ) -> bool {
+        let mut added = false;
+        let target = other.added_width + isize::from(take_ties);
+        while !other.has_more || self.added_width < target {
+            let before = adjuster.used_space;
+            let fits = self
+                .side
+                .take(&mut self.graphemes)
+                .is_some_and(|grapheme| adjuster.add_if_fits(self.side, grapheme));
+            if !fits {
+                self.has_more = false;
+                break;
+            }
+            self.added_width += adjuster.used_space - before;
+            added = true;
+        }
+        added
     }
 }
 
@@ -828,11 +709,10 @@ mod tests {
     fn test_expand() {
         let s = "abcdefghij";
 
-        assert_expansions(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 5),
-            5,
-            vec![
+            &[
                 "abcd…",
                 "abcde…",
                 "abcdef…",
@@ -840,15 +720,16 @@ mod tests {
                 "abcdefgh…",
                 "abcdefghij",
             ],
+            TruncatedStrView::expand,
+            1,
         );
 
         let initial_state = TruncatedStrView::init_start(s, 5).scroll_right(s, 2);
 
-        assert_expansions(
+        assert_resize(
             s,
             initial_state,
-            5,
-            vec![
+            &[
                 "…def…",
                 "…defg…",
                 "…defgh…",
@@ -856,14 +737,15 @@ mod tests {
                 "…cdefghij",
                 "abcdefghij",
             ],
+            TruncatedStrView::expand,
+            1,
         );
 
         let s = "a👍b👀c😱d";
-        assert_expansions(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 5),
-            5,
-            vec![
+            &[
                 "a👍b…",
                 "a👍b…",
                 "a👍b👀…",
@@ -871,14 +753,15 @@ mod tests {
                 "a👍b👀c…",
                 "a👍b👀c😱d",
             ],
+            TruncatedStrView::expand,
+            1,
         );
         let s = "a👍b👀c😱d";
 
-        assert_expansions(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 5).scroll_right(s, 2),
-            5,
-            vec![
+            &[
                 "…👀c…",
                 "…👀c…",
                 "…👀c😱d",
@@ -886,45 +769,19 @@ mod tests {
                 "…b👀c😱d",
                 "a👍b👀c😱d",
             ],
+            TruncatedStrView::expand,
+            1,
         );
     }
 
-    #[track_caller]
-    fn assert_expansions(
-        string: &str,
-        initial_state: TruncatedStrView,
-        mut available_space: isize,
-        states: Vec<&str>,
-    ) {
-        let mut curr_state = initial_state;
-        let mut prev_formatted = rendered(string, &curr_state);
-        assert_eq!(states[0], prev_formatted);
-
-        for expansion in states.iter().skip(1) {
-            available_space += 1;
-            let next_state = curr_state.expand(string, available_space);
-            let formatted = rendered(string, &next_state);
-
-            assert_eq!(
-                expansion, &formatted,
-                "expected expand({}) to be {}",
-                prev_formatted, expansion,
-            );
-
-            curr_state = next_state;
-            prev_formatted = formatted;
-        }
-    }
-
     #[test]
-    fn test_shrink() {
+    fn test_shrink_ascii() {
         let s = "abcdefghij";
 
-        assert_shrinks(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 10),
-            10,
-            vec![
+            &[
                 "abcdefghij",
                 "abcdefgh…",
                 "abcdefg…",
@@ -936,13 +793,14 @@ mod tests {
                 "a…",
                 "…",
             ],
+            TruncatedStrView::shrink,
+            -1,
         );
 
-        assert_shrinks(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 9).scroll_right(s, 1),
-            9,
-            vec![
+            &[
                 "…cdefghij",
                 "…defghij",
                 "…efghij",
@@ -953,13 +811,14 @@ mod tests {
                 "…j",
                 "…",
             ],
+            TruncatedStrView::shrink,
+            -1,
         );
 
-        assert_shrinks(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 8).scroll_right(s, 1),
-            8,
-            vec![
+            &[
                 "…cdefgh…",
                 "…cdefg…",
                 "…cdef…",
@@ -968,14 +827,18 @@ mod tests {
                 "…c…",
                 "a…",
             ],
+            TruncatedStrView::shrink,
+            -1,
         );
+    }
 
+    #[test]
+    fn test_shrink_wide_graphemes() {
         let s = "ab👍c👀d😱efg";
-        assert_shrinks(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 11).scroll_right(s, 1),
-            11,
-            vec![
+            &[
                 "…👍c👀d😱e…",
                 "…👍c👀d😱…",
                 "…👍c👀d…",
@@ -987,49 +850,47 @@ mod tests {
                 "…�…",
                 "a…",
             ],
+            TruncatedStrView::shrink,
+            -1,
         );
 
         let s = "🦀abc";
-        assert_shrinks(
+        assert_resize(
             s,
             TruncatedStrView::init_start(s, 5),
-            5,
-            vec!["🦀abc", "🦀a…", "🦀…", "�…", "…"],
+            &["🦀abc", "🦀a…", "🦀…", "�…", "…"],
+            TruncatedStrView::shrink,
+            -1,
         );
 
         let s = "abc🦀";
-        assert_shrinks(
+        assert_resize(
             s,
             TruncatedStrView::init_back(s, 4),
-            4,
-            vec!["…c🦀", "…🦀", "…�", "…"],
+            &["…c🦀", "…🦀", "…�", "…"],
+            TruncatedStrView::shrink,
+            -1,
         );
     }
 
     #[track_caller]
-    fn assert_shrinks(
+    fn assert_resize(
         string: &str,
-        initial_state: TruncatedStrView,
-        mut available_space: isize,
-        states: Vec<&str>,
+        mut view: TruncatedStrView,
+        states: &[&str],
+        resize: fn(&TruncatedStrView, &str, isize) -> TruncatedStrView,
+        step: isize,
     ) {
-        let mut curr_state = initial_state;
-        let mut prev_formatted = rendered(string, &curr_state);
-        assert_eq!(states[0], prev_formatted);
-
-        for shrunk in states.iter().skip(1) {
-            available_space -= 1;
-            let next_state = curr_state.shrink(string, available_space);
-            let formatted = rendered(string, &next_state);
-
+        assert_eq!(states[0], rendered(string, &view));
+        for &expected in &states[1..] {
+            let previous = rendered(string, &view);
+            let width = view.available_space + step;
+            view = resize(&view, string, width);
             assert_eq!(
-                shrunk, &formatted,
-                "expected shrink({}) to be {}",
-                prev_formatted, shrunk,
+                expected,
+                rendered(string, &view),
+                "resizing {previous:?} to {width}"
             );
-
-            curr_state = next_state;
-            prev_formatted = formatted;
         }
     }
 
