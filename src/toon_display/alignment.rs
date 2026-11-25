@@ -16,65 +16,43 @@ pub struct TableMetrics {
 
 impl TableMetrics {
     pub fn measure(flat: &FlatJson, analysis: &Analysis, table: usize) -> Self {
-        let first = children(flat, table)
-            .next()
-            .expect("eligible table has rows");
-        let mut schema = Vec::new();
-        let mut pending = 0;
-        for field in children(flat, first) {
-            header_widths(flat, field, &mut pending, &mut schema);
-        }
-        let (mut widths, leaf_offsets): (Vec<_>, Vec<_>) = schema.into_iter().unzip();
-        let mut quoted = String::new();
-        let header_tail = widths.last().copied().unwrap()
-            + 2
-            + annotation_width(flat, analysis, table, false, &mut quoted);
-        let root = analysis.root_for(table).unwrap();
-        let implicit = !flat[root].is_array() && !analysis.node(flat, root).table;
-        let row_depth = flat[table].depth - flat[root].depth - usize::from(implicit) + 1;
-        let mut entry_prefix = 0;
-        let mut max_row_tail = 0;
+        let mut measurement = Measurement {
+            flat,
+            analysis,
+            quoted: String::new(),
+        };
+        let (widths, leaf_offsets) = header_columns(flat, table);
+        let header_tail =
+            widths.last().copied().unwrap() + 2 + measurement.annotation_width(table, table + 1);
+        let mut result = Self {
+            widths,
+            leaf_offsets,
+            header_tail,
+            entry_prefix: 0,
+            max_row_tail: 0,
+        };
+        let entry_depth = measurement.keyed_entry_depth(table);
         let mut numeric_annotation: Option<usize> = None;
         for row in children(flat, table) {
-            if !flat[table].is_array() {
-                entry_prefix = entry_prefix
-                    .max(row_depth * 2 + UnicodeWidthStr::width(key_text(flat, row).as_ref()) + 2);
+            if let Some(depth) = entry_depth {
+                let key_width = UnicodeWidthStr::width(key_text(flat, row).as_ref());
+                result.entry_prefix = result.entry_prefix.max(depth * 2 + key_width + 2);
             }
-            let mut last_width = 0;
-            let mut last_is_number = false;
-            for (column, cell) in analysis.table_cells(flat, row).enumerate() {
-                let width = if matches!(flat[cell].value, Value::String) {
-                    let value = string(flat, cell);
-                    if value_needs_quotes(&value) {
-                        quote_json_into(&value, &mut quoted);
-                        UnicodeWidthStr::width(quoted.as_str())
-                    } else {
-                        UnicodeWidthStr::width(value.as_ref())
-                    }
-                } else {
-                    UnicodeWidthStr::width(value_text(flat, cell).as_ref())
-                };
-                widths[column] = widths[column].max(width + leaf_offsets[column]);
-                last_width = width + leaf_offsets[column];
-                last_is_number = matches!(flat[cell].value, Value::Number);
-            }
-            let annotation = annotation_width(flat, analysis, row, true, &mut quoted);
-            if last_is_number {
+            let (last_width, numeric) =
+                measurement.measure_cells(row, &mut result.widths, &result.leaf_offsets);
+            let annotation = measurement.annotation_width(row, *flat.subtree_range(row).end());
+            if numeric {
                 numeric_annotation = Some(numeric_annotation.unwrap_or(0).max(annotation));
             } else {
-                max_row_tail = max_row_tail.max(last_width + annotation);
+                result.max_row_tail = result.max_row_tail.max(last_width + annotation);
             }
         }
         if let Some(annotation) = numeric_annotation {
-            max_row_tail = max_row_tail.max(widths.last().copied().unwrap() + annotation);
+            result.max_row_tail = result
+                .max_row_tail
+                .max(result.widths.last().copied().unwrap() + annotation);
         }
-        Self {
-            widths,
-            leaf_offsets,
-            entry_prefix,
-            max_row_tail,
-            header_tail,
-        }
+        result
     }
 
     pub fn extent(&self, field_start: usize) -> usize {
@@ -92,37 +70,80 @@ impl TableMetrics {
     }
 }
 
-/// Count the on-screen warning fragments without materializing an off-screen
-/// row, warning list, or formatted annotation.
-fn annotation_width(
-    flat: &FlatJson,
-    analysis: &Analysis,
-    node: usize,
-    row: bool,
-    quoted: &mut String,
-) -> usize {
-    let mut width = 0;
-    let mut first = true;
-    let end = if row {
-        *flat.subtree_range(node).end()
-    } else {
-        node + 1
-    };
-    for owner in node..end {
-        for warning in analysis.warnings(owner) {
-            super::format::warning_parts(
-                flat,
-                owner,
-                warning,
-                first,
-                row && owner != node,
-                quoted,
-                |part, _| width += UnicodeWidthStr::width(part),
-            );
-            first = false;
+struct Measurement<'a> {
+    flat: &'a FlatJson,
+    analysis: &'a Analysis,
+    quoted: String,
+}
+
+impl Measurement<'_> {
+    fn keyed_entry_depth(&self, table: usize) -> Option<usize> {
+        if self.flat[table].is_array() {
+            return None;
+        }
+        let root = self.analysis.root_for(table).unwrap();
+        let implicit = !self.flat[root].is_array() && !self.analysis.node(self.flat, root).table;
+        Some(self.flat[table].depth - self.flat[root].depth - usize::from(implicit) + 1)
+    }
+
+    fn measure_cells(
+        &mut self,
+        row: usize,
+        widths: &mut [usize],
+        offsets: &[usize],
+    ) -> (usize, bool) {
+        let mut last = (0, false);
+        for (column, cell) in self.analysis.table_cells(self.flat, row).enumerate() {
+            let width = self.cell_width(cell) + offsets[column];
+            widths[column] = widths[column].max(width);
+            last = (width, matches!(self.flat[cell].value, Value::Number));
+        }
+        last
+    }
+
+    fn cell_width(&mut self, cell: usize) -> usize {
+        if !matches!(self.flat[cell].value, Value::String) {
+            return UnicodeWidthStr::width(value_text(self.flat, cell).as_ref());
+        }
+        let value = string(self.flat, cell);
+        if value_needs_quotes(&value) {
+            quote_json_into(&value, &mut self.quoted);
+            UnicodeWidthStr::width(self.quoted.as_str())
+        } else {
+            UnicodeWidthStr::width(value.as_ref())
         }
     }
-    width
+
+    // Count warning fragments without materializing a row or annotation.
+    fn annotation_width(&mut self, node: usize, end: usize) -> usize {
+        let mut width = 0;
+        for owner in node..end {
+            for warning in self.analysis.warnings(owner) {
+                super::format::warning_parts(
+                    self.flat,
+                    owner,
+                    warning,
+                    width == 0,
+                    owner != node,
+                    &mut self.quoted,
+                    |part, _| width += UnicodeWidthStr::width(part),
+                );
+            }
+        }
+        width
+    }
+}
+
+fn header_columns(flat: &FlatJson, table: usize) -> (Vec<usize>, Vec<usize>) {
+    let first = children(flat, table)
+        .next()
+        .expect("eligible table has rows");
+    let mut schema = Vec::new();
+    let mut pending = 0;
+    for field in children(flat, first) {
+        header_widths(flat, field, &mut pending, &mut schema);
+    }
+    schema.into_iter().unzip()
 }
 
 /// Attribute each group prefix to its first leaf and each closing brace to

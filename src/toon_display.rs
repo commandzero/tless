@@ -205,17 +205,24 @@ fn decode_string(raw: &str) -> String {
         .unwrap_or_else(|_| inner.to_owned())
 }
 fn quote_key(key: &str) -> String {
-    let mut chars = key.chars();
-    if chars
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
-    {
+    if bare_key(key) {
         key.to_owned()
     } else {
         quote_json(key)
     }
 }
+
+fn bare_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() && first != '_' {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+}
+
 fn value_needs_quotes(value: &str) -> bool {
     lazy_static::lazy_static! { static ref NUMERIC: regex::Regex=regex::Regex::new(r"^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$").unwrap(); }
     value.is_empty()

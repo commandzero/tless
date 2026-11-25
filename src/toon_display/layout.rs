@@ -1,7 +1,7 @@
 //! The interactive layout owns structure; rendered rows belong to its caller.
-use super::geometry::{Geometry, Row};
+use super::geometry::{Geometry, GeometryOptions, Row};
 use super::index::Analysis;
-use super::{DisplayLine, FlatJson, normalize_node};
+use super::{DisplayLine, FlatJson, normalize_node, scalar};
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -123,7 +123,12 @@ impl Layout {
         expanded: &HashSet<usize>,
     ) -> Self {
         let analysis = Analysis::new(flat, roots);
-        let geometry = Geometry::new(flat, &analysis, width, numbers, expanded);
+        let geometry = Geometry::new(
+            flat,
+            &analysis,
+            GeometryOptions::new(width, numbers),
+            expanded,
+        );
         Self { analysis, geometry }
     }
 
@@ -134,7 +139,12 @@ impl Layout {
         numbers: bool,
         expanded: &HashSet<usize>,
     ) {
-        self.geometry = Geometry::new(flat, &self.analysis, width, numbers, expanded);
+        self.geometry = Geometry::new(
+            flat,
+            &self.analysis,
+            GeometryOptions::new(width, numbers),
+            expanded,
+        );
     }
 
     pub fn active_root_for(&self, flat: &FlatJson, node: usize) -> Option<usize> {
@@ -171,8 +181,30 @@ impl Layout {
     }
 
     pub fn source_line(&self, flat: &FlatJson, node: usize, source: Option<usize>) -> usize {
-        self.geometry
-            .source_line(flat, &self.analysis, normalize_node(flat, node), source)
+        let node = normalize_node(flat, node);
+        let Some(offset) = source else {
+            return self.geometry.position(flat, &self.analysis, node).line;
+        };
+        if let Some(table) = self.source_header(flat, node, offset) {
+            return self
+                .geometry
+                .position(flat, &self.analysis, table)
+                .body_line;
+        }
+        let position = self.geometry.position(flat, &self.analysis, node);
+        if scalar(flat, node) {
+            position.body_line
+        } else {
+            position.line
+        }
+    }
+
+    fn source_header(&self, flat: &FlatJson, node: usize, offset: usize) -> Option<usize> {
+        let range = flat[node].key_range.as_ref()?;
+        if !range.contains(&offset) || self.analysis.table_row_owner(flat, node)? == node {
+            return None;
+        }
+        self.analysis.table_owner(flat, node)
     }
 
     pub fn line_count(&self) -> usize {

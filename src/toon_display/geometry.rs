@@ -1,7 +1,7 @@
 //! Width-dependent logical addresses, separate from semantic analysis and text.
 use super::index::{Analysis, child_count, children, key, numeric, string};
 use super::line_index::LineIndex;
-use super::{quote_json, quote_key, scalar, value_needs_quotes};
+use super::{quote_json, scalar, value_needs_quotes};
 use crate::flatjson::{FlatJson, Value};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -39,24 +39,34 @@ pub struct Geometry {
     inline_limit: usize,
 }
 
-pub fn key_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
-    if let Some(key) = key(flat, node) {
-        let mut chars = key.chars();
-        if chars
-            .next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
-        {
-            key
-        } else {
-            Cow::Owned(quote_key(&key))
+#[derive(Clone, Copy)]
+pub struct GeometryOptions {
+    pub terminal_width: usize,
+    pub numbers: bool,
+    pub inline_limit: usize,
+}
+
+impl GeometryOptions {
+    pub fn new(terminal_width: usize, numbers: bool) -> Self {
+        Self {
+            terminal_width,
+            numbers,
+            inline_limit: 5,
         }
-    } else if let Some(key) = flat.key_value(node) {
-        Cow::Owned(format!("? {}", super::compact_key(key).0))
-    } else {
-        Cow::Borrowed("")
     }
 }
+
+pub fn key_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
+    match key(flat, node) {
+        Some(key) if super::bare_key(&key) => key,
+        Some(key) => Cow::Owned(quote_json(&key)),
+        None => match flat.key_value(node) {
+            Some(key) => Cow::Owned(format!("? {}", super::compact_key(key).0)),
+            None => Cow::Borrowed(""),
+        },
+    }
+}
+
 pub fn value_text(flat: &FlatJson, node: usize) -> Cow<'_, str> {
     match flat[node].value {
         Value::String => {
@@ -80,71 +90,68 @@ impl Geometry {
     pub fn new(
         flat: &FlatJson,
         analysis: &Analysis,
-        terminal_width: usize,
-        numbers: bool,
+        options: GeometryOptions,
         expanded: &HashSet<usize>,
     ) -> Self {
-        Self::with_limit(flat, analysis, terminal_width, numbers, expanded, 5)
-    }
-
-    pub fn with_limit(
-        flat: &FlatJson,
-        analysis: &Analysis,
-        terminal_width: usize,
-        numbers: bool,
-        expanded: &HashSet<usize>,
-        inline_limit: usize,
-    ) -> Self {
-        let mut gutter = if numbers { 3 } else { 0 };
-        let mut result = Self {
+        let mut gutter = if options.numbers { 3 } else { 0 };
+        let mut geometry = Self {
             lines: LineIndex::new(0),
             root_lines: Vec::with_capacity(analysis.roots.len() + 1),
             width: 0,
-            inline_limit,
+            inline_limit: options.inline_limit,
         };
         loop {
-            result.width = terminal_width.saturating_sub(gutter + 2);
-            result.lines.reset(&analysis.lines);
-            let mut widest_inline = 0;
-            for &node in &analysis.arrays {
-                if expanded.contains(&node) {
-                    continue;
-                }
-                let root = analysis.root_for(node).unwrap();
-                let depth = Self::depth(flat, analysis, root, node);
-                let list = node != root
-                    && flat[node]
-                        .parent
-                        .as_option()
-                        .is_some_and(|parent| flat[parent].is_array());
-                if let Some(width) =
-                    result.inline_width(flat, analysis, node, depth, list, node == root)
-                {
-                    widest_inline = widest_inline.max(width);
-                    result
-                        .lines
-                        .clear(node + 1..*flat.subtree_range(node).end());
-                }
-            }
-            result.lines.finish();
-            result.root_lines.clear();
-            let mut total = 0;
-            for &root in &analysis.roots {
-                result.root_lines.push(total);
-                total += result.lines.rank(*flat.subtree_range(root).end() + 1)
-                    - result.lines.rank(root)
-                    + usize::from(analysis.roots.len() > 1);
-            }
-            result.root_lines.push(total);
-            let required = if numbers { digits(total).max(2) + 1 } else { 0 };
-            let required_width = terminal_width.saturating_sub(required + 2);
+            geometry.width = options.terminal_width.saturating_sub(gutter + 2);
+            let widest_inline = geometry.place_inline_arrays(flat, analysis, expanded);
+            geometry.index_roots(flat, analysis);
+
+            let required = if options.numbers {
+                digits(geometry.line_count()).max(2) + 1
+            } else {
+                0
+            };
+            let required_width = options.terminal_width.saturating_sub(required + 2);
             if required <= gutter || widest_inline <= required_width {
-                result.width = required_width;
-                break;
+                geometry.width = required_width;
+                return geometry;
             }
             gutter = required;
         }
-        result
+    }
+
+    fn place_inline_arrays(
+        &mut self,
+        flat: &FlatJson,
+        analysis: &Analysis,
+        expanded: &HashSet<usize>,
+    ) -> usize {
+        self.lines.reset(&analysis.lines);
+        let mut widest = 0;
+        for &node in &analysis.arrays {
+            if expanded.contains(&node) {
+                continue;
+            }
+            let root = analysis.root_for(node).unwrap();
+            let row = Self::value_row(flat, analysis, root, node);
+            if let Some(width) = self.inline_width(flat, analysis, row) {
+                widest = widest.max(width);
+                self.lines.clear(node + 1..*flat.subtree_range(node).end());
+            }
+        }
+        self.lines.finish();
+        widest
+    }
+
+    fn index_roots(&mut self, flat: &FlatJson, analysis: &Analysis) {
+        self.root_lines.clear();
+        let sequence = usize::from(analysis.roots.len() > 1);
+        let mut total = 0;
+        for &root in &analysis.roots {
+            self.root_lines.push(total);
+            total += self.lines.rank(*flat.subtree_range(root).end() + 1) - self.lines.rank(root)
+                + sequence;
+        }
+        self.root_lines.push(total);
     }
 
     pub fn line_count(&self) -> usize {
@@ -186,32 +193,31 @@ impl Geometry {
         let node = self
             .lines
             .select(self.lines.rank(root) + line - self.root_lines[ordinal] - sequence)?;
-        let table_row = analysis.table_row(flat, node);
-        let mut owner = node;
-        if node != root && !table_row && flat[node].index_in_parent == 0 {
-            if let Some(parent) = flat[node].parent.as_option() {
-                if parent != root && !flat[parent].is_array() && flat[parent].key_range.is_none() {
-                    owner = parent;
-                }
-            }
+        let mut row = Self::value_row(flat, analysis, root, node);
+        if analysis.table_row(flat, node) {
+            row.kind = Kind::TableRow;
+        } else if node != root {
+            row.owner = list_object_owner(flat, root, node).unwrap_or(node);
         }
-        Some(Row {
-            owner,
+        Some(row)
+    }
+
+    fn value_row(flat: &FlatJson, analysis: &Analysis, root: usize, node: usize) -> Row {
+        let is_root = node == root;
+        let list = !is_root
+            && flat[node]
+                .parent
+                .as_option()
+                .is_some_and(|parent| flat[parent].is_array());
+        Row {
+            owner: node,
             node,
             depth: Self::depth(flat, analysis, root, node),
-            kind: if table_row {
-                Kind::TableRow
-            } else {
-                Kind::Value {
-                    list: node != root
-                        && flat[node]
-                            .parent
-                            .as_option()
-                            .is_some_and(|parent| flat[parent].is_array()),
-                    root: node == root,
-                }
+            kind: Kind::Value {
+                list,
+                root: is_root,
             },
-        })
+        }
     }
 
     /// A projected table's structural header (not an ancestor's preview).
@@ -286,23 +292,25 @@ impl Geometry {
         }
     }
 
-    fn inline_width(
-        &self,
-        flat: &FlatJson,
-        analysis: &Analysis,
-        node: usize,
-        depth: usize,
-        list: bool,
-        root: bool,
-    ) -> Option<usize> {
+    fn inline_width(&self, flat: &FlatJson, analysis: &Analysis, row: Row) -> Option<usize> {
+        let Kind::Value { list, root } = row.kind else {
+            return None;
+        };
+        let node = row.node;
         let count = child_count(flat, node);
         if count > self.inline_limit {
             return None;
         }
-        let mut width = depth * 2 + if list { 2 } else { 0 } + digits(count) + 3;
+        let mut width = row.depth * 2 + if list { 2 } else { 0 } + digits(count) + 3;
         if !root {
             width += UnicodeWidthStr::width(key_text(flat, node).as_ref());
         }
+        width = self.inline_values_width(flat, node, width)?;
+        width += inline_warning_width(flat, analysis, node);
+        (width <= self.width).then_some(width)
+    }
+
+    fn inline_values_width(&self, flat: &FlatJson, node: usize, mut width: usize) -> Option<usize> {
         for child in children(flat, node) {
             if !scalar(flat, child) {
                 return None;
@@ -312,51 +320,38 @@ impl Geometry {
                 return None;
             }
         }
-        let info = analysis.node(flat, node);
-        if info.hidden_warnings == 0 && info.warning_count() == 0 {
-            return (width <= self.width).then_some(width);
-        }
-        // Annotation spelling is shared with the row formatter. Unusual warnings
-        // are sparse; ordinary values never allocate a warning string here.
-        let mut first = true;
-        for owner in std::iter::once(node).chain(children(flat, node)) {
-            for warning in analysis.warnings(owner) {
-                width += if first { 9 } else { 2 };
-                first = false;
-                width += warning.message().len();
-                if owner != node {
-                    width += 6 + digits(flat[owner].index_in_parent);
-                }
-            }
-        }
-        (width <= self.width).then_some(width)
+        Some(width)
     }
+}
 
-    pub fn source_line(
-        &self,
-        flat: &FlatJson,
-        analysis: &Analysis,
-        node: usize,
-        source: Option<usize>,
-    ) -> usize {
-        if analysis
-            .table_row_owner(flat, node)
-            .is_some_and(|row| row != node)
-            && source.is_some_and(|offset| {
-                flat[node]
-                    .key_range
-                    .as_ref()
-                    .is_some_and(|range| range.contains(&offset))
-            })
-        {
-            return self
-                .position(flat, analysis, analysis.table_owner(flat, node).unwrap())
-                .body_line;
-        }
-        if source.is_some() && scalar(flat, node) {
-            self.position(flat, analysis, node).body_line
+fn list_object_owner(flat: &FlatJson, root: usize, node: usize) -> Option<usize> {
+    if flat[node].index_in_parent != 0 {
+        return None;
+    }
+    let parent = flat[node].parent.as_option()?;
+    if parent == root || flat[parent].is_array() || flat[parent].key_range.is_some() {
+        return None;
+    }
+    Some(parent)
+}
+
+// Warning-free rows avoid scanning children again for annotation widths.
+fn inline_warning_width(flat: &FlatJson, analysis: &Analysis, node: usize) -> usize {
+    let info = analysis.node(flat, node);
+    if info.hidden_warnings == 0 && info.warning_count() == 0 {
+        return 0;
+    }
+    let mut width = 0;
+    for owner in std::iter::once(node).chain(children(flat, node)) {
+        let locator = if owner == node {
+            0
         } else {
-            self.position(flat, analysis, node).line
+            6 + digits(flat[owner].index_in_parent)
+        };
+        for warning in analysis.warnings(owner) {
+            width += if width == 0 { 9 } else { 2 };
+            width += warning.message().len() + locator;
         }
     }
+    width
 }

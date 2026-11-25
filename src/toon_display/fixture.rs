@@ -1,5 +1,5 @@
 //! Test-only collectors exercise the same row formatter as the viewport.
-use super::geometry::Geometry;
+use super::geometry::{Geometry, GeometryOptions};
 use super::index::Analysis;
 use super::layout::{Layout, NodeLayout};
 use super::{DisplayLine, FlatJson, WarningKind};
@@ -52,13 +52,15 @@ impl Fixture {
         roots: &[usize],
     ) -> Self {
         let analysis = Analysis::new(flat, roots);
-        let geometry = Geometry::with_limit(
+        let geometry = Geometry::new(
             flat,
             &analysis,
-            width.saturating_add(2),
-            false,
+            GeometryOptions {
+                terminal_width: width.saturating_add(2),
+                numbers: false,
+                inline_limit: limit,
+            },
             expanded,
-            limit,
         );
         let layout = Layout { analysis, geometry };
         let lines = (0..layout.line_count())
