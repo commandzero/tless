@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::fs::{self, DirEntry};
 use std::path::Path;
 
 // Upstream toon-format/spec v4.4.0, commit d09c3d33e37389345a74bd96981eb96dd9be6c5e.
@@ -13,7 +14,28 @@ pub(crate) struct FixtureCase {
 }
 
 pub(crate) fn load_fixtures(category: &str) -> Vec<FixtureCase> {
-    let expected_groups: &[&str] = match category {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/toon-v4/v4.4.0/tests/fixtures")
+        .join(category);
+    let groups = sorted_entries(&root);
+    let group_names: Vec<_> = groups
+        .iter()
+        .map(|entry| entry.file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(
+        group_names,
+        expected_groups(category),
+        "unexpected fixture groups: {root:?}"
+    );
+
+    groups
+        .into_iter()
+        .flat_map(|group| load_group(category, group))
+        .collect()
+}
+
+fn expected_groups(category: &str) -> &'static [&'static str] {
+    match category {
         "encode" => &[
             "arrays-nested",
             "arrays-objects",
@@ -42,54 +64,46 @@ pub(crate) fn load_fixtures(category: &str) -> Vec<FixtureCase> {
             "whitespace",
         ],
         _ => panic!("unknown fixture category: {category}"),
-    };
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/toon-v4/v4.4.0/tests/fixtures")
-        .join(category);
-    let mut groups: Vec<_> = std::fs::read_dir(&root)
+    }
+}
+
+fn sorted_entries(directory: &Path) -> Vec<DirEntry> {
+    let mut entries: Vec<_> = fs::read_dir(directory)
         .unwrap()
         .map(|entry| entry.unwrap())
         .collect();
-    groups.sort_by_key(|entry| entry.file_name());
-    let group_names: Vec<_> = groups
-        .iter()
-        .map(|entry| entry.file_name().into_string().unwrap())
-        .collect();
-    assert_eq!(
-        group_names, expected_groups,
-        "unexpected fixture groups: {root:?}"
-    );
+    entries.sort_by_key(DirEntry::file_name);
+    entries
+}
 
-    let mut fixtures = Vec::new();
-    for group in groups {
-        assert!(
-            group.file_type().unwrap().is_dir(),
-            "unexpected fixture file: {:?}",
-            group.path()
-        );
-        let group_name = group.file_name().into_string().unwrap();
-        let mut files: Vec<_> = std::fs::read_dir(group.path())
-            .unwrap()
-            .map(|entry| entry.unwrap())
-            .collect();
-        files.sort_by_key(|entry| entry.file_name());
-        assert!(!files.is_empty(), "empty fixture group: {group_name}");
-        for file in files {
-            let path = file.path();
-            assert!(
-                file.file_type().unwrap().is_file(),
-                "unexpected fixture entry: {path:?}"
-            );
-            assert_eq!(
-                path.extension().and_then(|ext| ext.to_str()),
-                Some("toon"),
-                "unexpected fixture file: {path:?}"
-            );
-            let content = std::fs::read_to_string(&path).unwrap();
-            fixtures.push(parse_fixture(category, &group_name, &path, &content));
-        }
-    }
-    fixtures
+fn load_group(category: &str, group: DirEntry) -> Vec<FixtureCase> {
+    assert!(
+        group.file_type().unwrap().is_dir(),
+        "unexpected fixture file: {:?}",
+        group.path()
+    );
+    let group_name = group.file_name().into_string().unwrap();
+    let entries = sorted_entries(&group.path());
+    assert!(!entries.is_empty(), "empty fixture group: {group_name}");
+    entries
+        .into_iter()
+        .map(|file| load_case(category, &group_name, file))
+        .collect()
+}
+
+fn load_case(category: &str, group: &str, file: DirEntry) -> FixtureCase {
+    let path = file.path();
+    assert!(
+        file.file_type().unwrap().is_file(),
+        "unexpected fixture entry: {path:?}"
+    );
+    assert_eq!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("toon"),
+        "unexpected fixture file: {path:?}"
+    );
+    let content = fs::read_to_string(&path).unwrap();
+    parse_fixture(category, group, &path, &content)
 }
 
 fn parse_fixture(category: &str, group: &str, path: &Path, content: &str) -> FixtureCase {
@@ -128,25 +142,34 @@ fn parse_fixture(category: &str, group: &str, path: &Path, content: &str) -> Fix
             "{path:?} requires a newer specification: {version}"
         );
     }
-    let model_field = if category == "encode" {
-        "input-json"
-    } else {
-        "expected-json"
-    };
-    if category == "encode"
-        || metadata["shouldError"] != true
-        || metadata.get(model_field).is_some()
-    {
-        assert!(
-            metadata[model_field].is_string(),
-            "missing required {model_field} string: {path:?}"
-        );
-    }
+    validate_model(category, path, &metadata);
     FixtureCase {
         group: group.to_owned(),
         metadata,
         toon: toon.to_owned(),
     }
+}
+
+fn validate_model(category: &str, path: &Path, metadata: &Value) {
+    let model_field = match category {
+        "encode" => "input-json",
+        _ if metadata["shouldError"] == true && metadata.get("expected-json").is_none() => {
+            return;
+        }
+        _ => "expected-json",
+    };
+    assert!(
+        metadata[model_field].is_string(),
+        "missing required {model_field} string: {path:?}"
+    );
+}
+
+fn uses_other_indentation(options: &Value) -> bool {
+    options["indentSize"].is_number() && options["indentSize"] != 2
+}
+
+fn uses_other_delimiter(options: &Value) -> bool {
+    options["delimiter"].is_string() && options["delimiter"] != ","
 }
 
 #[test]
@@ -157,9 +180,7 @@ fn pinned_encode_profile() {
         let file = &fixture.group;
         let case = &fixture.metadata;
         let options = &case["options"];
-        if (options["indentSize"].is_number() && options["indentSize"] != 2)
-            || (options["delimiter"].is_string() && options["delimiter"] != ",")
-        {
+        if uses_other_indentation(options) || uses_other_delimiter(options) {
             excluded += 1;
             eprintln!(
                 "EXCLUDED {} / {}: outside two-space comma profile",
@@ -219,9 +240,7 @@ fn pinned_decode_profile() {
         let file = &fixture.group;
         let case = &fixture.metadata;
         let options = &case["options"];
-        if options["strict"] == false
-            || (options["indentSize"].is_number() && options["indentSize"] != 2)
-        {
+        if options["strict"] == false || uses_other_indentation(options) {
             excluded += 1;
             eprintln!(
                 "EXCLUDED {} / {}: outside strict two-space profile",
