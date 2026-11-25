@@ -1,5 +1,5 @@
 //! Test-only collectors exercise the same row formatter as the viewport.
-use super::geometry::Geometry;
+use super::geometry::{Geometry, GeometryOptions};
 use super::index::Analysis;
 use super::layout::{Layout, NodeLayout};
 use super::{DisplayLine, FlatJson, WarningKind};
@@ -22,8 +22,11 @@ impl Fixture {
     pub fn canonical(flat: &FlatJson) -> Self {
         Self::build(
             flat,
-            usize::MAX,
-            usize::MAX,
+            GeometryOptions {
+                terminal_width: usize::MAX,
+                numbers: false,
+                inline_limit: usize::MAX,
+            },
             &HashSet::new(),
             &crate::path_filter::document_roots(flat),
         )
@@ -42,37 +45,22 @@ impl Fixture {
         expanded: &HashSet<usize>,
         roots: &[usize],
     ) -> Self {
-        Self::build(flat, width, 5, expanded, roots)
+        let options = GeometryOptions::new(width.saturating_add(2), false);
+        Self::build(flat, options, expanded, roots)
     }
     fn build(
         flat: &FlatJson,
-        width: usize,
-        limit: usize,
+        options: GeometryOptions,
         expanded: &HashSet<usize>,
         roots: &[usize],
     ) -> Self {
         let analysis = Analysis::new(flat, roots);
-        let geometry = Geometry::with_limit(
-            flat,
-            &analysis,
-            width.saturating_add(2),
-            false,
-            expanded,
-            limit,
-        );
+        let geometry = Geometry::new(flat, &analysis, options, expanded);
         let layout = Layout { analysis, geometry };
         let lines = (0..layout.line_count())
             .map(|line| {
                 let row = layout.row(flat, line).unwrap();
-                super::format::row(
-                    flat,
-                    &layout.analysis,
-                    &layout.geometry,
-                    row,
-                    None,
-                    row.owner,
-                    None,
-                )
+                super::format::Formatter::new(flat, &layout, row.owner, None).row(row, None)
             })
             .collect();
         let nodes = (0..flat.0.len())

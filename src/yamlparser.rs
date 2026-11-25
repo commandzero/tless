@@ -35,12 +35,7 @@ pub fn parse(yaml: String) -> Result<(ChunkedVec<Row>, String, usize, DocumentMe
         }
         let index = parser.parse_yaml_item(doc)?;
 
-        parser.rows[index].prev_sibling = prev_sibling;
-        parser.rows[index].index_in_parent = i;
-        if let Some(prev) = prev_sibling.as_option() {
-            parser.rows[prev].next_sibling = OptionIndex::from(index);
-        }
-
+        parser.link_siblings(index, prev_sibling, i);
         prev_sibling = OptionIndex::from(index);
     }
 
@@ -115,188 +110,102 @@ impl YamlParser {
         row_index
     }
 
-    fn parse_array(&mut self, arr: Array) -> Result<usize, String> {
-        if arr.is_empty() {
-            let row_index = self.create_row(Value::EmptyArray);
-            self.rows[row_index].range.end = self.rows[row_index].range.start + 2;
-            self.pretty_printed.push_str("[]");
-            return Ok(row_index);
-        }
-
-        let open_value = Value::OpenContainer {
-            container_type: ContainerType::Array,
-            collapsed: false,
-            // To be set when parsing is complete.
-            first_child: 0,
-            close_index: 0,
-        };
-
-        let array_open_index = self.create_row(open_value);
-
-        self.parents.push(array_open_index);
-        self.pretty_printed.push('[');
-
-        let mut prev_sibling = OptionIndex::NIL;
-
-        for (i, child) in arr.into_iter().enumerate() {
-            if i != 0 {
-                self.pretty_printed.push_str(", ");
-            }
-
-            let child_index = self.parse_yaml_item(child)?;
-
-            if i == 0 {
-                match self.rows[array_open_index].value {
-                    Value::OpenContainer {
-                        ref mut first_child,
-                        ..
-                    } => {
-                        *first_child = child_index;
-                    }
-                    _ => panic!("Must be Array!"),
-                }
-            }
-
-            self.rows[child_index].prev_sibling = prev_sibling;
-            self.rows[child_index].index_in_parent = i;
-            if let Some(prev) = prev_sibling.as_option() {
-                self.rows[prev].next_sibling = OptionIndex::from(child_index);
-            }
-
-            prev_sibling = OptionIndex::from(child_index);
-        }
-
-        self.parents.pop();
-
-        let close_value = Value::CloseContainer {
-            container_type: ContainerType::Array,
-            collapsed: false,
-            last_child: prev_sibling.unwrap(),
-            open_index: array_open_index,
-        };
-
-        let array_close_index = self.create_row(close_value);
-
-        // Update end of the Array range; we add the ']' to pretty_printed
-        // below, hence the + 1.
-        self.rows[array_open_index].range.end = self.pretty_printed.len() + 1;
-
-        match self.rows[array_open_index].value {
-            Value::OpenContainer {
-                ref mut close_index,
-                ..
-            } => {
-                *close_index = array_close_index;
-            }
-            _ => panic!("Must be Array!"),
-        }
-
-        self.pretty_printed.push(']');
-        Ok(array_open_index)
+    fn parse_array(&mut self, array: Array) -> Result<usize, String> {
+        self.parse_container(ContainerType::Array, array, Self::parse_yaml_item)
     }
 
     fn parse_hash(&mut self, hash: Hash) -> Result<usize, String> {
-        if hash.is_empty() {
-            let row_index = self.create_row(Value::EmptyObject);
-            self.rows[row_index].range.end = self.rows[row_index].range.start + 2;
-            self.pretty_printed.push_str("{}");
-            return Ok(row_index);
-        }
+        self.parse_container(ContainerType::Object, hash, Self::parse_entry)
+    }
 
-        let open_value = Value::OpenContainer {
-            container_type: ContainerType::Object,
+    fn parse_container<T>(
+        &mut self,
+        container_type: ContainerType,
+        children: impl IntoIterator<Item = T>,
+        parse_child: fn(&mut Self, T) -> Result<usize, String>,
+    ) -> Result<usize, String> {
+        let open = self.create_row(Value::OpenContainer {
+            container_type,
             collapsed: false,
-            // To be set when parsing is complete.
             first_child: 0,
             close_index: 0,
-        };
+        });
+        self.parents.push(open);
+        self.pretty_printed.push_str(container_type.open_str());
 
-        let object_open_index = self.create_row(open_value);
-
-        self.parents.push(object_open_index);
-        self.pretty_printed.push('{');
-
-        let mut prev_sibling = OptionIndex::NIL;
-
-        for (i, (key, value)) in hash.into_iter().enumerate() {
-            if i == 0 {
-                // Add space inside objects.
-                self.pretty_printed.push(' ');
-            } else {
-                self.pretty_printed.push_str(", ");
-            }
-
-            /////////////////////////////////
-
-            let typed_key = key_value(&key)?;
-            let key_range = {
-                let key_range_start = self.pretty_printed.len();
-
-                self.pretty_print_key_item(key, true)?;
-
-                let key_range_end = self.pretty_printed.len();
-
-                key_range_start..key_range_end
-            };
-
-            self.pretty_printed.push_str(": ");
-
-            let child_index = self.parse_yaml_item(value)?;
-
-            self.rows[child_index].key_range = Some(key_range);
-            self.values.keys.insert(child_index, typed_key);
-
-            if i == 0 {
-                match self.rows[object_open_index].value {
-                    Value::OpenContainer {
-                        ref mut first_child,
-                        ..
-                    } => {
-                        *first_child = child_index;
-                    }
-                    _ => panic!("Must be Object!"),
-                }
-            }
-
-            self.rows[child_index].prev_sibling = prev_sibling;
-            self.rows[child_index].index_in_parent = i;
-            if let Some(prev) = prev_sibling.as_option() {
-                self.rows[prev].next_sibling = OptionIndex::from(child_index);
-            }
-
-            prev_sibling = OptionIndex::from(child_index);
+        let mut previous = OptionIndex::NIL;
+        for (position, item) in children.into_iter().enumerate() {
+            self.print_child_separator(container_type, position);
+            let child = parse_child(self, item)?;
+            self.link_siblings(child, previous, position);
+            previous = OptionIndex::from(child);
         }
 
         self.parents.pop();
-
-        // Print space inside closing brace.
-        self.pretty_printed.push(' ');
-
-        let close_value = Value::CloseContainer {
-            container_type: ContainerType::Object,
-            collapsed: false,
-            last_child: prev_sibling.unwrap(),
-            open_index: object_open_index,
+        self.rows[open].value = match previous.as_option() {
+            Some(last_child) => self.close_container(container_type, open, last_child),
+            None => match container_type {
+                ContainerType::Array => Value::EmptyArray,
+                ContainerType::Object => Value::EmptyObject,
+            },
         };
+        self.rows[open].range.end = self.pretty_printed.len() + 1;
+        self.pretty_printed.push_str(container_type.close_str());
+        Ok(open)
+    }
 
-        let object_close_index = self.create_row(close_value);
+    fn print_child_separator(&mut self, container_type: ContainerType, position: usize) {
+        if position != 0 {
+            self.pretty_printed.push_str(", ");
+        } else if matches!(container_type, ContainerType::Object) {
+            self.pretty_printed.push(' ');
+        }
+    }
 
-        // Update end of the Object range; we add the '}' to pretty_printed
-        // below, hence the + 1.
-        self.rows[object_open_index].range.end = self.pretty_printed.len() + 1;
+    fn parse_entry(&mut self, (key, value): (Yaml, Yaml)) -> Result<usize, String> {
+        let typed_key = key_value(&key)?;
+        let start = self.pretty_printed.len();
+        self.pretty_print_key_item(key, true)?;
+        let key_range = start..self.pretty_printed.len();
+        self.pretty_printed.push_str(": ");
 
-        match self.rows[object_open_index].value {
-            Value::OpenContainer {
-                ref mut close_index,
-                ..
-            } => {
-                *close_index = object_close_index;
-            }
-            _ => panic!("Must be Object!"),
+        let child = self.parse_yaml_item(value)?;
+        self.rows[child].key_range = Some(key_range);
+        self.values.keys.insert(child, typed_key);
+        Ok(child)
+    }
+
+    fn link_siblings(&mut self, child: usize, previous: OptionIndex, position: usize) {
+        self.rows[child].prev_sibling = previous;
+        self.rows[child].index_in_parent = position;
+        if let Some(previous) = previous.as_option() {
+            self.rows[previous].next_sibling = OptionIndex::from(child);
+        }
+    }
+
+    fn close_container(
+        &mut self,
+        container_type: ContainerType,
+        open: usize,
+        last_child: usize,
+    ) -> Value {
+        if matches!(container_type, ContainerType::Object) {
+            self.pretty_printed.push(' ');
         }
 
-        self.pretty_printed.push('}');
-        Ok(object_open_index)
+        let close_index = self.create_row(Value::CloseContainer {
+            container_type,
+            collapsed: false,
+            last_child,
+            open_index: open,
+        });
+        Value::OpenContainer {
+            container_type,
+            collapsed: false,
+            // Children are appended in document order immediately after the opening row.
+            first_child: open + 1,
+            close_index,
+        }
     }
 
     fn pretty_print_key_item(&mut self, item: Yaml, is_key: bool) -> Result<(), String> {
@@ -321,36 +230,8 @@ impl YamlParser {
                 .push_str(if b { "true" } else { "false " }),
             Yaml::Integer(i) => self.pretty_printed.push_str(&i.to_string()),
             Yaml::Real(real_str) => self.pretty_printed.push_str(&real_str),
-            Yaml::Array(arr) => {
-                if arr.is_empty() {
-                    self.pretty_printed.push_str("[]");
-                } else {
-                    self.pretty_printed.push('[');
-                    for (i, elem) in arr.into_iter().enumerate() {
-                        if i != 0 {
-                            self.pretty_printed.push_str(", ");
-                        }
-                        self.pretty_print_key_item(elem, false)?;
-                    }
-                    self.pretty_printed.push(']');
-                }
-            }
-            Yaml::Hash(hash) => {
-                if hash.is_empty() {
-                    self.pretty_printed.push_str("{}");
-                } else {
-                    self.pretty_printed.push_str("{ ");
-                    for (i, (key, value)) in hash.into_iter().enumerate() {
-                        if i != 0 {
-                            self.pretty_printed.push_str(", ");
-                        }
-                        self.pretty_print_key_item(key, true)?;
-                        self.pretty_printed.push_str(": ");
-                        self.pretty_print_key_item(value, false)?;
-                    }
-                    self.pretty_printed.push_str(" }");
-                }
-            }
+            Yaml::Array(array) => self.pretty_print_array_key(array)?,
+            Yaml::Hash(hash) => self.pretty_print_hash_key(hash)?,
             // The yaml_rust source says these are not supported yet.
             // Aliases are automatically replaced by their anchors, so
             // it's unclear what this would be used for.
@@ -362,6 +243,37 @@ impl YamlParser {
             self.pretty_printed.push(']');
         }
 
+        Ok(())
+    }
+
+    fn pretty_print_array_key(&mut self, array: Array) -> Result<(), String> {
+        self.pretty_printed.push('[');
+        for (index, item) in array.into_iter().enumerate() {
+            if index != 0 {
+                self.pretty_printed.push_str(", ");
+            }
+            self.pretty_print_key_item(item, false)?;
+        }
+        self.pretty_printed.push(']');
+        Ok(())
+    }
+
+    fn pretty_print_hash_key(&mut self, hash: Hash) -> Result<(), String> {
+        if hash.is_empty() {
+            self.pretty_printed.push_str("{}");
+            return Ok(());
+        }
+
+        self.pretty_printed.push_str("{ ");
+        for (index, (key, value)) in hash.into_iter().enumerate() {
+            if index != 0 {
+                self.pretty_printed.push_str(", ");
+            }
+            self.pretty_print_key_item(key, true)?;
+            self.pretty_printed.push_str(": ");
+            self.pretty_print_key_item(value, false)?;
+        }
+        self.pretty_printed.push_str(" }");
         Ok(())
     }
 

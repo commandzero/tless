@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::Write as _;
@@ -18,9 +19,11 @@ use crate::search::SearchState;
 use crate::terminal::{AnsiTerminal, Color, Terminal};
 pub use crate::theme::MessageSeverity;
 use crate::theme::{StyleRole, StyleState, Theme};
+use crate::toon_display::DisplayLine;
 use crate::truncatedstrview::{TruncatedStrSlice, TruncatedStrView};
 use crate::types::TTYDimensions;
 use crate::viewer::{Action, JsonViewer};
+use crate::wrapped_view::PhysicalRow;
 
 pub type TerminalOutput = termion::input::MouseTerminal<
     termion::cursor::HideCursor<termion::screen::AlternateScreen<RawTerminal<std::io::Stdout>>>,
@@ -47,6 +50,14 @@ pub struct ScreenWriter {
 enum ScrollOwner {
     Line(usize),
     Table(Index),
+}
+
+struct DocumentFrame<'a> {
+    viewer: &'a JsonViewer,
+    matches: &'a [Range<usize>],
+    current_match: Range<usize>,
+    focused_line: usize,
+    number_width: usize,
 }
 
 const SPACE_BETWEEN_PATH_AND_FILENAME: isize = 3;
@@ -170,13 +181,22 @@ impl ScreenWriter {
         });
     }
 
-    pub fn print_viewer(&mut self, viewer: &mut JsonViewer, search_state: &SearchState) {
+    fn print_viewer(&mut self, viewer: &mut JsonViewer, search_state: &SearchState) {
         self.sync_layout(viewer);
+        self.update_focus_viewport(viewer, search_state);
+        viewer.highlight_shared_fields(
+            search_state.matches_iter(0).as_slice(),
+            &search_state.current_match_range(),
+        );
+        let rendered = self.print_screen_impl(viewer, search_state);
+        self.flush_rendered("viewer", rendered);
+    }
+
+    fn update_focus_viewport(&mut self, viewer: &mut JsonViewer, search_state: &SearchState) {
         let aligned = viewer.aligned_table_for_line(viewer.focused_line_index());
         if let Some(table) = aligned {
-            // Zero is a saved shared offset too. A freshly enabled table still
-            // reveals its selected span because reset_table_alignment cleared
-            // last_focus, not because the map happens to lack an entry.
+            // Zero is a saved shared offset too. Enabling alignment clears
+            // last_focus so the first draw reveals the selected span.
             self.table_offsets.entry(table).or_default();
         }
         let focus = (
@@ -185,38 +205,31 @@ impl ScreenWriter {
             self.dimensions.width,
             viewer.physical_generation,
         );
-        if self.last_focus != Some(focus) {
-            if search_state.active_search_state().is_some() {
-                self.scroll_line_to_search_match(viewer, search_state.current_match_range());
-            } else if aligned.is_some() && self.last_focus.is_some() {
-                // Vertical movement and projection-only changes preserve the
-                // shared offset. A narrower terminal may require a right-edge
-                // reveal, but must not reset a manually left-clipped header.
-                if self
-                    .last_focus
-                    .is_some_and(|(_, _, width, _)| width != self.dimensions.width)
-                {
+        if self.last_focus == Some(focus) {
+            return;
+        }
+        if search_state.active_search_state().is_some() {
+            self.scroll_line_to_search_match(viewer, search_state.current_match_range());
+        } else {
+            match (aligned, self.last_focus) {
+                // A resize can require a right-edge reveal. Ordinary row
+                // movement and projection changes keep the table offset.
+                (Some(_), Some((_, _, width, _))) if width != self.dimensions.width => {
                     self.reveal_focused_span(viewer, false);
                 }
-            } else {
-                self.reveal_focused_span(viewer, true);
+                (Some(_), Some(_)) => {}
+                _ => self.reveal_focused_span(viewer, true),
             }
-            self.last_focus = Some(focus);
         }
-        viewer.highlight_shared_fields(
-            search_state.matches_iter(0).as_slice(),
-            &search_state.current_match_range(),
-        );
-        match self.print_screen_impl(viewer, search_state) {
-            Ok(_) => match self.terminal.flush_contents(&mut self.stdout) {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error while printing viewer: {e}");
-                }
-            },
-            Err(e) => {
-                eprintln!("Error while printing viewer: {e}");
-            }
+        self.last_focus = Some(focus);
+    }
+
+    fn flush_rendered(&mut self, section: &str, rendered: std::fmt::Result) {
+        let result = rendered
+            .map_err(std::io::Error::other)
+            .and_then(|()| self.terminal.flush_contents(&mut self.stdout));
+        if let Err(error) = result {
+            eprintln!("Error while printing {section}: {error}");
         }
     }
 
@@ -228,23 +241,9 @@ impl ScreenWriter {
         search_state: &SearchState,
         message: &Option<(String, MessageSeverity)>,
     ) {
-        match self.print_status_bar_impl(
-            viewer,
-            input_buffer,
-            input_filename,
-            search_state,
-            message,
-        ) {
-            Ok(_) => match self.terminal.flush_contents(&mut self.stdout) {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error while printing status bar: {e}");
-                }
-            },
-            Err(e) => {
-                eprintln!("Error while printing status bar: {e}");
-            }
-        }
+        let rendered =
+            self.print_status_bar_impl(viewer, input_buffer, input_filename, search_state, message);
+        self.flush_rendered("status bar", rendered);
     }
 
     pub fn sync_wrap_geometry(&self, viewer: &mut JsonViewer) -> bool {
@@ -372,62 +371,40 @@ impl ScreenWriter {
         let Some(physical) = viewer.screen_row(usize::from(row.saturating_sub(1))) else {
             return Action::NoOp;
         };
-        let index = physical.logical_line;
+        let logical = physical.logical_line;
         let number_width = self.number_width(viewer);
+        let content_start = number_width + 2;
         let column = usize::from(column.saturating_sub(1));
-        if !physical.first && column < number_width + 2 {
+        if !physical.first && column < content_start {
             return Action::NoOp;
         }
-        if viewer.is_wrapped_line(index) && column >= number_width + 2 {
-            let line = viewer.rendered_line(index);
-            let (node, source) =
-                lp::hit_test_wrapped(line, physical, column.saturating_sub(number_width + 2));
-            if source.is_none() && viewer.is_document_body(index) {
-                return Action::JumpTo {
-                    line: viewer.visible_line(index).unwrap().absolute,
-                    make_visible: false,
-                };
-            }
-            return Action::FocusNodeAt {
-                node,
-                source,
-                display_range: (physical.bytes.start, physical.bytes.end),
-            };
+        if (number_width..content_start).contains(&column) {
+            return Action::ClickArrow(row);
         }
-        if column >= number_width && column < number_width + 2 {
-            Action::ClickArrow(row)
-        } else if viewer.is_document_header(index) {
-            Action::JumpTo {
-                line: viewer.visible_line(index).unwrap().absolute,
-                make_visible: false,
-            }
+        let content_column = column.saturating_sub(content_start);
+        if viewer.is_wrapped_line(logical) && column >= content_start {
+            return wrapped_mouse_action(viewer, physical, content_column);
+        }
+        if viewer.is_document_header(logical) {
+            return jump_to_visible_line(viewer, logical);
+        }
+        self.unwrapped_mouse_action(viewer, logical, content_column)
+    }
+
+    fn unwrapped_mouse_action(&self, viewer: &JsonViewer, logical: usize, column: usize) -> Action {
+        let viewport = self.line_viewport(viewer, logical);
+        let width = self.document_width(viewer);
+        let line = fit_document_line(viewer.rendered_line(logical), viewport, width);
+        let (node, source) = viewport.hit_test(&line, column, width);
+        if source.is_none() && viewer.is_document_body(logical) {
+            jump_to_visible_line(viewer, logical)
         } else {
-            let viewport = self.line_viewport(viewer, index);
-            let column = column.saturating_sub(number_width + 2);
-            let line = viewer.rendered_line(index);
-            let fitted = if viewport.horizontal_offset == 0 {
-                lp::fit_annotations(
-                    line,
-                    usize::from(self.dimensions.width).saturating_sub(number_width + 2)
-                        + viewport.removed_indentation,
-                )
-            } else {
-                std::borrow::Cow::Borrowed(line)
-            };
-            let (node, source) = viewport.hit_test(
-                &fitted,
-                column,
-                usize::from(self.dimensions.width).saturating_sub(number_width + 2),
-            );
-            if source.is_none() && viewer.is_document_body(index) {
-                Action::JumpTo {
-                    line: viewer.visible_line(index).unwrap().absolute,
-                    make_visible: false,
-                }
-            } else {
-                Action::FocusNode { node, source }
-            }
+            Action::FocusNode { node, source }
         }
+    }
+
+    fn document_width(&self, viewer: &JsonViewer) -> usize {
+        usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2)
     }
 
     fn print_screen_impl(
@@ -435,10 +412,13 @@ impl ScreenWriter {
         viewer: &JsonViewer,
         search_state: &SearchState,
     ) -> std::fmt::Result {
-        let matches = search_state.matches_iter(0).as_slice();
-        let current = search_state.current_match_range();
-        let focused = viewer.focused_line_index();
-        let number_width = self.number_width(viewer);
+        let frame = DocumentFrame {
+            viewer,
+            matches: search_state.matches_iter(0).as_slice(),
+            current_match: search_state.current_match_range(),
+            focused_line: viewer.focused_line_index(),
+            number_width: self.number_width(viewer),
+        };
         for screen in 0..viewer.dimensions.height {
             let physical = viewer.screen_row(usize::from(screen));
             paint_document_row(
@@ -446,128 +426,107 @@ impl ScreenWriter {
                 &self.theme,
                 screen + 1,
                 self.dimensions.width,
-                physical.is_some_and(|row| row.logical_line == focused),
+                physical.is_some_and(|row| row.logical_line == frame.focused_line),
             )?;
-            let Some(physical) = physical else {
+            if let Some(row) = physical {
+                self.print_physical_row(&frame, row)?;
+            } else {
                 self.terminal.set_style(
                     &self
                         .theme
                         .style(StyleRole::EmptyRowMarker, StyleState::main()),
                 )?;
                 self.terminal.write_char('~')?;
-                continue;
-            };
-            let index = physical.logical_line;
-            let visible = &viewer.visible_line(index).unwrap();
-            let line = viewer.rendered_line(index);
-            if number_width > 0 {
-                let relative = index.abs_diff(focused);
-                let number = if self.show_relative_line_numbers
-                    && (index != focused || !self.show_line_numbers)
-                {
-                    relative
-                } else {
-                    visible.absolute + 1
-                };
-                self.terminal.set_style(&self.theme.style_on_row(
-                    StyleRole::LineNumber,
-                    if index == focused {
-                        StyleState::main().focused()
-                    } else {
-                        StyleState::main()
-                    },
-                    index == focused,
-                ))?;
-                let label = if physical.first {
-                    format!("{:>width$} ", number, width = number_width - 1)
-                } else {
-                    " ".repeat(number_width)
-                };
-                self.terminal
-                    .write_str(&label[..label.len().min(usize::from(self.dimensions.width))])?;
             }
-            let available = usize::from(self.dimensions.width).saturating_sub(number_width);
-            if available == 0 {
-                continue;
-            }
-            self.terminal.set_style(&self.theme.style_on_row(
-                StyleRole::ContainerDelimiter,
-                if index == focused {
-                    StyleState::main().focused()
-                } else {
-                    StyleState::main()
-                },
-                index == focused,
-            ))?;
-            let arrow = if physical.first && viewer.line_is_collapsible(index) {
-                if viewer.is_document_header(index) {
-                    if viewer
-                        .document_root_for_line(index)
-                        .is_some_and(|root| viewer.is_document_collapsed(root))
-                    {
-                        '▸'
-                    } else {
-                        '▾'
-                    }
-                } else if viewer.effective_collapsed(line.owner)
-                    || viewer
-                        .layout
-                        .node(&viewer.flatjson, line.owner)
-                        .inline_array
-                {
-                    '▸'
-                } else {
-                    '▾'
-                }
-            } else {
-                ' '
-            };
-            self.terminal.write_char(arrow)?;
-            if available == 1 {
-                continue;
-            }
-            self.terminal.write_char(' ')?;
-            let focused_nodes = if index == focused {
-                viewer.focused_node
-                    ..viewer.flatjson[viewer.focused_node]
-                        .pair_index()
-                        .as_option()
-                        .unwrap_or(viewer.focused_node)
-                        + 1
-            } else {
-                0..0
-            };
-            if viewer.is_wrapped_line(index) {
-                lp::paint_wrapped_themed(
-                    &mut self.terminal,
-                    &self.theme,
-                    line,
-                    focused_nodes,
-                    physical,
-                    available - 2,
-                    matches,
-                    &current,
-                )?;
-                continue;
-            }
-            let viewport = self.line_viewport(viewer, index);
-            let fitted = if viewport.horizontal_offset == 0 {
-                lp::fit_annotations(line, available - 2 + viewport.removed_indentation)
-            } else {
-                std::borrow::Cow::Borrowed(line)
-            };
-            lp::paint_themed(
-                &mut self.terminal,
-                &self.theme,
-                &fitted,
-                focused_nodes,
-                viewport,
-                available - 2,
-                matches,
-                &current,
-            )?;
         }
         Ok(())
+    }
+
+    fn print_physical_row(
+        &mut self,
+        frame: &DocumentFrame<'_>,
+        row: &PhysicalRow,
+    ) -> std::fmt::Result {
+        self.print_line_number(frame, row)?;
+        let available = usize::from(self.dimensions.width).saturating_sub(frame.number_width);
+        if available == 0 {
+            return Ok(());
+        }
+        self.set_document_style(
+            StyleRole::ContainerDelimiter,
+            row.logical_line == frame.focused_line,
+        )?;
+        self.terminal
+            .write_char(collapse_marker(frame.viewer, row))?;
+        if available == 1 {
+            return Ok(());
+        }
+        self.terminal.write_char(' ')?;
+        self.paint_document_content(frame, row, available - 2)
+    }
+
+    fn print_line_number(
+        &mut self,
+        frame: &DocumentFrame<'_>,
+        row: &PhysicalRow,
+    ) -> std::fmt::Result {
+        if frame.number_width == 0 {
+            return Ok(());
+        }
+        let focused = row.logical_line == frame.focused_line;
+        self.set_document_style(StyleRole::LineNumber, focused)?;
+        let label = if row.first {
+            let relative = self.show_relative_line_numbers && (!focused || !self.show_line_numbers);
+            let number = if relative {
+                row.logical_line.abs_diff(frame.focused_line)
+            } else {
+                frame
+                    .viewer
+                    .visible_line(row.logical_line)
+                    .unwrap()
+                    .absolute
+                    + 1
+            };
+            format!("{:>width$} ", number, width = frame.number_width - 1)
+        } else {
+            " ".repeat(frame.number_width)
+        };
+        self.terminal
+            .write_str(&label[..label.len().min(usize::from(self.dimensions.width))])
+    }
+
+    fn set_document_style(&mut self, role: StyleRole, focused: bool) -> std::fmt::Result {
+        let state = if focused {
+            StyleState::main().focused()
+        } else {
+            StyleState::main()
+        };
+        self.terminal
+            .set_style(&self.theme.style_on_row(role, state, focused))
+    }
+
+    fn paint_document_content(
+        &mut self,
+        frame: &DocumentFrame<'_>,
+        row: &PhysicalRow,
+        width: usize,
+    ) -> std::fmt::Result {
+        let viewer = frame.viewer;
+        let logical = row.logical_line;
+        let line = viewer.rendered_line(logical);
+        let focused_nodes = focused_node_range(viewer, logical == frame.focused_line);
+        let viewport =
+            (!viewer.is_wrapped_line(logical)).then(|| self.line_viewport(viewer, logical));
+        let line = viewport.map_or(Cow::Borrowed(line), |viewport| {
+            fit_document_line(line, viewport, width)
+        });
+        let painter = lp::LinePainter::new(&line, focused_nodes)
+            .with_theme(&self.theme)
+            .with_search(frame.matches, &frame.current_match);
+        match viewport {
+            Some(viewport) => painter.paint(&mut self.terminal, viewport, width),
+            None => painter.paint_wrapped(&mut self.terminal, row, width),
+        }
     }
 
     pub fn get_command(&mut self, prompt: &str) -> rustyline::Result<String> {
@@ -786,15 +745,15 @@ impl ScreenWriter {
         let viewport = self.line_viewport(viewer, viewer.focused_line_index());
         let start = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..start_byte]));
         let end = viewport.reduced_column(UnicodeWidthStr::width(&line.text[..end_byte]));
-        let document_width =
-            usize::from(self.dimensions.width).saturating_sub(self.number_width(viewer) + 2);
+        let document_width = self.document_width(viewer);
         let visible_columns = viewport.visible_columns(line, document_width);
         let owner = scroll_owner(viewer, viewer.focused_line_index());
         let bound = match owner {
             ScrollOwner::Line(_) => usize::MAX,
             ScrollOwner::Table(table) => self.table_content_width(viewer, table).saturating_sub(1),
         };
-        if (reveal_left && start < visible_columns.start) || end > visible_columns.end {
+        let left_clipped = reveal_left && start < visible_columns.start;
+        if left_clipped || end > visible_columns.end {
             *self.offset_mut(owner) = start.min(bound);
         }
     }
@@ -856,6 +815,68 @@ impl ScreenWriter {
             ));
         }
     }
+}
+
+fn fit_document_line(
+    line: &DisplayLine,
+    viewport: lp::LineViewport,
+    width: usize,
+) -> Cow<'_, DisplayLine> {
+    if viewport.horizontal_offset == 0 {
+        lp::fit_annotations(line, width + viewport.removed_indentation)
+    } else {
+        Cow::Borrowed(line)
+    }
+}
+
+fn jump_to_visible_line(viewer: &JsonViewer, logical: usize) -> Action {
+    Action::JumpTo {
+        line: viewer.visible_line(logical).unwrap().absolute,
+        make_visible: false,
+    }
+}
+
+fn wrapped_mouse_action(viewer: &JsonViewer, row: &PhysicalRow, column: usize) -> Action {
+    let logical = row.logical_line;
+    let (node, source) = lp::hit_test_wrapped(viewer.rendered_line(logical), row, column);
+    if source.is_none() && viewer.is_document_body(logical) {
+        jump_to_visible_line(viewer, logical)
+    } else {
+        Action::FocusNodeAt {
+            node,
+            source,
+            display_range: (row.bytes.start, row.bytes.end),
+        }
+    }
+}
+
+fn collapse_marker(viewer: &JsonViewer, row: &PhysicalRow) -> char {
+    let logical = row.logical_line;
+    if !row.first || !viewer.line_is_collapsible(logical) {
+        return ' ';
+    }
+    let collapsed = if viewer.is_document_header(logical) {
+        viewer
+            .document_root_for_line(logical)
+            .is_some_and(|root| viewer.is_document_collapsed(root))
+    } else {
+        let owner = viewer.rendered_line(logical).owner;
+        viewer.effective_collapsed(owner)
+            || viewer.layout.node(&viewer.flatjson, owner).inline_array
+    };
+    if collapsed { '▸' } else { '▾' }
+}
+
+fn focused_node_range(viewer: &JsonViewer, focused: bool) -> Range<usize> {
+    if !focused {
+        return 0..0;
+    }
+    let node = viewer.focused_node;
+    node..viewer.flatjson[node]
+        .pair_index()
+        .as_option()
+        .unwrap_or(node)
+        + 1
 }
 
 fn end_scroll_offset(width: usize, available: usize) -> usize {

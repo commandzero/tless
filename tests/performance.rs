@@ -57,7 +57,7 @@ fn command_output(program: &str, args: &[&str]) -> String {
     assert!(output.status.success(), "{program}: {:?}", output.stderr);
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
-fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Option<u64>) {
+fn open_terminal() -> (File, File) {
     let mut master = -1;
     let mut slave = -1;
     let mut size = libc::winsize {
@@ -81,8 +81,10 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
         },
         0
     );
-    let mut master = unsafe { File::from_raw_fd(master) };
-    let slave = unsafe { File::from_raw_fd(slave) };
+    unsafe { (File::from_raw_fd(master), File::from_raw_fd(slave)) }
+}
+
+fn terminal_command(binary: &Path, fixture: &Path, slave: &File) -> Command {
     let slave_fd = slave.as_raw_fd();
     let mut command = Command::new(binary);
     command
@@ -102,6 +104,12 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
             Ok(())
         });
     }
+    command
+}
+
+fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Option<u64>) {
+    let (mut master, slave) = open_terminal();
+    let mut command = terminal_command(binary, fixture, &slave);
     let start = Instant::now();
     let mut child = Session(command.spawn().unwrap());
     drop(command);
@@ -111,66 +119,126 @@ fn first_frame(binary: &Path, fixture: &Path, sample_memory: bool) -> (f64, Opti
         unsafe { libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) },
         -1
     );
-    let ansi = regex::Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").unwrap();
-    let id = regex::Regex::new(r#"id"?:\s*0"#).unwrap();
-    let mut output = Vec::new();
-    let mut scanned = 0;
-    let mut useful = None;
-    let mut peak = None;
-    let mut next_sample = Instant::now();
-    loop {
-        // Sample before a complete first read can detect the frame and quit.
-        if sample_memory && useful.is_none() && Instant::now() >= next_sample {
-            let rss = command_output("ps", &["-o", "rss=", "-p", &child.0.id().to_string()]);
-            let kib: u64 = rss.parse().unwrap();
-            peak = Some(peak.unwrap_or(0).max(kib));
-            next_sample = Instant::now() + Duration::from_millis(5);
+
+    let mut frame = FrameReader::new();
+    let mut memory = sample_memory.then(MemorySampler::new);
+    frame.wait(&mut master, &mut child.0, start, memory.as_mut());
+    let elapsed = frame.elapsed.unwrap_or_else(|| {
+        panic!(
+            "No useful frame: {}",
+            String::from_utf8_lossy(&frame.output)
+        )
+    });
+    assert!(child.0.wait().unwrap().success());
+    (elapsed, memory.and_then(|memory| memory.peak))
+}
+
+struct FrameReader {
+    ansi: regex::Regex,
+    id: regex::Regex,
+    output: Vec<u8>,
+    scanned: usize,
+    elapsed: Option<f64>,
+}
+
+impl FrameReader {
+    fn new() -> Self {
+        Self {
+            ansi: regex::Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").unwrap(),
+            id: regex::Regex::new(r#"id"?:\s*0"#).unwrap(),
+            output: Vec::new(),
+            scanned: 0,
+            elapsed: None,
         }
-        let mut buffer = [0; 65536];
-        match master.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => {
-                output.extend_from_slice(&buffer[..n]);
-                let requests = output[scanned..]
-                    .windows(4)
-                    .filter(|b| *b == b"\x1b[6n")
-                    .count();
-                scanned = output.len().saturating_sub(3);
-                for _ in 0..requests {
-                    master.write_all(b"\x1b[1;1R").unwrap();
-                }
-                if useful.is_none() {
-                    let raw = String::from_utf8_lossy(&output);
-                    let text = ansi.replace_all(&raw, "");
-                    if raw.contains("\x1b[40;")
-                        && id.is_match(&text)
-                        && ["nested", "record", "reference.json"]
-                            .iter()
-                            .all(|s| text.contains(s))
-                    {
-                        useful = Some(start.elapsed().as_secs_f64() * 1000.0);
-                        master.write_all(b"q").unwrap();
-                    }
+    }
+
+    fn wait(
+        &mut self,
+        master: &mut File,
+        child: &mut Child,
+        start: Instant,
+        mut memory: Option<&mut MemorySampler>,
+    ) {
+        loop {
+            // Sample before a complete first read can detect the frame and quit.
+            if self.elapsed.is_none() {
+                if let Some(sampler) = memory.as_deref_mut() {
+                    sampler.sample(child.id());
                 }
             }
+            if !self.read(master, start) || child.try_wait().unwrap().is_some() {
+                break;
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(30),
+                "PTY timeout: {}",
+                String::from_utf8_lossy(&self.output)
+            );
+            std::thread::sleep(Duration::from_micros(100));
+        }
+    }
+
+    fn read(&mut self, master: &mut File, start: Instant) -> bool {
+        let mut buffer = [0; 65536];
+        match master.read(&mut buffer) {
+            Ok(0) => return false,
+            Ok(n) => self.receive(master, start, &buffer[..n]),
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
-            Err(error) if error.raw_os_error() == Some(libc::EIO) => break,
+            Err(error) if error.raw_os_error() == Some(libc::EIO) => return false,
             Err(error) => panic!("{error}"),
         }
-        if child.0.try_wait().unwrap().is_some() {
-            break;
-        }
-        assert!(
-            start.elapsed() < Duration::from_secs(30),
-            "PTY timeout: {}",
-            String::from_utf8_lossy(&output)
-        );
-        std::thread::sleep(Duration::from_micros(100));
+        true
     }
-    let elapsed =
-        useful.unwrap_or_else(|| panic!("No useful frame: {}", String::from_utf8_lossy(&output)));
-    assert!(child.0.wait().unwrap().success());
-    (elapsed, peak)
+
+    fn receive(&mut self, master: &mut File, start: Instant, data: &[u8]) {
+        self.output.extend_from_slice(data);
+        let requests = self.output[self.scanned..]
+            .windows(4)
+            .filter(|b| *b == b"\x1b[6n")
+            .count();
+        self.scanned = self.output.len().saturating_sub(3);
+        for _ in 0..requests {
+            master.write_all(b"\x1b[1;1R").unwrap();
+        }
+
+        if self.elapsed.is_none() && self.is_useful() {
+            self.elapsed = Some(start.elapsed().as_secs_f64() * 1000.0);
+            master.write_all(b"q").unwrap();
+        }
+    }
+
+    fn is_useful(&self) -> bool {
+        let raw = String::from_utf8_lossy(&self.output);
+        let text = self.ansi.replace_all(&raw, "");
+        let labels = ["nested", "record", "reference.json"];
+        raw.contains("\x1b[40;")
+            && self.id.is_match(&text)
+            && labels.iter().all(|s| text.contains(s))
+    }
+}
+
+struct MemorySampler {
+    peak: Option<u64>,
+    next: Instant,
+}
+
+impl MemorySampler {
+    fn new() -> Self {
+        Self {
+            peak: None,
+            next: Instant::now(),
+        }
+    }
+
+    fn sample(&mut self, pid: u32) {
+        if Instant::now() < self.next {
+            return;
+        }
+        let rss = command_output("ps", &["-o", "rss=", "-p", &pid.to_string()]);
+        let kib: u64 = rss.parse().unwrap();
+        self.peak = Some(self.peak.unwrap_or(0).max(kib));
+        self.next = Instant::now() + Duration::from_millis(5);
+    }
 }
 
 #[test]

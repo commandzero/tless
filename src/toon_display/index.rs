@@ -1,9 +1,12 @@
 //! Structural TOON analysis. No rendered lines or source-map graphs are retained.
 use super::line_index::LineIndex;
-use super::{WarningKind, compact_key, decode_string, number, scalar};
-use crate::flatjson::{FlatJson, KeyValue, Value};
+use super::{WarningKind, decode_string, number, scalar};
+use crate::flatjson::{ContainerType, FlatJson, KeyValue, Row, Value};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+
+mod scan;
+use scan::Scan;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Node {
@@ -25,15 +28,6 @@ pub struct Analysis {
     extra_warnings: HashMap<usize, Vec<WarningKind>>,
     pub roots: Vec<usize>,
     root_ranges: Vec<(usize, usize, usize)>,
-}
-
-#[derive(Default)]
-struct Keys<'a> {
-    seen: usize,
-    previous_clean: bool,
-    clean: bool,
-    same: bool,
-    values: Vec<(Cow<'a, str>, usize)>,
 }
 
 pub fn children(flat: &FlatJson, node: usize) -> impl Iterator<Item = usize> + '_ {
@@ -161,169 +155,57 @@ impl Analysis {
             roots: roots.to_vec(),
             root_ranges,
         };
-        // Construction-only key scratch, reused at each nesting depth. A matching
-        // prefix of a warning-free sequence is also warning-free; every changed
-        // key sequence receives full duplicate and warning analysis.
-        let mut keys: Vec<Keys<'_>> = (0..=flat.2).map(|_| Keys::default()).collect();
-        let mut order = Vec::new();
-        let raw_keys = flat.3.keys.is_empty();
+        Scan::new(flat, &mut result).visit_roots(roots);
         for &root in roots {
-            let end = *flat.subtree_range(root).end() + 1;
-            for (offset, row) in flat.0.iter_range(root..end).enumerate() {
-                let i = root + offset;
-                if let Value::CloseContainer { open_index, .. } = row.value {
-                    if !flat[open_index].is_array() {
-                        let fields = &mut keys[flat[open_index].depth];
-                        fields.values.truncate(fields.seen);
-                        if !fields.same {
-                            order.clear();
-                            order.extend(0..fields.values.len());
-                            order.sort_unstable_by(|&a, &b| {
-                                fields.values[a].0.cmp(&fields.values[b].0).then(a.cmp(&b))
-                            });
-                            let mut start = 0;
-                            while start < order.len() {
-                                let mut end = start + 1;
-                                while end < order.len()
-                                    && fields.values[order[end]].0 == fields.values[order[start]].0
-                                {
-                                    end += 1;
-                                }
-                                let count = end - start;
-                                if count > 1 {
-                                    fields.clean = false;
-                                    for (ordinal, &index) in order[start..end].iter().enumerate() {
-                                        let child = fields.values[index].1;
-                                        result.occurrences.insert(child, (ordinal + 1, count));
-                                        result.warn(flat, child, root, WarningKind::DuplicateKey);
-                                    }
-                                }
-                                start = end;
-                            }
-                        }
-                        fields.previous_clean = fields.clean;
-                    }
-                    if open_index != root {
-                        if let Some(&hidden) = result.hidden_warnings.get(&open_index) {
-                            *result
-                                .hidden_warnings
-                                .entry(flat[open_index].parent.unwrap())
-                                .or_default() += hidden;
-                        }
-                    }
-                    if flat[open_index].is_array()
-                        && scalar(flat, flat[open_index].first_child().unwrap())
-                    {
-                        result.arrays.push(open_index);
-                    }
-                    continue;
-                }
-                if !row.is_opening_of_container()
-                    || row.is_array()
-                    || (i != root && row.key_range.is_some())
-                {
-                    result.lines.insert(i);
-                }
-                if i != root && row.key_range.is_some() {
-                    let fields = &mut keys[row.depth - 1];
-                    let raw_match = raw_keys
-                        && fields.previous_clean
-                        && fields.values.get(fields.seen).is_some_and(|entry| {
-                            // Borrowed JSON keys have no escapes. Equality to
-                            // that decoded spelling also proves this key has none.
-                            let Cow::Borrowed(previous) = &entry.0 else {
-                                return false;
-                            };
-                            let range = row.key_range.as_ref().unwrap();
-                            &flat.1[range.start + 1..range.end - 1] == *previous
-                        });
-                    if raw_match {
-                        fields.values[fields.seen].1 = i;
-                        fields.seen += 1;
-                    } else if let Some(decoded) = key(flat, i) {
-                        let known_clean = fields.previous_clean
-                            && fields
-                                .values
-                                .get(fields.seen)
-                                .is_some_and(|entry| entry.0 == decoded);
-                        fields.same &= known_clean;
-                        if let Some(entry) = fields.values.get_mut(fields.seen) {
-                            if !known_clean {
-                                entry.0 = decoded;
-                            }
-                            entry.1 = i;
-                        } else {
-                            fields.values.push((decoded, i));
-                        }
-                        fields.seen += 1;
-                    } else if let Some(key) = flat.key_value(i) {
-                        fields.same = false;
-                        fields.clean = false;
-                        result.warn(flat, i, root, WarningKind::NonStringKey);
-                        for warning in compact_key(key).1 {
-                            result.warn(flat, i, root, warning);
-                        }
-                    }
-                }
-                if let Value::Number = row.value {
-                    let raw = &flat.1[row.range.clone()];
-                    if !bounded_integer(raw) && !bounded_fraction(raw) {
-                        // Valid exponent spellings do not need rendering just
-                        // to decide whether this off-screen value warns.
-                        lazy_static::lazy_static! {
-                            static ref EXPONENT: regex::Regex = regex::Regex::new(
-                                r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?[eE][+-]?[0-9]+$"
-                            ).unwrap();
-                        }
-                        if !EXPONENT.is_match(raw) {
-                            if let Some(warning) = number(raw).1 {
-                                result.warn(flat, i, root, warning);
-                            }
-                        }
-                    }
-                }
-                if row.is_opening_of_container() && !row.is_array() {
-                    let fields = &mut keys[row.depth];
-                    fields.seen = 0;
-                    fields.same = fields.previous_clean;
-                    fields.clean = true;
-                }
-            }
-        }
-        // Classify only after visiting the whole tree. An outer table owns
-        // nested groups even if one of those objects is independently eligible.
-        for &root in roots {
-            let end = *flat.subtree_range(root).end();
-            let mut i = root;
-            while i <= end {
-                let eligible_position = (i == root || flat[i].key_range.is_some())
-                    && (flat[i].is_array() || child_count(flat, i) >= 2);
-                if !flat[i].is_opening_of_container()
-                    || !eligible_position
-                    || !result.is_table(flat, i)
-                {
-                    i += 1;
-                    continue;
-                }
-                result.tables.insert(i);
-                if i == root && !flat[i].is_array() {
-                    result.lines.insert(i);
-                }
-                let table_end = *flat.subtree_range(i).end();
-                result.lines.clear(i + 1..table_end);
-                for row in children(flat, i) {
-                    result.lines.insert(row);
-                }
-                // A table's descendants are field groups and primitive leaves,
-                // never independent tables. Do not reclassify their schemas.
-                i = table_end + 1;
-            }
+            result.classify_tables(flat, root);
         }
         result.lines.finish();
         result
     }
 
-    fn warn(&mut self, flat: &FlatJson, node: usize, root: usize, warning: WarningKind) {
+    fn classify_tables(&mut self, flat: &FlatJson, root: usize) {
+        let end = *flat.subtree_range(root).end();
+        let mut node = root;
+        while node <= end {
+            if !self.table_candidate(flat, root, node) || !self.is_table(flat, node) {
+                node += 1;
+                continue;
+            }
+            // A table owns all its field groups and leaves. Skip the entire
+            // subtree so nested objects do not receive independent layouts.
+            node = self.register_table(flat, root, node);
+        }
+    }
+
+    fn table_candidate(&self, flat: &FlatJson, root: usize, node: usize) -> bool {
+        let row = &flat[node];
+        match row.value {
+            Value::OpenContainer {
+                container_type: ContainerType::Array,
+                ..
+            } => node == root || row.key_range.is_some(),
+            Value::OpenContainer {
+                container_type: ContainerType::Object,
+                ..
+            } => (node == root || row.key_range.is_some()) && child_count(flat, node) >= 2,
+            _ => false,
+        }
+    }
+
+    fn register_table(&mut self, flat: &FlatJson, root: usize, node: usize) -> usize {
+        self.tables.insert(node);
+        if node == root && !flat[node].is_array() {
+            self.lines.insert(node);
+        }
+        let end = *flat.subtree_range(node).end();
+        self.lines.clear(node + 1..end);
+        for row in children(flat, node) {
+            self.lines.insert(row);
+        }
+        end + 1
+    }
+
+    fn warn(&mut self, node: usize, parent: Option<usize>, warning: WarningKind) {
         let bits = self.warnings.entry(node).or_default();
         let bit = 1 << warning as u8;
         if *bits & bit != 0 {
@@ -332,11 +214,8 @@ impl Analysis {
         *bits |= bit;
         // Warning-free nodes need no metadata. Closing delimiters propagate
         // nonzero container totals, keeping deeply nested warnings linear.
-        if node != root {
-            *self
-                .hidden_warnings
-                .entry(flat[node].parent.unwrap())
-                .or_default() += 1;
+        if let Some(parent) = parent {
+            *self.hidden_warnings.entry(parent).or_default() += 1;
         }
     }
 
@@ -430,21 +309,8 @@ impl Analysis {
         let Some(first) = children(flat, container).next() else {
             return false;
         };
-        if !flat[container].is_array() {
-            if child_count(flat, container) < 2 {
-                return false;
-            }
-            if children(flat, container).any(|entry| {
-                !flat[entry].is_opening_of_container()
-                    || flat[entry].is_array()
-                    || self.warnings.get(&entry).is_some_and(|&bits| {
-                        bits & ((1 << WarningKind::DuplicateKey as u8)
-                            | (1 << WarningKind::NonStringKey as u8))
-                            != 0
-                    })
-            }) {
-                return false;
-            }
+        if !flat[container].is_array() && !self.valid_keyed_entries(flat, container) {
+            return false;
         }
         if child_count(flat, container) == 1 {
             self.same_schema(flat, first, first)
@@ -457,49 +323,88 @@ impl Analysis {
         }
     }
 
+    fn valid_keyed_entries(&self, flat: &FlatJson, container: usize) -> bool {
+        child_count(flat, container) >= 2
+            && children(flat, container)
+                .all(|entry| nonempty_object(&flat[entry]) && !self.invalid_table_key(entry))
+    }
+
+    fn invalid_table_key(&self, node: usize) -> bool {
+        const INVALID: u8 =
+            (1 << WarningKind::DuplicateKey as u8) | (1 << WarningKind::NonStringKey as u8);
+        self.warnings
+            .get(&node)
+            .is_some_and(|&bits| bits & INVALID != 0)
+    }
+
     fn same_schema(&self, flat: &FlatJson, first: usize, row: usize) -> bool {
-        if flat[first].is_array()
-            || flat[row].is_array()
-            || !flat[first].is_opening_of_container()
-            || !flat[row].is_opening_of_container()
-            || child_count(flat, first) == 0
-            || child_count(flat, first) != child_count(flat, row)
-        {
+        if !nonempty_object(&flat[first]) || !nonempty_object(&flat[row]) {
             return false;
         }
-        let mut left = (first + 1..flat[first].pair_index().unwrap())
-            .filter(|&node| !flat[node].is_closing_of_container());
-        let mut right = (row + 1..flat[row].pair_index().unwrap())
-            .filter(|&node| !flat[node].is_closing_of_container());
+        if child_count(flat, first) != child_count(flat, row) {
+            return false;
+        }
+
+        let members = |object| {
+            (object + 1..flat[object].pair_index().unwrap())
+                .filter(|&node| !flat[node].is_closing_of_container())
+                .map(move |node| (node, flat[node].depth - flat[object].depth))
+        };
+        let mut left = members(first);
+        let mut right = members(row);
         loop {
             match (left.next(), right.next()) {
                 (None, None) => return true,
-                (Some(a), Some(b)) => {
-                    let ordinary_object = |node| {
-                        flat[node].is_opening_of_container()
-                            && !flat[node].is_array()
-                            && child_count(flat, node) > 0
-                    };
-                    if flat[a].depth - flat[first].depth != flat[b].depth - flat[row].depth
-                        || !keys_equal(flat, a, b)
-                        || self.warnings.get(&a).is_some_and(|&bits| {
-                            bits & ((1 << WarningKind::DuplicateKey as u8)
-                                | (1 << WarningKind::NonStringKey as u8))
-                                != 0
-                        })
-                        || self.warnings.get(&b).is_some_and(|&bits| {
-                            bits & ((1 << WarningKind::DuplicateKey as u8)
-                                | (1 << WarningKind::NonStringKey as u8))
-                                != 0
-                        })
-                        || !(scalar(flat, a) && scalar(flat, b)
-                            || ordinary_object(a) && ordinary_object(b))
-                    {
-                        return false;
-                    }
-                }
+                (Some(a), Some(b)) if self.same_field(flat, a, b) => {}
                 _ => return false,
             }
         }
+    }
+
+    fn same_field(&self, flat: &FlatJson, a: (usize, usize), b: (usize, usize)) -> bool {
+        let ((left, left_depth), (right, right_depth)) = (a, b);
+        if left_depth != right_depth
+            || self.invalid_table_key(left)
+            || self.invalid_table_key(right)
+        {
+            return false;
+        }
+        keys_equal(flat, left, right) && matching_field_types(flat, left, right)
+    }
+}
+
+fn nonempty_object(row: &Row) -> bool {
+    matches!(
+        row.value,
+        Value::OpenContainer {
+            container_type: ContainerType::Object,
+            ..
+        }
+    )
+}
+
+fn matching_field_types(flat: &FlatJson, left: usize, right: usize) -> bool {
+    if scalar(flat, left) {
+        scalar(flat, right)
+    } else {
+        nonempty_object(&flat[left]) && nonempty_object(&flat[right])
+    }
+}
+
+pub(super) fn same_field_path(flat: &FlatJson, mut first: usize, mut focused: usize) -> bool {
+    loop {
+        if flat[first].index_in_parent != flat[focused].index_in_parent {
+            return false;
+        }
+        let a = flat[first].parent.unwrap();
+        let b = flat[focused].parent.unwrap();
+        if flat[a].depth != flat[b].depth {
+            return false;
+        }
+        if flat[a].parent == flat[b].parent {
+            return true;
+        }
+        first = a;
+        focused = b;
     }
 }

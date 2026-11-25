@@ -1,4 +1,4 @@
-use crate::flatjson::{FlatJson, Value};
+use crate::flatjson::{ContainerType, FlatJson, Value};
 
 /// Return the non-closing rows that begin each original document.
 pub fn document_roots(flat: &FlatJson) -> Vec<usize> {
@@ -21,9 +21,7 @@ pub struct PathFilter {
 enum Token {
     Key(String),
     /// A concrete bracket index, which requires an array.
-    ArrayIndex {
-        text: String,
-    },
+    ArrayIndex(String),
     /// A concrete quoted bracket key, which requires an object.
     QuotedKey(String),
 }
@@ -85,66 +83,16 @@ impl PathFilter {
     }
 
     fn parse_friendly(path: &str) -> Result<Self, String> {
-        let bytes = path.as_bytes();
-        let mut i = 0;
+        let mut offset = usize::from(path.starts_with('.'));
         let mut tokens = Vec::new();
-        if bytes.first() == Some(&b'.') {
-            i = 1;
-        }
-
-        if i == path.len() {
-            return Err(Self::syntax("a trailing '.' is not a path token"));
-        }
-
-        let mut expect_component = true;
-        while i < path.len() {
-            match bytes[i] {
-                b'.' => {
-                    if expect_component {
-                        return Err(Self::syntax("empty dot token"));
-                    }
-                    expect_component = true;
-                    i += 1;
-                    if i == path.len() {
-                        return Err(Self::syntax("a trailing '.' is not a path token"));
-                    }
-                }
-                b'[' => {
-                    let (token, next) = parse_bracket(path, i)?;
-                    tokens.push(token);
-                    i = next;
-                    expect_component = false;
-                }
-                _ if expect_component => {
-                    let start = i;
-                    while i < path.len() && bytes[i] != b'.' && bytes[i] != b'[' {
-                        let ch = path[i..]
-                            .chars()
-                            .next()
-                            .expect("byte offset must point at a character");
-                        if ch == ']' || ch == '/' || ch == '\\' || ch.is_whitespace() {
-                            return Err(Self::syntax(&format!(
-                                "invalid character in dot token at byte {i}"
-                            )));
-                        }
-                        i += ch.len_utf8();
-                    }
-                    if start == i {
-                        return Err(Self::syntax("empty dot token"));
-                    }
-                    tokens.push(Token::Key(path[start..i].to_owned()));
-                    expect_component = false;
-                }
-                _ => {
-                    // A selector may be followed immediately by another selector,
-                    // but all other separators must be explicit dots.
-                    return Err(Self::syntax(&format!("unexpected character at byte {i}")));
-                }
-            }
-        }
-
-        if expect_component {
-            return Err(Self::syntax("path ended while expecting a token"));
+        while offset < path.len() {
+            let (token, end) = match path.as_bytes()[offset] {
+                b'[' => parse_bracket(path, offset)?,
+                b'.' => return Err(Self::syntax("empty dot token")),
+                _ => parse_dot_key(path, offset)?,
+            };
+            tokens.push(token);
+            offset = next_component(path, end)?;
         }
         Ok(Self { tokens })
     }
@@ -154,59 +102,42 @@ impl PathFilter {
     }
 }
 
+fn parse_dot_key(path: &str, start: usize) -> Result<(Token, usize), String> {
+    let remaining = &path[start..];
+    let length = remaining.find(['.', '[']).unwrap_or(remaining.len());
+    let key = &remaining[..length];
+    for (offset, ch) in key.char_indices() {
+        if matches!(ch, ']' | '/' | '\\') || ch.is_whitespace() {
+            return Err(PathFilter::syntax(&format!(
+                "invalid character in dot token at byte {}",
+                start + offset
+            )));
+        }
+    }
+    Ok((Token::Key(key.to_owned()), start + length))
+}
+
+fn next_component(path: &str, end: usize) -> Result<usize, String> {
+    match path.as_bytes().get(end) {
+        None | Some(b'[') => Ok(end),
+        Some(b'.') if end + 1 < path.len() => Ok(end + 1),
+        Some(b'.') => Err(PathFilter::syntax("a trailing '.' is not a path token")),
+        _ => Err(PathFilter::syntax(&format!(
+            "unexpected character at byte {end}"
+        ))),
+    }
+}
+
 fn parse_bracket(path: &str, start: usize) -> Result<(Token, usize), String> {
-    debug_assert_eq!(path.as_bytes()[start], b'[');
-    let bytes = path.as_bytes();
-    let mut i = start + 1;
-    if i >= path.len() {
-        return Err(PathFilter::syntax("unterminated bracket selector"));
+    let content = &path[start + 1..];
+    if content.starts_with('"') {
+        return parse_quoted_key(content, start + 1);
     }
 
-    if bytes[i] == b'"' {
-        let string_start = i;
-        i += 1;
-        let mut closed = None;
-        while i < path.len() {
-            match bytes[i] {
-                b'\\' => {
-                    i += 1;
-                    if i >= path.len() {
-                        return Err(PathFilter::syntax(
-                            "unterminated JSON string in bracket selector",
-                        ));
-                    }
-                    // Escapes in JSON are ASCII. Advancing one byte also makes
-                    // malformed UTF-8 escape forms fail in the JSON decoder below.
-                    i += 1;
-                }
-                b'"' => {
-                    closed = Some(i);
-                    break;
-                }
-                _ => i += 1,
-            }
-        }
-        let string_end = closed
-            .ok_or_else(|| PathFilter::syntax("unterminated JSON string in bracket selector"))?;
-        if string_end + 1 >= path.len() || bytes[string_end + 1] != b']' {
-            return Err(PathFilter::syntax(
-                "quoted bracket selector must end with ]",
-            ));
-        }
-        let raw = &path[string_start..=string_end];
-        let key = serde_json::from_str::<String>(raw)
-            .map_err(|error| PathFilter::syntax(&format!("invalid quoted key: {error}")))?;
-        return Ok((Token::QuotedKey(key), string_end + 2));
-    }
-
-    let number_start = i;
-    while i < path.len() && bytes[i] != b']' {
-        i += 1;
-    }
-    if i >= path.len() {
-        return Err(PathFilter::syntax("unterminated bracket selector"));
-    }
-    let text = &path[number_start..i];
+    let end = content
+        .find(']')
+        .ok_or_else(|| PathFilter::syntax("unterminated bracket selector"))?;
+    let text = &content[..end];
     if text.is_empty() {
         return Err(PathFilter::syntax("empty bracket selector"));
     }
@@ -215,12 +146,32 @@ fn parse_bracket(path: &str, start: usize) -> Result<(Token, usize), String> {
             "bracket selector must be a zero-based decimal index",
         ));
     }
-    Ok((
-        Token::ArrayIndex {
-            text: text.to_owned(),
-        },
-        i + 1,
-    ))
+    Ok((Token::ArrayIndex(text.to_owned()), start + end + 2))
+}
+
+fn parse_quoted_key(content: &str, start: usize) -> Result<(Token, usize), String> {
+    let mut escaped = false;
+    let closing_quote = content
+        .bytes()
+        .enumerate()
+        .skip(1)
+        .find_map(|(offset, byte)| {
+            if escaped {
+                escaped = false;
+                return None;
+            }
+            escaped = byte == b'\\';
+            (byte == b'"').then_some(offset)
+        })
+        .ok_or_else(|| PathFilter::syntax("unterminated JSON string in bracket selector"))?;
+    if content.as_bytes().get(closing_quote + 1) != Some(&b']') {
+        return Err(PathFilter::syntax(
+            "quoted bracket selector must end with ]",
+        ));
+    }
+    let key = serde_json::from_str::<String>(&content[..=closing_quote])
+        .map_err(|error| PathFilter::syntax(&format!("invalid quoted key: {error}")))?;
+    Ok((Token::QuotedKey(key), start + closing_quote + 2))
 }
 
 fn decode_pointer_token(raw: &str) -> Result<String, String> {
@@ -246,63 +197,38 @@ fn decode_pointer_token(raw: &str) -> Result<String, String> {
 }
 
 fn valid_index_text(text: &str) -> bool {
-    !text.is_empty()
-        && (text == "0"
-            || (text.as_bytes().first() != Some(&b'0') && text.bytes().all(|b| b.is_ascii_digit())))
+    match text.as_bytes() {
+        [b'0'] => true,
+        [b'1'..=b'9', tail @ ..] => tail.iter().all(u8::is_ascii_digit),
+        _ => false,
+    }
 }
 
 fn resolve_token(flat: &FlatJson, node: usize, token: &Token) -> Result<usize, String> {
-    let value = &flat[node].value;
-    let is_array = matches!(value, Value::EmptyArray)
-        || matches!(
-            value,
-            Value::OpenContainer {
-                container_type: crate::flatjson::ContainerType::Array,
-                ..
-            }
-        );
-    let is_object = matches!(value, Value::EmptyObject)
-        || matches!(
-            value,
-            Value::OpenContainer {
-                container_type: crate::flatjson::ContainerType::Object,
-                ..
-            }
-        );
+    let container = match flat[node].value {
+        Value::OpenContainer { container_type, .. } => Some(container_type),
+        Value::EmptyArray => Some(ContainerType::Array),
+        Value::EmptyObject => Some(ContainerType::Object),
+        _ => None,
+    };
 
-    match token {
-        Token::ArrayIndex { text } => {
-            if !is_array {
-                return Err(if is_object {
-                    format!("array index selector {text:?} requires an array")
-                } else {
-                    format!("cannot traverse scalar with token {text:?}")
-                });
-            }
+    match (container, token) {
+        (Some(ContainerType::Array), Token::Key(text) | Token::ArrayIndex(text)) => {
             let index = checked_index(text)?;
             child_at_index(flat, node, index)
                 .ok_or_else(|| format!("array index {text:?} is out of range"))
         }
-        Token::QuotedKey(key) => {
-            if !is_object {
-                return Err(if is_array {
-                    format!("quoted key selector {key:?} requires an object")
-                } else {
-                    format!("cannot traverse scalar with token {key:?}")
-                });
-            }
+        (Some(ContainerType::Object), Token::Key(key) | Token::QuotedKey(key)) => {
             child_for_key(flat, node, key)
         }
-        Token::Key(key) => {
-            if is_array {
-                let index = checked_index(key)?;
-                return child_at_index(flat, node, index)
-                    .ok_or_else(|| format!("array index {key:?} is out of range"));
-            }
-            if is_object {
-                return child_for_key(flat, node, key);
-            }
-            Err(format!("cannot traverse scalar with token {key:?}"))
+        (Some(ContainerType::Object), Token::ArrayIndex(text)) => {
+            Err(format!("array index selector {text:?} requires an array"))
+        }
+        (Some(ContainerType::Array), Token::QuotedKey(key)) => {
+            Err(format!("quoted key selector {key:?} requires an object"))
+        }
+        (None, Token::Key(text) | Token::ArrayIndex(text) | Token::QuotedKey(text)) => {
+            Err(format!("cannot traverse scalar with token {text:?}"))
         }
     }
 }
@@ -327,18 +253,17 @@ fn child_at_index(flat: &FlatJson, node: usize, index: usize) -> Option<usize> {
 }
 
 fn child_for_key(flat: &FlatJson, node: usize, key: &str) -> Result<usize, String> {
-    let mut child = flat[node].first_child();
+    let children = std::iter::successors(flat[node].first_child().as_option(), |&child| {
+        flat[child].next_sibling.as_option()
+    });
     let mut matched = None;
-    while let Some(child_index) = child.as_option() {
-        if let Some(candidate) = flat.decoded_string_key(child_index)? {
-            if candidate.as_ref() == key {
-                if matched.is_some() {
-                    return Err(format!("ambiguous member {key:?}: duplicate key"));
-                }
-                matched = Some(child_index);
-            }
+    for child in children {
+        if flat.decoded_string_key(child)?.as_deref() != Some(key) {
+            continue;
         }
-        child = flat[child_index].next_sibling;
+        if matched.replace(child).is_some() {
+            return Err(format!("ambiguous member {key:?}: duplicate key"));
+        }
     }
     matched.ok_or_else(|| format!("missing member {key:?}"))
 }

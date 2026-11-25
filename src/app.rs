@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io;
 use std::io::Write;
+use std::ops::ControlFlow;
 
 use arboard::Clipboard;
 use rustyline::error::ReadlineError;
@@ -46,13 +47,20 @@ pub struct App {
 // presses. When one of these commands is partially inputted,
 // pressing a key not part of the combination will cancel
 // the combination command, and no action will be performed.
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum InputState {
     Default,
     PendingPCommand,
     PendingYCommand,
     PendingZCommand,
     WaitingForAnyKeyPress,
+}
+
+enum EventOutcome {
+    Redraw(Option<Action>),
+    RevealMatch(Option<Action>),
+    KeepScreen,
+    Quit,
 }
 
 // Various things that can be copied/printed.
@@ -66,6 +74,25 @@ enum ContentTarget {
     DotPath,
     BracketPath,
     QueryPath,
+}
+
+impl ContentTarget {
+    fn from_command_key(event: TuiEvent, value_key: char, dot_path_key: char) -> Option<Self> {
+        let KeyEvent(Key::Char(key)) = event else {
+            return None;
+        };
+        match key {
+            key if key == value_key => Some(Self::PrettyPrintedValue),
+            key if key == dot_path_key => Some(Self::DotPath),
+            't' => Some(Self::ToonValue),
+            'v' => Some(Self::OneLineValue),
+            's' => Some(Self::String),
+            'k' => Some(Self::Key),
+            'b' => Some(Self::BracketPath),
+            'q' => Some(Self::QueryPath),
+            _ => None,
+        }
+    }
 }
 
 // Help contents that we pipe to less.
@@ -132,8 +159,7 @@ impl App {
     }
 
     pub fn run(&mut self, input: Box<dyn Iterator<Item = io::Result<TuiEvent>>>) {
-        let dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
-        self.screen_writer.dimensions = dimensions;
+        self.refresh_terminal_dimensions();
         self.draw_screen();
 
         for event in input {
@@ -145,506 +171,390 @@ impl App {
                     continue;
                 }
             };
-
-            // This state trumps everything else. We won't do anything until the user
-            // hits a key, then we will redraw the screen and return to the default input
-            // state. (We ignore the actual value of the key they press.)
-            if self.input_state == InputState::WaitingForAnyKeyPress {
-                if matches!(event, KeyEvent(_)) {
-                    let _ = write!(self.screen_writer.stdout, "{ToAlternateScreen}");
-                    let _ = write!(self.screen_writer.stdout, "{ENABLE_MOUSE_BUTTON_TRACKING}");
-                    self.input_state = InputState::Default;
-                    self.draw_screen();
-                    self.message = None;
-                }
-                continue;
+            if self.handle_event(event).is_break() {
+                break;
             }
+        }
+    }
 
-            // If the user hits Ctrl-z, we don't modify state at all, just send SIGSTOP to
-            // ourself, then loop around and process the next input.
-            if matches!(event, KeyEvent(Key::Ctrl('z'))) {
-                // Restore terminal prior to suspending.
-                let _ = self.screen_writer.stdout.suspend_raw_mode();
-                let _ = write!(self.screen_writer.stdout, "{DISABLE_MOUSE_BUTTON_TRACKING}");
-                let _ = write!(self.screen_writer.stdout, "{ToMainScreen}");
-                let _ = write!(self.screen_writer.stdout, "{}", termion::cursor::Show);
-                let _ = self.screen_writer.stdout.flush();
-                let _ = nix::sys::signal::kill(
-                    nix::unistd::Pid::from_raw(0),
-                    nix::sys::signal::Signal::SIGSTOP,
-                );
-                // Re-enable all the terminal settings.
-                let _ = write!(self.screen_writer.stdout, "{}", termion::cursor::Hide);
+    fn handle_event(&mut self, event: TuiEvent) -> ControlFlow<()> {
+        match (self.input_state, &event) {
+            // Consume the first key after printing, regardless of its usual meaning.
+            (InputState::WaitingForAnyKeyPress, KeyEvent(_)) => {
                 let _ = write!(self.screen_writer.stdout, "{ToAlternateScreen}");
                 let _ = write!(self.screen_writer.stdout, "{ENABLE_MOUSE_BUTTON_TRACKING}");
-                let _ = self.screen_writer.stdout.activate_raw_mode();
-                // I'm not exactly sure why we have to do this.
+                self.input_state = InputState::Default;
                 self.draw_screen();
-                continue;
+                self.message = None;
+                return ControlFlow::Continue(());
             }
+            (InputState::WaitingForAnyKeyPress, _) => return ControlFlow::Continue(()),
+            (_, KeyEvent(Key::Ctrl('z'))) => {
+                self.suspend();
+                return ControlFlow::Continue(());
+            }
+            _ => {}
+        }
 
-            // When "actively" searching, we want to show highlighted search terms.
-            // We consider someone "actively" searching immediately after the start
-            // of a search, and while they navigate between matches using n/N.
-            //
-            // Once the user moves the focused row via another input, we will no longer
-            // consider them actively searching. (So scrolling, as long as it doesn't
-            // result in the cursor moving, does not stop the "active" search.)
-            //
-            // If a user expands a node that contained a search match, then we want
-            // the next jump to go to that match inside the container. To handle this
-            // we'll also stop considering the search active if the collapsed state
-            // of the focused row changes.
-            let mut jumped_to_search_match = false;
-            let focused_node_before = self.viewer.focused_node;
-            let previous_collapsed_state_of_focused_node =
-                self.viewer.effective_collapsed(focused_node_before);
+        let previous_focus = self.viewer.focused_node;
+        let was_collapsed = self.viewer.effective_collapsed(previous_focus);
+        let (action, reveal_match) = match self.event_outcome(event) {
+            EventOutcome::Redraw(action) => (action, false),
+            EventOutcome::RevealMatch(action) => (action, true),
+            EventOutcome::KeepScreen => return ControlFlow::Continue(()),
+            EventOutcome::Quit => return ControlFlow::Break(()),
+        };
 
-            let action = match event {
-                // Put this first so the current input state doesn't get reset
-                // when resizing the window.
-                WinChEvent => {
-                    jumped_to_search_match = self.search_state.active_search_state().is_some();
-                    let dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
-                    self.screen_writer.dimensions = dimensions;
-                    Some(Action::ResizeViewerDimensions(
-                        dimensions.without_status_bar(),
-                    ))
-                }
-                // Handle special input states:
-                // p commands:
-                event if self.input_state == InputState::PendingPCommand => {
-                    let content_target = match event {
-                        KeyEvent(Key::Char('p')) => Some(ContentTarget::PrettyPrintedValue),
-                        KeyEvent(Key::Char('t')) => Some(ContentTarget::ToonValue),
-                        KeyEvent(Key::Char('v')) => Some(ContentTarget::OneLineValue),
-                        KeyEvent(Key::Char('s')) => Some(ContentTarget::String),
-                        KeyEvent(Key::Char('k')) => Some(ContentTarget::Key),
-                        KeyEvent(Key::Char('P')) => Some(ContentTarget::DotPath),
-                        KeyEvent(Key::Char('b')) => Some(ContentTarget::BracketPath),
-                        KeyEvent(Key::Char('q')) => Some(ContentTarget::QueryPath),
-                        _ => None,
-                    };
+        if let Some(action) = action {
+            self.apply_viewer_action(action, previous_focus);
+        }
+        self.update_search_after_event(reveal_match, previous_focus, was_collapsed);
+        self.draw_screen();
+        self.message = None;
+        ControlFlow::Continue(())
+    }
 
-                    self.input_buffer.clear();
+    fn suspend(&mut self) {
+        let _ = self.screen_writer.stdout.suspend_raw_mode();
+        let _ = write!(self.screen_writer.stdout, "{DISABLE_MOUSE_BUTTON_TRACKING}");
+        let _ = write!(self.screen_writer.stdout, "{ToMainScreen}");
+        let _ = write!(self.screen_writer.stdout, "{}", termion::cursor::Show);
+        let _ = self.screen_writer.stdout.flush();
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(0),
+            nix::sys::signal::Signal::SIGSTOP,
+        );
+        let _ = write!(self.screen_writer.stdout, "{}", termion::cursor::Hide);
+        let _ = write!(self.screen_writer.stdout, "{ToAlternateScreen}");
+        let _ = write!(self.screen_writer.stdout, "{ENABLE_MOUSE_BUTTON_TRACKING}");
+        let _ = self.screen_writer.stdout.activate_raw_mode();
+        self.draw_screen();
+    }
 
-                    if let Some(content_target) = content_target {
-                        if self.print_content(content_target) {
-                            self.input_state = InputState::WaitingForAnyKeyPress;
-                            continue;
-                        }
-                    }
+    fn refresh_terminal_dimensions(&mut self) {
+        self.screen_writer.dimensions = TTYDimensions::from_size(termion::terminal_size().unwrap());
+    }
 
-                    self.input_state = InputState::Default;
+    fn redraw_after_layout_change(&self, action: Option<Action>) -> EventOutcome {
+        if self.search_state.active_search_state().is_some() {
+            EventOutcome::RevealMatch(action)
+        } else {
+            EventOutcome::Redraw(action)
+        }
+    }
 
-                    None
-                }
-                // y commands:
-                event if self.input_state == InputState::PendingYCommand => {
-                    let content_target = match event {
-                        KeyEvent(Key::Char('y')) => Some(ContentTarget::PrettyPrintedValue),
-                        KeyEvent(Key::Char('t')) => Some(ContentTarget::ToonValue),
-                        KeyEvent(Key::Char('v')) => Some(ContentTarget::OneLineValue),
-                        KeyEvent(Key::Char('s')) => Some(ContentTarget::String),
-                        KeyEvent(Key::Char('k')) => Some(ContentTarget::Key),
-                        KeyEvent(Key::Char('p')) => Some(ContentTarget::DotPath),
-                        KeyEvent(Key::Char('b')) => Some(ContentTarget::BracketPath),
-                        KeyEvent(Key::Char('q')) => Some(ContentTarget::QueryPath),
-                        _ => None,
-                    };
-
-                    if let Some(content_target) = content_target {
-                        self.copy_content(content_target);
-                    }
-
-                    self.input_state = InputState::Default;
-                    self.input_buffer.clear();
-
-                    None
-                }
-                // z commands:
-                event if self.input_state == InputState::PendingZCommand => {
-                    let z_action = match event {
-                        KeyEvent(Key::Char('t')) => Some(Action::MoveFocusedLineToTop),
-                        KeyEvent(Key::Char('z')) => Some(Action::MoveFocusedLineToCenter),
-                        KeyEvent(Key::Char('b')) => Some(Action::MoveFocusedLineToBottom),
-                        _ => None,
-                    };
-
-                    self.input_state = InputState::Default;
-                    self.input_buffer.clear();
-
-                    z_action
-                }
-                // These inputs quit.
-                KeyEvent(Key::Ctrl('c') | Key::Char('q')) => break,
-                // Show the help page
-                KeyEvent(Key::F(1)) => {
-                    self.show_help();
-                    None
-                }
-                KeyEvent(Key::Esc) => {
-                    self.input_buffer.clear();
-                    self.search_state.set_no_longer_actively_searching();
-                    None
-                }
-                // These inputs may be buffered.
-                KeyEvent(Key::Char(ch @ '0'..='9')) => {
-                    if ch == '0' && self.input_buffer.is_empty() {
-                        Some(Action::FocusFirstSibling)
-                    } else {
-                        self.buffer_input(ch as u8);
-                        None
-                    }
-                }
-                KeyEvent(Key::Char('p')) => {
-                    self.input_state = InputState::PendingPCommand;
-                    self.input_buffer.clear();
-                    self.buffer_input(b'p');
-                    None
-                }
-                KeyEvent(Key::Char('y')) => {
-                    match &self.clipboard_context {
-                        Ok(_) => {
-                            self.input_state = InputState::PendingYCommand;
-                            self.input_buffer.clear();
-                            self.buffer_input(b'y');
-                        }
-                        Err(err) => {
-                            let msg = format!("Unable to access clipboard: {err}");
-                            self.set_error_message(msg);
-                        }
-                    }
-
-                    None
-                }
-                KeyEvent(Key::Char('z')) => {
-                    self.input_state = InputState::PendingZCommand;
-                    self.input_buffer.clear();
-                    self.buffer_input(b'z');
-                    None
-                }
-                // These inputs always clear the input_buffer (but may use its current contents).
-                KeyEvent(key) => {
-                    let action = match key {
-                        // These interpret the input buffer as a number.
-                        Key::Up | Key::Char('k') | Key::Ctrl('p') | Key::Backspace => {
-                            let lines = self.parse_input_buffer_as_number();
-                            Some(Action::MoveUp(lines))
-                        }
-                        Key::Down | Key::Char('j') | Key::Ctrl('n') | Key::Char('\n') => {
-                            let lines = self.parse_input_buffer_as_number();
-                            Some(Action::MoveDown(lines))
-                        }
-                        Key::Char('\t') => {
-                            if let Some(table) = self.viewer.toggle_table_alignment() {
-                                self.screen_writer
-                                    .reset_table_alignment(&self.viewer, table);
-                            }
-                            None
-                        }
-                        Key::Ctrl('l') => {
-                            self.viewer.toggle_wrapping();
-                            self.screen_writer.reset_horizontal_offsets(&self.viewer);
-                            let state = if self.viewer.wrapping_enabled {
-                                "on"
-                            } else {
-                                "off"
-                            };
-                            let mut message = if self.screen_writer.dimensions.width >= 17 {
-                                format!("Line wrapping {state}")
-                            } else if self.screen_writer.dimensions.width >= 12 {
-                                format!("Wrapping {state}")
-                            } else {
-                                state.to_string()
-                            };
-                            message.truncate(usize::from(self.screen_writer.dimensions.width));
-                            self.set_info_message(message);
-                            if self.search_state.active_search_state().is_some() {
-                                jumped_to_search_match = true;
-                            }
-                            None
-                        }
-                        Key::Ctrl('e') => {
-                            let lines = self.parse_input_buffer_as_number();
-                            Some(Action::ScrollDown(lines))
-                        }
-                        Key::Ctrl('y') => {
-                            let lines = self.parse_input_buffer_as_number();
-                            Some(Action::ScrollUp(lines))
-                        }
-                        Key::Ctrl('d') => {
-                            let maybe_distance = self.maybe_parse_input_buffer_as_number();
-                            Some(Action::JumpDown(maybe_distance))
-                        }
-                        Key::Ctrl('u') => {
-                            let maybe_distance = self.maybe_parse_input_buffer_as_number();
-                            Some(Action::JumpUp(maybe_distance))
-                        }
-                        Key::Ctrl('b') | Key::PageUp => {
-                            let count = self.parse_input_buffer_as_number();
-                            Some(Action::PageUp(count))
-                        }
-                        Key::Ctrl('f') | Key::PageDown => {
-                            let count = self.parse_input_buffer_as_number();
-                            Some(Action::PageDown(count))
-                        }
-                        Key::Char('K') => {
-                            let lines = self.parse_input_buffer_as_number();
-                            Some(Action::FocusPrevSibling(lines))
-                        }
-                        Key::Char('J') => {
-                            let lines = self.parse_input_buffer_as_number();
-                            Some(Action::FocusNextSibling(lines))
-                        }
-                        Key::Char('n') => {
-                            let count = self.parse_input_buffer_as_number();
-                            jumped_to_search_match = true;
-                            self.jump_to_search_match(JumpDirection::Next, count)
-                        }
-                        Key::Char('N') => {
-                            let count = self.parse_input_buffer_as_number();
-                            jumped_to_search_match = true;
-                            self.jump_to_search_match(JumpDirection::Prev, count)
-                        }
-                        Key::Char('g') => match self.maybe_parse_input_buffer_as_number() {
-                            None => Some(Action::FocusTop),
-                            Some(n) => Some(Action::JumpTo {
-                                line: n - 1,
-                                make_visible: false,
-                            }),
-                        },
-                        Key::Char('G') => match self.maybe_parse_input_buffer_as_number() {
-                            None => Some(Action::FocusBottom),
-                            Some(n) => Some(Action::JumpTo {
-                                line: n - 1,
-                                make_visible: true,
-                            }),
-                        },
-                        Key::Char('.') => {
-                            let count = self.parse_input_buffer_as_number().saturating_mul(10);
-                            self.screen_writer
-                                .scroll_focused_line_right(&self.viewer, count);
-                            None
-                        }
-                        Key::Char(',') => {
-                            let count = self.parse_input_buffer_as_number().saturating_mul(10);
-                            self.screen_writer
-                                .scroll_focused_line_left(&self.viewer, count);
-                            None
-                        }
-                        Key::Char('/') => {
-                            let count = self.parse_input_buffer_as_number();
-                            let action = self
-                                .get_search_input_and_start_search(SearchDirection::Forward, count);
-                            jumped_to_search_match = action.is_some();
-                            action
-                        }
-                        Key::Char('?') => {
-                            let count = self.parse_input_buffer_as_number();
-                            let action = self
-                                .get_search_input_and_start_search(SearchDirection::Reverse, count);
-                            jumped_to_search_match = action.is_some();
-                            action
-                        }
-                        Key::Char('*') => {
-                            let count = self.parse_input_buffer_as_number();
-                            let action =
-                                self.start_object_key_search(SearchDirection::Forward, count);
-                            jumped_to_search_match = action.is_some();
-                            action
-                        }
-                        Key::Char('#') => {
-                            let count = self.parse_input_buffer_as_number();
-                            let action =
-                                self.start_object_key_search(SearchDirection::Reverse, count);
-                            jumped_to_search_match = action.is_some();
-                            action
-                        }
-                        // These ignore the input buffer
-                        Key::Char('w') => Some(Action::MoveDownUntilDepthChange),
-                        Key::Char('b') => Some(Action::MoveUpUntilDepthChange),
-                        Key::Left | Key::Char('h') => Some(Action::MoveLeft),
-                        Key::Right | Key::Char('l') => Some(Action::MoveRight),
-                        Key::Char('H') => Some(Action::FocusParent),
-                        Key::Char('[') => Some(Action::FocusParentOrPreviousSibling),
-                        Key::Char(']') => Some(Action::FocusNextAtParentLevel),
-                        Key::Char('c') => Some(Action::CollapseNodeAndSiblings),
-                        Key::Char('C') => Some(Action::DeepCollapseNodeAndSiblings),
-                        Key::Char('e') => Some(Action::ExpandNodeAndSiblings),
-                        Key::Char('E') => Some(Action::DeepExpandNodeAndSiblings),
-                        Key::Char(' ') => Some(Action::ToggleCollapsed),
-                        Key::Char('^') => Some(Action::FocusFirstSibling),
-                        Key::Char('$') => Some(Action::FocusLastSibling),
-                        Key::Home => Some(Action::FocusTop),
-                        Key::End => Some(Action::FocusBottom),
-                        Key::Char('<') => {
-                            self.screen_writer
-                                .decrease_indentation_level(self.viewer.flatjson.2 as u16);
-                            None
-                        }
-                        Key::Char('>') => {
-                            self.screen_writer.increase_indentation_level();
-                            None
-                        }
-                        Key::Char(';') => {
-                            self.screen_writer
-                                .scroll_focused_line_to_an_end(&self.viewer);
-                            None
-                        }
-                        Key::Char(':') => {
-                            if let Some(command) = self.readline(":", "command") {
-                                match Command::parse(&command) {
-                                    Command::Quit => break,
-                                    Command::Help => self.show_help(),
-                                    Command::Path(path) => self.apply_path(&path),
-                                    #[cfg(feature = "colorscheme")]
-                                    Command::Colorscheme(name) => {
-                                        match self.config.resolve(&name) {
-                                            Ok(theme) => self.screen_writer.set_theme(theme),
-                                            Err(error) => self.set_error_message(error),
-                                        }
-                                    }
-                                    Command::SetShowLineNumber(Some(new_val)) => {
-                                        self.screen_writer.show_line_numbers = new_val
-                                    }
-                                    Command::SetShowLineNumber(None) => {
-                                        self.screen_writer.show_line_numbers =
-                                            !self.screen_writer.show_line_numbers
-                                    }
-                                    Command::SetShowRelativeLineNumber(Some(new_val)) => {
-                                        self.screen_writer.show_relative_line_numbers = new_val
-                                    }
-                                    Command::SetShowRelativeLineNumber(None) => {
-                                        self.screen_writer.show_relative_line_numbers =
-                                            !self.screen_writer.show_relative_line_numbers
-                                    }
-                                    Command::WriteFile {
-                                        filename,
-                                        overwrite_existing,
-                                        write_format,
-                                    } => {
-                                        self.write_contents_to_file(
-                                            filename,
-                                            overwrite_existing,
-                                            write_format,
-                                        );
-                                    }
-                                    Command::Unknown => {
-                                        self.set_warning_message(format!(
-                                            "Unknown command: {command}"
-                                        ));
-                                    }
-                                }
-                            }
-
-                            None
-                        }
-                        _ => {
-                            eprint!("{BELL}\r");
-                            None
-                        }
-                    };
-
-                    self.input_buffer.clear();
-
-                    action
-                }
-                MouseEvent(me) => {
-                    self.input_buffer.clear();
-
-                    match me {
-                        Press(Left, w, h) => {
-                            // Ignore clicks on status bar or below.
-                            if h > self.screen_writer.dimensions.without_status_bar().height {
-                                continue;
-                            } else {
-                                Some(self.screen_writer.mouse_action(&self.viewer, h, w))
-                            }
-                        }
-                        Press(WheelUp, _, _) => Some(Action::ScrollUp(3)),
-                        Press(WheelDown, _, _) => Some(Action::ScrollDown(3)),
-                        // Ignore all other mouse events and don't redraw the screen.
-                        _ => {
-                            continue;
-                        }
-                    }
-                }
-                TuiEvent::Unknown(bytes) => {
-                    self.set_error_message(format!("Unknown byte sequence: {bytes:?}"));
-                    None
-                }
-            };
-
-            if let Some(action) = action {
-                self.viewer.perform_action(action);
-                if self.viewer.focused_node != focused_node_before
-                    && self
-                        .viewer
-                        .layout
-                        .analysis
-                        .table_row_owner(&self.viewer.flatjson, self.viewer.focused_node)
-                        .is_some()
-                    && !self
-                        .viewer
-                        .layout
-                        .analysis
-                        .table_row(&self.viewer.flatjson, self.viewer.focused_node)
-                    && matches!(
-                        action,
-                        Action::MoveLeft
-                            | Action::MoveRight
-                            | Action::FocusFirstSibling
-                            | Action::FocusLastSibling
-                            | Action::FocusPrevSibling(_)
-                            | Action::FocusNextSibling(_)
-                            | Action::FocusParentOrPreviousSibling
-                            | Action::FocusNextAtParentLevel
-                    )
-                {
-                    // Only explicit horizontal cell selection requests a
-                    // reveal; vertical cell motion keeps the table viewport.
-                    self.screen_writer.invalidate_focus();
-                }
-                if self.viewer.wrapping_enabled
-                    && matches!(
-                        action,
-                        Action::ScrollUp(_)
-                            | Action::ScrollDown(_)
-                            | Action::PageUp(_)
-                            | Action::PageDown(_)
-                            | Action::JumpUp(_)
-                            | Action::JumpDown(_)
-                            | Action::MoveFocusedLineToTop
-                            | Action::MoveFocusedLineToCenter
-                            | Action::MoveFocusedLineToBottom
-                            | Action::FocusNodeAt { .. }
-                            | Action::NoOp
-                    )
-                {
-                    self.screen_writer.accept_viewport_focus(&self.viewer);
+    fn event_outcome(&mut self, event: TuiEvent) -> EventOutcome {
+        match (self.input_state, event) {
+            // A resize preserves a pending command.
+            (_, WinChEvent) => {
+                self.refresh_terminal_dimensions();
+                self.redraw_after_layout_change(Some(Action::ResizeViewerDimensions(
+                    self.screen_writer.dimensions.without_status_bar(),
+                )))
+            }
+            (InputState::PendingPCommand, event) => {
+                if self.finish_print_command(event) {
+                    EventOutcome::KeepScreen
+                } else {
+                    EventOutcome::Redraw(None)
                 }
             }
+            (InputState::PendingYCommand, event) => {
+                self.finish_copy_command(event);
+                EventOutcome::Redraw(None)
+            }
+            (InputState::PendingZCommand, event) => {
+                EventOutcome::Redraw(self.finish_position_command(event))
+            }
+            (_, KeyEvent(key)) => self.key_outcome(key),
+            (_, MouseEvent(event)) => self.mouse_outcome(event),
+            (_, TuiEvent::Unknown(bytes)) => {
+                self.set_error_message(format!("Unknown byte sequence: {bytes:?}"));
+                EventOutcome::Redraw(None)
+            }
+        }
+    }
 
-            if jumped_to_search_match {
-                self.reveal_current_match();
-            } else {
-                // Check whether we're still actively searching. If the cursor moves,
-                // we're no longer actively searching. If the focused row was expanded
-                // or collapsed, we're still searching, but there's no longer a current
-                // match.
-                if focused_node_before != self.viewer.focused_node {
-                    self.search_state.set_no_longer_actively_searching();
-                } else if previous_collapsed_state_of_focused_node
-                    != self.viewer.effective_collapsed(focused_node_before)
-                {
-                    self.search_state
-                        .set_matches_visible_if_actively_searching();
+    fn mouse_outcome(&mut self, event: termion::event::MouseEvent) -> EventOutcome {
+        self.input_buffer.clear();
+        let action = match event {
+            Press(Left, column, row)
+                if row <= self.screen_writer.dimensions.without_status_bar().height =>
+            {
+                self.screen_writer.mouse_action(&self.viewer, row, column)
+            }
+            Press(WheelUp, _, _) => Action::ScrollUp(3),
+            Press(WheelDown, _, _) => Action::ScrollDown(3),
+            _ => return EventOutcome::KeepScreen,
+        };
+        EventOutcome::Redraw(Some(action))
+    }
+
+    fn key_outcome(&mut self, key: Key) -> EventOutcome {
+        match key {
+            Key::Ctrl('c') | Key::Char('q') => return EventOutcome::Quit,
+            Key::F(1) => self.show_help(),
+            Key::Esc => {
+                self.input_buffer.clear();
+                self.search_state.set_no_longer_actively_searching();
+            }
+            Key::Char('0') if self.input_buffer.is_empty() => {
+                return EventOutcome::Redraw(Some(Action::FocusFirstSibling));
+            }
+            Key::Char(digit @ '0'..='9') => self.buffer_input(digit as u8),
+            Key::Char('p') => self.start_pending_command(InputState::PendingPCommand, b'p'),
+            Key::Char('y') => match &self.clipboard_context {
+                Ok(_) => self.start_pending_command(InputState::PendingYCommand, b'y'),
+                Err(err) => self.set_error_message(format!("Unable to access clipboard: {err}")),
+            },
+            Key::Char('z') => self.start_pending_command(InputState::PendingZCommand, b'z'),
+            Key::Char(':') => {
+                if self.run_command_prompt().is_break() {
+                    return EventOutcome::Quit;
+                }
+                self.input_buffer.clear();
+            }
+            _ => {
+                let outcome = self.action_key_outcome(key);
+                self.input_buffer.clear();
+                return outcome;
+            }
+        }
+        EventOutcome::Redraw(None)
+    }
+
+    fn start_pending_command(&mut self, state: InputState, prefix: u8) {
+        self.input_state = state;
+        self.input_buffer.clear();
+        self.buffer_input(prefix);
+    }
+
+    fn action_key_outcome(&mut self, key: Key) -> EventOutcome {
+        if let Some(action) = self.navigation_action(key) {
+            return EventOutcome::Redraw(Some(action));
+        }
+        match key {
+            Key::Char('n') => return self.repeat_search(JumpDirection::Next),
+            Key::Char('N') => return self.repeat_search(JumpDirection::Prev),
+            Key::Char(key @ ('/' | '?' | '*' | '#')) => return self.start_search_from_key(key),
+            Key::Char('\t') => {
+                if let Some(table) = self.viewer.toggle_table_alignment() {
+                    self.screen_writer
+                        .reset_table_alignment(&self.viewer, table);
                 }
             }
+            Key::Ctrl('l') => {
+                self.toggle_wrapping();
+                return self.redraw_after_layout_change(None);
+            }
+            Key::Char('.') => {
+                let count = self.parse_input_buffer_as_number().saturating_mul(10);
+                self.screen_writer
+                    .scroll_focused_line_right(&self.viewer, count);
+            }
+            Key::Char(',') => {
+                let count = self.parse_input_buffer_as_number().saturating_mul(10);
+                self.screen_writer
+                    .scroll_focused_line_left(&self.viewer, count);
+            }
+            Key::Char('<') => self
+                .screen_writer
+                .decrease_indentation_level(self.viewer.flatjson.2 as u16),
+            Key::Char('>') => self.screen_writer.increase_indentation_level(),
+            Key::Char(';') => self
+                .screen_writer
+                .scroll_focused_line_to_an_end(&self.viewer),
+            _ => eprint!("{BELL}\r"),
+        }
+        EventOutcome::Redraw(None)
+    }
 
-            self.draw_screen();
-            self.message = None;
+    fn navigation_action(&mut self, key: Key) -> Option<Action> {
+        let action = match key {
+            Key::Up | Key::Char('k') | Key::Ctrl('p') | Key::Backspace => {
+                Action::MoveUp(self.parse_input_buffer_as_number())
+            }
+            Key::Down | Key::Char('j') | Key::Ctrl('n') | Key::Char('\n') => {
+                Action::MoveDown(self.parse_input_buffer_as_number())
+            }
+            Key::Ctrl('e') => Action::ScrollDown(self.parse_input_buffer_as_number()),
+            Key::Ctrl('y') => Action::ScrollUp(self.parse_input_buffer_as_number()),
+            Key::Ctrl('d') => Action::JumpDown(self.maybe_parse_input_buffer_as_number()),
+            Key::Ctrl('u') => Action::JumpUp(self.maybe_parse_input_buffer_as_number()),
+            Key::Ctrl('b') | Key::PageUp => Action::PageUp(self.parse_input_buffer_as_number()),
+            Key::Ctrl('f') | Key::PageDown => Action::PageDown(self.parse_input_buffer_as_number()),
+            Key::Char('K') => Action::FocusPrevSibling(self.parse_input_buffer_as_number()),
+            Key::Char('J') => Action::FocusNextSibling(self.parse_input_buffer_as_number()),
+            Key::Char('g') => self.jump_to_line(Action::FocusTop, false),
+            Key::Char('G') => self.jump_to_line(Action::FocusBottom, true),
+            Key::Char('w') => Action::MoveDownUntilDepthChange,
+            Key::Char('b') => Action::MoveUpUntilDepthChange,
+            Key::Left | Key::Char('h') => Action::MoveLeft,
+            Key::Right | Key::Char('l') => Action::MoveRight,
+            Key::Char('H') => Action::FocusParent,
+            Key::Char('[') => Action::FocusParentOrPreviousSibling,
+            Key::Char(']') => Action::FocusNextAtParentLevel,
+            Key::Char('c') => Action::CollapseNodeAndSiblings,
+            Key::Char('C') => Action::DeepCollapseNodeAndSiblings,
+            Key::Char('e') => Action::ExpandNodeAndSiblings,
+            Key::Char('E') => Action::DeepExpandNodeAndSiblings,
+            Key::Char(' ') => Action::ToggleCollapsed,
+            Key::Char('^') => Action::FocusFirstSibling,
+            Key::Char('$') => Action::FocusLastSibling,
+            Key::Home => Action::FocusTop,
+            Key::End => Action::FocusBottom,
+            _ => return None,
+        };
+        Some(action)
+    }
+
+    fn jump_to_line(&mut self, fallback: Action, make_visible: bool) -> Action {
+        match self.maybe_parse_input_buffer_as_number() {
+            Some(line) => Action::JumpTo {
+                line: line - 1,
+                make_visible,
+            },
+            None => fallback,
+        }
+    }
+
+    fn toggle_wrapping(&mut self) {
+        self.viewer.toggle_wrapping();
+        self.screen_writer.reset_horizontal_offsets(&self.viewer);
+        let state = if self.viewer.wrapping_enabled {
+            "on"
+        } else {
+            "off"
+        };
+        let width = usize::from(self.screen_writer.dimensions.width);
+        let mut message = match width {
+            17.. => format!("Line wrapping {state}"),
+            12..=16 => format!("Wrapping {state}"),
+            _ => state.to_string(),
+        };
+        message.truncate(width);
+        self.set_info_message(message);
+    }
+
+    fn start_search_from_key(&mut self, key: char) -> EventOutcome {
+        let count = self.parse_input_buffer_as_number();
+        let direction = if matches!(key, '/' | '*') {
+            SearchDirection::Forward
+        } else {
+            SearchDirection::Reverse
+        };
+        let action = if matches!(key, '/' | '?') {
+            self.get_search_input_and_start_search(direction, count)
+        } else {
+            self.start_object_key_search(direction, count)
+        };
+        match action {
+            Some(action) => EventOutcome::RevealMatch(Some(action)),
+            None => EventOutcome::Redraw(None),
+        }
+    }
+
+    fn repeat_search(&mut self, direction: JumpDirection) -> EventOutcome {
+        let count = self.parse_input_buffer_as_number();
+        EventOutcome::RevealMatch(self.jump_to_search_match(direction, count))
+    }
+
+    fn finish_print_command(&mut self, event: TuiEvent) -> bool {
+        self.input_buffer.clear();
+        let waiting_for_key = ContentTarget::from_command_key(event, 'p', 'P')
+            .is_some_and(|target| self.print_content(target));
+        self.input_state = if waiting_for_key {
+            InputState::WaitingForAnyKeyPress
+        } else {
+            InputState::Default
+        };
+        waiting_for_key
+    }
+
+    fn finish_copy_command(&mut self, event: TuiEvent) {
+        if let Some(target) = ContentTarget::from_command_key(event, 'y', 'p') {
+            self.copy_content(target);
+        }
+        self.input_state = InputState::Default;
+        self.input_buffer.clear();
+    }
+
+    fn finish_position_command(&mut self, event: TuiEvent) -> Option<Action> {
+        self.input_state = InputState::Default;
+        self.input_buffer.clear();
+        match event {
+            KeyEvent(Key::Char('t')) => Some(Action::MoveFocusedLineToTop),
+            KeyEvent(Key::Char('z')) => Some(Action::MoveFocusedLineToCenter),
+            KeyEvent(Key::Char('b')) => Some(Action::MoveFocusedLineToBottom),
+            _ => None,
+        }
+    }
+
+    fn apply_viewer_action(&mut self, action: Action, previous_focus: flatjson::Index) {
+        self.viewer.perform_action(action);
+        if self.should_reveal_table_cell(action, previous_focus) {
+            self.screen_writer.invalidate_focus();
+        }
+        if self.viewer.wrapping_enabled
+            && matches!(
+                action,
+                Action::ScrollUp(_)
+                    | Action::ScrollDown(_)
+                    | Action::PageUp(_)
+                    | Action::PageDown(_)
+                    | Action::JumpUp(_)
+                    | Action::JumpDown(_)
+                    | Action::MoveFocusedLineToTop
+                    | Action::MoveFocusedLineToCenter
+                    | Action::MoveFocusedLineToBottom
+                    | Action::FocusNodeAt { .. }
+                    | Action::NoOp
+            )
+        {
+            self.screen_writer.accept_viewport_focus(&self.viewer);
+        }
+    }
+
+    fn should_reveal_table_cell(&self, action: Action, previous_focus: flatjson::Index) -> bool {
+        let focused_node = self.viewer.focused_node;
+        // Only explicit horizontal cell selection requests a reveal.
+        if focused_node == previous_focus
+            || !matches!(
+                action,
+                Action::MoveLeft
+                    | Action::MoveRight
+                    | Action::FocusFirstSibling
+                    | Action::FocusLastSibling
+                    | Action::FocusPrevSibling(_)
+                    | Action::FocusNextSibling(_)
+                    | Action::FocusParentOrPreviousSibling
+                    | Action::FocusNextAtParentLevel
+            )
+        {
+            return false;
+        }
+
+        self.viewer
+            .layout
+            .analysis
+            .table_row_owner(&self.viewer.flatjson, focused_node)
+            .is_some_and(|row| row != focused_node)
+    }
+
+    fn update_search_after_event(
+        &mut self,
+        jumped_to_match: bool,
+        previous_focus: flatjson::Index,
+        was_collapsed: bool,
+    ) {
+        if jumped_to_match {
+            self.reveal_current_match();
+        } else if self.viewer.focused_node != previous_focus {
+            self.search_state.set_no_longer_actively_searching();
+        } else if self.viewer.effective_collapsed(previous_focus) != was_collapsed {
+            // A collapse or expansion keeps matches visible and clears the current match.
+            self.search_state
+                .set_matches_visible_if_actively_searching();
         }
     }
 
@@ -711,6 +621,39 @@ impl App {
 
     fn set_error_message(&mut self, s: String) {
         self.message = Some((s, MessageSeverity::Error));
+    }
+
+    fn run_command_prompt(&mut self) -> ControlFlow<()> {
+        let Some(command) = self.readline(":", "command") else {
+            return ControlFlow::Continue(());
+        };
+
+        match Command::parse(&command) {
+            Command::Quit => return ControlFlow::Break(()),
+            Command::Help => self.show_help(),
+            Command::Path(path) => self.apply_path(&path),
+            #[cfg(feature = "colorscheme")]
+            Command::Colorscheme(name) => match self.config.resolve(&name) {
+                Ok(theme) => self.screen_writer.set_theme(theme),
+                Err(error) => self.set_error_message(error),
+            },
+            Command::SetShowLineNumber(value) => {
+                self.screen_writer.show_line_numbers =
+                    value.unwrap_or(!self.screen_writer.show_line_numbers);
+            }
+            Command::SetShowRelativeLineNumber(value) => {
+                self.screen_writer.show_relative_line_numbers =
+                    value.unwrap_or(!self.screen_writer.show_relative_line_numbers);
+            }
+            Command::WriteFile {
+                filename,
+                overwrite_existing,
+                write_format,
+            } => self.write_contents_to_file(filename, overwrite_existing, write_format),
+            Command::Unknown => self.set_warning_message(format!("Unknown command: {command}")),
+        }
+
+        ControlFlow::Continue(())
     }
 
     fn apply_path(&mut self, input: &str) {

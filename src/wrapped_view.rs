@@ -24,33 +24,32 @@ pub struct PhysicalRow {
     pub placeholder: bool,
 }
 
+#[derive(Clone, Copy)]
+pub struct Wrap {
+    pub width: usize,
+    pub indentation: usize,
+}
+
 /// Row-local iteration retains no continuation vector, even for a long value.
-pub fn rows(
-    logical_line: usize,
-    text: &str,
-    width: usize,
-    indentation: usize,
-    wrap: bool,
-) -> Rows<'_> {
-    let mut removed = 0;
-    if wrap {
-        for grapheme in text.graphemes(true) {
-            if removed >= indentation || !grapheme.chars().all(|ch| ch == ' ') {
-                break;
-            }
-            removed += grapheme.len();
-        }
-    }
+pub fn rows(logical_line: usize, text: &str, wrap: Option<Wrap>) -> Rows<'_> {
+    let removed = wrap.map_or(0, |wrap| removable_indentation(text, wrap.indentation));
     Rows {
         text,
         logical_line,
-        width,
+        width: wrap.map_or(0, |wrap| wrap.width),
         byte: removed,
         cell: removed,
         first: true,
         done: false,
-        wrap,
     }
+}
+
+fn removable_indentation(text: &str, indentation: usize) -> usize {
+    text.graphemes(true)
+        .take(indentation)
+        .take_while(|grapheme| grapheme.chars().all(|ch| ch == ' '))
+        .map(str::len)
+        .sum()
 }
 
 pub struct Rows<'a> {
@@ -61,7 +60,6 @@ pub struct Rows<'a> {
     cell: usize,
     first: bool,
     done: bool,
-    wrap: bool,
 }
 
 impl Iterator for Rows<'_> {
@@ -74,30 +72,8 @@ impl Iterator for Rows<'_> {
         let start = self.byte;
         let cell_start = self.cell;
         let first = self.first;
-        let mut end = self.text.len();
-        let mut used: usize = 0;
-        let mut placeholder = false;
-        if self.wrap && self.width > 0 {
-            for (offset, grapheme) in self.text[start..].grapheme_indices(true) {
-                let byte = start + offset;
-                let cells = UnicodeWidthStr::width(grapheme);
-                if cells > self.width {
-                    if byte == start {
-                        end = byte + grapheme.len();
-                        used = cells;
-                        placeholder = true;
-                    } else {
-                        end = byte;
-                    }
-                    break;
-                }
-                if used.saturating_add(cells) > self.width {
-                    end = byte;
-                    break;
-                }
-                used += cells;
-            }
-        }
+        let (length, used, placeholder) = row_extent(&self.text[start..], self.width);
+        let end = start + length;
         self.byte = end;
         self.cell += used;
         self.first = false;
@@ -112,38 +88,65 @@ impl Iterator for Rows<'_> {
     }
 }
 
+fn row_extent(text: &str, width: usize) -> (usize, usize, bool) {
+    if width == 0 {
+        return (text.len(), 0, false);
+    }
+
+    let mut used: usize = 0;
+    for (offset, grapheme) in text.grapheme_indices(true) {
+        let cells = UnicodeWidthStr::width(grapheme);
+        if offset == 0 && cells > width {
+            return (grapheme.len(), cells, true);
+        }
+        if used.saturating_add(cells) > width {
+            return (offset, used, false);
+        }
+        used += cells;
+    }
+    (text.len(), used, false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn rows(text: &str, width: usize, indentation: usize) -> Vec<PhysicalRow> {
-        super::rows(0, text, width, indentation, true).collect()
+        super::rows(0, text, Some(Wrap { width, indentation })).collect()
+    }
+
+    fn contents<'a>(text: &'a str, rows: &[PhysicalRow]) -> Vec<&'a str> {
+        rows.iter().map(|row| &text[row.bytes.clone()]).collect()
+    }
+
+    fn geometry(rows: &[PhysicalRow]) -> Vec<(Range<usize>, usize, bool, bool)> {
+        rows.iter()
+            .map(|row| {
+                (
+                    row.bytes.clone(),
+                    row.cell_start,
+                    row.first,
+                    row.placeholder,
+                )
+            })
+            .collect()
     }
 
     #[test]
     fn wraps_greedily_at_grapheme_boundaries() {
         let result = rows("ab界é", 3, 0);
-        assert_eq!(result.len(), 2);
-        assert_eq!(&"ab界é"[result[0].bytes.clone()], "ab");
-        assert_eq!(&"ab界é"[result[1].bytes.clone()], "界é");
-        assert_eq!(result[0].cell_start, 0);
-        assert_eq!(result[1].cell_start, 2);
-        assert!(result[0].first);
-        assert!(!result[1].first);
+        assert_eq!(
+            geometry(&result),
+            [(0..2, 0, true, false), (2..8, 2, false, false)]
+        );
+        assert_eq!(contents("ab界é", &result), ["ab", "界é"]);
     }
 
     #[test]
     fn exact_fit_stays_on_one_row() {
-        let result = rows("abc", 3, 0);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].bytes, 0..3);
-        assert_eq!(result[0].cell_start, 0);
-        assert!(!result[0].placeholder);
-
-        let wide = rows("界", 2, 0);
-        assert_eq!(wide.len(), 1);
-        assert_eq!(wide[0].bytes, 0..3);
-        assert!(!wide[0].placeholder);
+        for (text, width) in [("abc", 3), ("界", 2)] {
+            assert_eq!(geometry(&rows(text, width, 0)), [(0..3, 0, true, false)]);
+        }
     }
 
     #[test]
@@ -158,11 +161,7 @@ mod tests {
         let text = "a👩‍💻b";
         let emoji_width = UnicodeWidthStr::width("👩‍💻");
         let result = rows(text, emoji_width, 0);
-        assert_eq!(result.len(), 3);
-        let source = text;
-        assert_eq!(&source[result[0].bytes.clone()], "a");
-        assert_eq!(&source[result[1].bytes.clone()], "👩‍💻");
-        assert_eq!(&source[result[2].bytes.clone()], "b");
+        assert_eq!(contents(text, &result), ["a", "👩‍💻", "b"]);
         assert!(result.iter().all(|row| !row.placeholder));
     }
 
@@ -183,22 +182,23 @@ mod tests {
     #[test]
     fn overwide_graphemes_use_placeholder_rows() {
         let result = rows("a界b", 1, 0);
-        assert_eq!(result.len(), 3);
-        assert!(!result[0].placeholder);
-        assert!(result[1].placeholder);
-        assert_eq!(result[1].bytes, 1..4);
-        assert_eq!(result[2].bytes, 4..5);
-        assert_eq!(result[2].cell_start, 3);
+        assert_eq!(
+            geometry(&result),
+            [
+                (0..1, 0, true, false),
+                (1..4, 1, false, true),
+                (4..5, 3, false, false),
+            ]
+        );
     }
 
     #[test]
     fn indentation_is_removed_only_from_the_first_row() {
         let result = rows("    abcdef", 5, 2);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].bytes, 2..7);
-        assert_eq!(result[1].bytes, 7..10);
-        assert_eq!(result[0].cell_start, 2);
-        assert_eq!(result[1].cell_start, 7);
+        assert_eq!(
+            geometry(&result),
+            [(2..7, 2, true, false), (7..10, 7, false, false)]
+        );
     }
 
     #[test]
@@ -215,20 +215,15 @@ mod tests {
     fn large_narrow_lines_make_forward_progress() {
         let text = "x".repeat(4096);
         let result = rows(&text, 1, 0);
-        assert_eq!(result.len(), text.len());
-        assert!(
-            result
-                .iter()
-                .enumerate()
-                .all(|(index, row)| { row.bytes == (index..index + 1) && row.cell_start == index })
-        );
-        assert!(result.first().is_some_and(|row| row.first));
-        assert!(result.iter().skip(1).all(|row| !row.first));
+        let expected: Vec<_> = (0..text.len())
+            .map(|index| (index..index + 1, index, index == 0, false))
+            .collect();
+        assert_eq!(geometry(&result), expected);
     }
 
     #[test]
     fn disabled_wrapping_keeps_full_logical_rows() {
-        let result: Vec<_> = super::rows(0, "abcdef", 2, 0, false).collect();
+        let result: Vec<_> = super::rows(0, "abcdef", None).collect();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].bytes, 0..6);
     }
