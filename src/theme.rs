@@ -323,70 +323,66 @@ impl Theme {
     }
 
     pub fn style(&self, role: StyleRole, state: StyleState) -> Style {
-        let search = {
-            #[cfg(feature = "colorscheme")]
-            if state.context == DisplayContext::Preview
-                && state.search == SearchState::CurrentMatch
-                && self.name != ThemeName::Default
+        #[cfg(feature = "colorscheme")]
+        {
+            let search = self.effective_search(state);
+            let style = self.palette_style(role, state, search);
+            self.apply_configured_colors(style, role, Self::color_key(role, state, search))
+        }
+        #[cfg(not(feature = "colorscheme"))]
+        {
+            self.legacy_style(role, state, state.search)
+        }
+    }
+
+    #[cfg(feature = "colorscheme")]
+    fn effective_search(&self, state: StyleState) -> SearchState {
+        match (state.context, state.search) {
+            (DisplayContext::Preview, SearchState::CurrentMatch)
+                if self.name != ThemeName::Default =>
             {
                 SearchState::Match
-            } else {
-                state.search
             }
-            #[cfg(not(feature = "colorscheme"))]
-            {
-                state.search
-            }
-        };
+            _ => state.search,
+        }
+    }
 
-        #[cfg(feature = "colorscheme")]
-        let style = if self.name == ThemeName::Borealis {
-            borealis::style(role, state, search)
-        } else if let Some(palette) = self.name.vim_palette() {
-            match search {
+    #[cfg(feature = "colorscheme")]
+    fn palette_style(&self, role: StyleRole, state: StyleState, search: SearchState) -> Style {
+        if self.name == ThemeName::Borealis {
+            return borealis::style(role, state, search);
+        }
+        if let Some(palette) = self.name.vim_palette() {
+            return match search {
                 SearchState::None => palette.focused_style(role, state),
                 SearchState::Match => palette.search_style(false),
                 SearchState::CurrentMatch => palette.search_style(true),
-            }
-        } else {
-            let style = self.apply_focus(role, state.focus, self.base_style(role));
-            match search {
-                SearchState::None => style,
-                SearchState::Match => self.search_match_style(state.context),
-                SearchState::CurrentMatch => self.current_match_style(),
-            }
-        };
+            };
+        }
+        self.legacy_style(role, state, search)
+    }
 
-        #[cfg(not(feature = "colorscheme"))]
-        let style = {
-            let style = self.apply_focus(role, state.focus, self.base_style(role));
-            match search {
-                SearchState::None => style,
-                SearchState::Match => self.search_match_style(state.context),
-                SearchState::CurrentMatch => self.current_match_style(),
-            }
-        };
+    fn legacy_style(&self, role: StyleRole, state: StyleState, search: SearchState) -> Style {
+        match search {
+            SearchState::None => self.apply_focus(role, state.focus, self.base_style(role)),
+            SearchState::Match => self.search_match_style(state.context),
+            SearchState::CurrentMatch => self.current_match_style(),
+        }
+    }
 
-        #[cfg(feature = "colorscheme")]
+    #[cfg(feature = "colorscheme")]
+    fn apply_configured_colors(&self, style: Style, role: StyleRole, key: ThemeColor) -> Style {
         match role {
-            StyleRole::StatusBar | StyleRole::StatusPathBase => {
-                let style =
-                    self.apply_foreground_override(style, Self::color_key(role, state, search));
-                self.apply_row_colors(
-                    style,
-                    ThemeColor::StatusBarForeground,
-                    ThemeColor::StatusBarBackground,
-                )
-            }
-            StyleRole::StatusText => {
-                let style =
-                    self.apply_foreground_override(style, Self::color_key(role, state, search));
-                self.apply_row_colors(
-                    style,
-                    ThemeColor::CommandLineForeground,
-                    ThemeColor::CommandLineBackground,
-                )
-            }
+            StyleRole::StatusBar | StyleRole::StatusPathBase => self.apply_row_colors(
+                self.apply_foreground_override(style, key),
+                ThemeColor::StatusBarForeground,
+                ThemeColor::StatusBarBackground,
+            ),
+            StyleRole::StatusText => self.apply_row_colors(
+                self.apply_foreground_override(style, key),
+                ThemeColor::CommandLineForeground,
+                ThemeColor::CommandLineBackground,
+            ),
             StyleRole::Message(severity) => self.apply_row_colors(
                 style,
                 match severity {
@@ -396,26 +392,21 @@ impl Theme {
                 },
                 ThemeColor::CommandLineBackground,
             ),
-            _ => {
-                let mut style =
-                    self.apply_foreground_override(style, Self::color_key(role, state, search));
-                if style.fg == Color::Default
-                    && self.colors[Self::color_key(role, state, search) as usize].is_none()
-                {
-                    style.fg = self.colors[ThemeColor::DocumentForeground as usize]
-                        .unwrap_or(Color::Default);
-                }
-                if let Some(background) = self.colors[ThemeColor::DocumentBackground as usize] {
-                    style.bg = background;
-                }
-                style
-            }
+            _ => self.apply_document_colors(style, key),
         }
+    }
 
-        #[cfg(not(feature = "colorscheme"))]
-        {
-            style
+    #[cfg(feature = "colorscheme")]
+    fn apply_document_colors(&self, style: Style, key: ThemeColor) -> Style {
+        let mut style = self.apply_foreground_override(style, key);
+        if style.fg == Color::Default && self.colors[key as usize].is_none() {
+            style.fg =
+                self.colors[ThemeColor::DocumentForeground as usize].unwrap_or(Color::Default);
         }
+        if let Some(background) = self.colors[ThemeColor::DocumentBackground as usize] {
+            style.bg = background;
+        }
+        style
     }
 
     #[cfg(feature = "colorscheme")]
@@ -522,18 +513,11 @@ impl Theme {
         if focused {
             let focus = self.style(StyleRole::ObjectKey, StyleState::main().focused());
             let focus_background = if focus.inverted { focus.fg } else { focus.bg };
-            row.bg = if self.name == ThemeName::Default
-                && focus_background == Color::Default
-                && row.bg == Color::Default
-            {
-                LINE_HIGHLIGHT
-            } else {
-                if focus_background == Color::Default {
-                    row.bg
-                } else {
-                    focus_background
-                }
-            };
+            if focus_background != Color::Default {
+                row.bg = focus_background;
+            } else if row.bg == Color::Default && self.name == ThemeName::Default {
+                row.bg = LINE_HIGHLIGHT;
+            }
         }
         row
     }
@@ -630,76 +614,48 @@ impl Theme {
     }
 
     fn apply_focus(&self, role: StyleRole, focus: FocusState, style: Style) -> Style {
+        match self.legacy_name() {
+            LegacyTheme::Classic => Self::classic_focus(role, focus, style),
+            #[cfg(feature = "colorscheme")]
+            LegacyTheme::Cyan => Self::cyan_focus(role, focus, style),
+        }
+    }
+
+    fn classic_focus(role: StyleRole, focus: FocusState, style: Style) -> Style {
+        let fg = match (role, focus) {
+            (StyleRole::JsonValue(_), FocusState::Row) => style.fg.bright(),
+            (StyleRole::ObjectKey | StyleRole::FieldDefinition, FocusState::Row) => LIGHT_CYAN,
+            (
+                StyleRole::ArrayIndex | StyleRole::Punctuation | StyleRole::PrimitiveTrailingComma,
+                FocusState::Row,
+            ) => LIGHT_WHITE,
+            (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer)
+            | (StyleRole::LineNumber | StyleRole::TruncationIndicator, FocusState::Row) => WHITE,
+            _ => return style,
+        };
+        Style { fg, ..style }
+    }
+
+    #[cfg(feature = "colorscheme")]
+    fn cyan_focus(role: StyleRole, focus: FocusState, style: Style) -> Style {
         match (role, focus) {
-            (_, FocusState::None) => style,
-            (StyleRole::JsonValue(_), FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style {
-                    fg: style.fg.bright(),
-                    ..style
-                },
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => style,
+            (StyleRole::ObjectKey | StyleRole::FieldDefinition, FocusState::Row) => Style {
+                fg: LIGHT_CYAN,
+                ..Style::default()
             },
-            (StyleRole::ObjectKey | StyleRole::FieldDefinition, FocusState::Row) => {
-                match self.legacy_name() {
-                    LegacyTheme::Classic => Style {
-                        fg: LIGHT_CYAN,
-                        ..style
-                    },
-                    #[cfg(feature = "colorscheme")]
-                    LegacyTheme::Cyan => Style {
-                        fg: LIGHT_CYAN,
-                        ..Style::default()
-                    },
-                }
-            }
-            (StyleRole::ArrayIndex, FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style {
-                    fg: LIGHT_WHITE,
-                    ..style
-                },
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    inverted: true,
-                    bold: true,
-                    ..Style::default()
-                },
+            (StyleRole::ArrayIndex, FocusState::Row) => Style {
+                inverted: true,
+                bold: true,
+                ..Style::default()
             },
-            (StyleRole::Punctuation | StyleRole::PrimitiveTrailingComma, FocusState::Row) => {
-                match self.legacy_name() {
-                    LegacyTheme::Classic => Style {
-                        fg: crate::terminal::LIGHT_WHITE,
-                        ..style
-                    },
-                    #[cfg(feature = "colorscheme")]
-                    LegacyTheme::Cyan => style,
-                }
-            }
-            (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer) => {
-                match self.legacy_name() {
-                    LegacyTheme::Classic => Style { fg: WHITE, ..style },
-                    #[cfg(feature = "colorscheme")]
-                    LegacyTheme::Cyan => Style {
-                        fg: YELLOW,
-                        ..Style::default()
-                    },
-                }
-            }
-            (StyleRole::LineNumber, FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style { fg: WHITE, ..style },
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    fg: YELLOW,
-                    ..Style::default()
-                },
+            (StyleRole::ContainerDelimiter, FocusState::Row | FocusState::PairedContainer)
+            | (StyleRole::LineNumber, FocusState::Row) => Style {
+                fg: YELLOW,
+                ..Style::default()
             },
-            (StyleRole::TruncationIndicator, FocusState::Row) => match self.legacy_name() {
-                LegacyTheme::Classic => Style { fg: WHITE, ..style },
-                #[cfg(feature = "colorscheme")]
-                LegacyTheme::Cyan => Style {
-                    bold: true,
-                    ..Style::default()
-                },
+            (StyleRole::TruncationIndicator, FocusState::Row) => Style {
+                bold: true,
+                ..Style::default()
             },
             _ => style,
         }
@@ -722,18 +678,10 @@ impl Theme {
     }
 
     fn current_match_style(&self) -> Style {
-        match self.legacy_name() {
-            LegacyTheme::Classic => Style {
-                fg: LIGHT_YELLOW,
-                underlined: true,
-                ..Style::default()
-            },
-            #[cfg(feature = "colorscheme")]
-            LegacyTheme::Cyan => Style {
-                fg: LIGHT_YELLOW,
-                underlined: true,
-                ..Style::default()
-            },
+        Style {
+            fg: LIGHT_YELLOW,
+            underlined: true,
+            ..Style::default()
         }
     }
 }
@@ -1028,41 +976,23 @@ mod tests {
     fn focus_and_search_precedence_is_explicit() {
         let default_theme = Theme::default();
         let cyan = Theme::built_in(ThemeName::Cyan);
+        let focused = StyleState::main().focused();
+        let key = StyleRole::ObjectKey;
 
-        assert_eq!(
-            default_theme.style(StyleRole::ObjectKey, StyleState::main().focused()),
-            fg(LIGHT_CYAN)
-        );
-        for (kind, expected) in [
-            (JsonValueKind::String, Color::C16(10)),
-            (JsonValueKind::Number, Color::C16(13)),
-            (JsonValueKind::Boolean, LIGHT_BLUE),
-            (JsonValueKind::Null, LIGHT_WHITE),
+        for (role, expected) in [
+            (key, LIGHT_CYAN),
+            (StyleRole::JsonValue(JsonValueKind::String), Color::C16(10)),
+            (StyleRole::JsonValue(JsonValueKind::Number), Color::C16(13)),
+            (StyleRole::JsonValue(JsonValueKind::Boolean), LIGHT_BLUE),
+            (StyleRole::JsonValue(JsonValueKind::Null), LIGHT_WHITE),
+            (StyleRole::Punctuation, LIGHT_WHITE),
+            (StyleRole::PrimitiveTrailingComma, LIGHT_WHITE),
+            (StyleRole::ContainerDelimiter, WHITE),
+            (StyleRole::LineNumber, WHITE),
         ] {
-            assert_eq!(
-                default_theme.style(StyleRole::JsonValue(kind), StyleState::main().focused()),
-                fg(expected)
-            );
+            assert_eq!(default_theme.style(role, focused), fg(expected), "{role:?}");
         }
-        assert_eq!(
-            default_theme.style(StyleRole::Punctuation, StyleState::main().focused()),
-            fg(LIGHT_WHITE)
-        );
-        assert_eq!(
-            default_theme.style(
-                StyleRole::PrimitiveTrailingComma,
-                StyleState::main().focused()
-            ),
-            fg(LIGHT_WHITE)
-        );
-        assert_eq!(
-            default_theme.style(StyleRole::ContainerDelimiter, StyleState::main().focused()),
-            fg(WHITE)
-        );
-        assert_eq!(
-            default_theme.style(StyleRole::LineNumber, StyleState::main().focused()),
-            fg(WHITE)
-        );
+        assert_eq!(cyan.style(key, focused), fg(LIGHT_CYAN));
         assert_eq!(
             default_theme.style(
                 StyleRole::JsonValue(JsonValueKind::String),
@@ -1074,36 +1004,16 @@ mod tests {
                 ..Style::default()
             }
         );
-        assert_eq!(
-            cyan.style(StyleRole::ObjectKey, StyleState::main().focused()),
-            fg(LIGHT_CYAN)
-        );
-        assert_eq!(
-            default_theme.style(
-                StyleRole::ObjectKey,
-                StyleState::main()
-                    .focused()
-                    .search(SearchState::CurrentMatch),
-            ),
-            Style {
-                fg: LIGHT_YELLOW,
-                underlined: true,
-                ..Style::default()
-            }
-        );
-        assert_eq!(
-            cyan.style(
-                StyleRole::ObjectKey,
-                StyleState::main()
-                    .focused()
-                    .search(SearchState::CurrentMatch),
-            ),
-            Style {
-                fg: LIGHT_YELLOW,
-                underlined: true,
-                ..Style::default()
-            }
-        );
+        for theme in [default_theme, cyan] {
+            assert_eq!(
+                theme.style(key, focused.search(SearchState::CurrentMatch)),
+                Style {
+                    fg: LIGHT_YELLOW,
+                    underlined: true,
+                    ..Style::default()
+                }
+            );
+        }
     }
 
     #[test]
